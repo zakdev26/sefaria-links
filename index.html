@@ -81,6 +81,13 @@
   .treehead .globaltoggle { margin-left: auto; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 14px; }
   .hint a { color: var(--accent); }
+  .donate-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: var(--card); border-top: 1px solid var(--line);
+    text-align: center; padding: 10px 12px; font-size: 13px;
+  }
+  .donate-bar a { color: var(--accent); font-weight: bold; text-decoration: none; }
+  .donate-bar a:hover { text-decoration: underline; }
   .cat-head .catbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
 </style>
 </head>
@@ -98,6 +105,7 @@
     <div class="toggles">
       <label><input type="checkbox" id="incHe" checked> Hebrew</label>
       <label><input type="checkbox" id="incEn" checked> English</label>
+      <label><input type="checkbox" id="incSrc" checked> Source text</label>
     </div>
     <button id="fetchBtn">Fetch links</button>
     <div class="status" id="status"></div>
@@ -113,16 +121,26 @@
   </div>
 
   <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the doc, then use the share sheet → <em>Send to Kindle</em>.</p>
-  <p class="hint">Texts and links from Sefaria's open library. <a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">Donate to Sefaria</a>.</p>
+  <p class="hint">Texts and links from Sefaria's open library.</p>
 </div>
+
+<div class="donate-bar"><a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">♥ Donate to Sefaria</a></div>
 
 <script>
 const $ = id => document.getElementById(id);
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
+const TEXTS_API = "https://www.sefaria.org/api/texts/";
 let LINKS = [];      // link objects with text
 let TREE = {};       // category -> { commentator -> [links] }
 let CAT_ORDER = [];  // categories, most links first
+let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
+
+function toArr(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map(x => Array.isArray(x) ? x.map(asText).join(" ") : asText(x));
+  return [asText(v)];
+}
 
 // --- load the Word-doc library (with CDN fallback) -------------------------
 function loadScript(src) {
@@ -268,6 +286,16 @@ async function fetchLinks() {
 
     renderTree(catCount);
     setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
+
+    // also fetch the reference's own text, for context (non-fatal)
+    SRC = null;
+    try {
+      const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+      if (r.ok) {
+        const t = await r.json();
+        if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
+      }
+    } catch (e) { /* silent: source text just won't be available */ }
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
   } finally {
@@ -341,8 +369,10 @@ async function buildDoc() {
     .map(b => decodeURIComponent(b.value)));
   const incHe = $("incHe").checked;
   const incEn = $("incEn").checked;
+  const incSrc = $("incSrc").checked;
+  const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
   if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
-  if (chosen.size === 0) { setStatus("Select at least one source.", true); return; }
+  if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the source text.", true); return; }
 
   $("genBtn").disabled = true;
   setStatus("Building document…");
@@ -356,6 +386,33 @@ async function buildDoc() {
     heading: HeadingLevel.TITLE,
     children: [new TextRun({ text: "Linked texts: " + ref })]
   }));
+
+  // source text first, for context
+  if (haveSrc) {
+    const srcLabel = SRC.heRef || SRC.ref || ref;
+    children.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 120, after: 120 },
+      children: [new TextRun({ text: "Source — " + srcLabel })]
+    }));
+    const n = Math.max(SRC.he.length, SRC.text.length);
+    for (let i = 0; i < n; i++) {
+      if (incHe) {
+        const he = stripHtml(SRC.he[i] || "");
+        if (he) children.push(new Paragraph({
+          bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { after: 80 },
+          children: [new TextRun({ text: he, rightToLeft: true, font: "David", size: 26 })]
+        }));
+      }
+      if (incEn) {
+        const en = stripHtml(SRC.text[i] || "");
+        if (en) children.push(new Paragraph({
+          spacing: { after: 120 },
+          children: [new TextRun({ text: en, size: 22 })]
+        }));
+      }
+    }
+  }
 
   for (const cat of CAT_ORDER) {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
@@ -413,7 +470,10 @@ async function buildDoc() {
     a.href = url; a.download = fname + ".docx";
     document.body.appendChild(a); a.click(); a.remove();
     URL.revokeObjectURL(url);
-    setStatus(`Done — ${written} texts written to ${fname}.docx`);
+    const parts = [];
+    if (haveSrc) parts.push("source text");
+    if (written) parts.push(written + " linked texts");
+    setStatus(`Done — ${parts.join(" + ") || "document"} → ${fname}.docx`);
   } catch (e) {
     setStatus("Failed to build document: " + e.message, true);
   } finally {
