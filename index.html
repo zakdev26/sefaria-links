@@ -67,7 +67,6 @@
   .cat-head .caret { transition: transform .15s; font-size: 12px; color: var(--muted); }
   .cat.collapsed .caret { transform: rotate(-90deg); }
   .cat-head .count { color: var(--muted); font-size: 13px; }
-  .cat-head .cat-toggle { margin-left: auto; font-size: 12px; color: var(--accent); text-decoration: underline; }
   .comm-list { padding: 4px 12px 8px; }
   .cat.collapsed .comm-list { display: none; }
   .comm {
@@ -81,6 +80,8 @@
   .treehead strong { font-size: 15px; }
   .treehead .globaltoggle { margin-left: auto; }
   .hint { font-size: 12px; color: var(--muted); margin-top: 14px; }
+  .hint a { color: var(--accent); }
+  .cat-head .catbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -112,6 +113,7 @@
   </div>
 
   <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the doc, then use the share sheet → <em>Send to Kindle</em>.</p>
+  <p class="hint">Texts and links from Sefaria's open library. <a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">Donate to Sefaria</a>.</p>
 </div>
 
 <script>
@@ -284,34 +286,39 @@ function renderTree(catCount) {
         <span>${comm}</span><span class="count">${n}</span>
       </label>`;
     }).join("");
-    return `<div class="cat" data-cat="${encodeURIComponent(cat)}">
+    return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
       <div class="cat-head">
+        <input type="checkbox" class="catbox" checked>
         <span class="caret">▾</span>
         <strong>${cat}</strong><span class="count">${catCount(cat)}</span>
-        <span class="cat-toggle">all / none</span>
       </div>
       <div class="comm-list">${rows}</div>
     </div>`;
   }).join("");
   $("tree").innerHTML = html;
 
-  // collapse/expand on header click (but not when hitting the all/none link)
-  [...$("tree").querySelectorAll(".cat-head")].forEach(head => {
+  [...$("tree").querySelectorAll(".cat")].forEach(cat => {
+    const head = cat.querySelector(".cat-head");
+    const catbox = cat.querySelector(".catbox");
+    const commboxes = [...cat.querySelectorAll(".commbox")];
+
+    // click the header to drill in / collapse (but not when hitting the checkbox)
     head.addEventListener("click", e => {
-      if (e.target.classList.contains("cat-toggle")) return;
-      head.parentElement.classList.toggle("collapsed");
+      if (e.target === catbox) return;
+      cat.classList.toggle("collapsed");
     });
-  });
-  // per-category all/none
-  [...$("tree").querySelectorAll(".cat-toggle")].forEach(link => {
-    link.addEventListener("click", e => {
-      e.stopPropagation();
-      const cat = link.closest(".cat");
-      const boxes = [...cat.querySelectorAll(".commbox")];
-      const anyOff = boxes.some(b => !b.checked);
-      boxes.forEach(b => b.checked = anyOff);
+    // the section checkbox selects / clears the whole section
+    catbox.addEventListener("change", () => {
+      commboxes.forEach(b => b.checked = catbox.checked);
     });
+    // individual commentators feed back into the section checkbox
+    commboxes.forEach(b => b.addEventListener("change", () => {
+      const on = commboxes.filter(x => x.checked).length;
+      catbox.checked = on > 0;
+      catbox.indeterminate = on > 0 && on < commboxes.length;
+    }));
   });
+
   $("treeCard").style.display = "block";
 }
 
@@ -319,6 +326,7 @@ $("toggleAll").onclick = () => {
   const boxes = [...document.querySelectorAll(".commbox")];
   const anyOff = boxes.some(b => !b.checked);
   boxes.forEach(b => b.checked = anyOff);
+  [...document.querySelectorAll(".catbox")].forEach(cb => { cb.checked = anyOff; cb.indeterminate = false; });
 };
 
 // ===========================================================================
