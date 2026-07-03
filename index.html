@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sefaria Links → Word</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #f4f1ea;
@@ -54,6 +57,17 @@
   }
   button:hover { background: var(--accent-dark); }
   button:disabled { opacity: .5; cursor: default; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.secondary:hover { background: #f2ecdd; }
+  .preview { }
+  .pv-cat { font-size: 18px; margin: 20px 0 8px; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
+  .pv-cat:first-child { margin-top: 0; }
+  .pv-comm { font-size: 16px; margin: 16px 0 4px; color: var(--accent-dark); }
+  .pv-ref { font-size: 12px; color: var(--muted); margin: 10px 0 2px; }
+  .pv-he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre', 'David Libre', 'Times New Roman', serif; font-size: 20px; line-height: 1.9; margin: 2px 0 6px; }
+  .pv-en { font-size: 15px; line-height: 1.65; margin: 2px 0 12px; }
+  .pv-src { background: #fbf8f0; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin-bottom: 6px; }
+  .pv-count { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
   .status { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 10px; }
   .status.err { color: #a23b2c; }
   .toggles { display: flex; gap: 18px; margin: 4px 0 0; }
@@ -117,7 +131,13 @@
       <span class="globaltoggle" id="toggleAll">select all / none</span>
     </div>
     <div id="tree"></div>
-    <button id="genBtn">Build Word document</button>
+    <button id="previewBtn">Preview selected texts</button>
+    <button id="genBtn" class="secondary">Build Word document</button>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none">
+    <div class="pv-count" id="previewCount"></div>
+    <div class="preview" id="preview"></div>
   </div>
 
   <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the doc, then use the share sheet → <em>Send to Kindle</em>.</p>
@@ -481,6 +501,67 @@ async function buildDoc() {
   }
 }
 
+// ===========================================================================
+// On-page preview of the selected texts
+// ===========================================================================
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+function renderPreview() {
+  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
+    .map(b => decodeURIComponent(b.value)));
+  const incHe = $("incHe").checked;
+  const incEn = $("incEn").checked;
+  const incSrc = $("incSrc").checked;
+  const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
+  if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
+  if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the source text.", true); return; }
+
+  const ref = $("ref").value.trim();
+  let html = "", count = 0;
+
+  if (haveSrc) {
+    html += `<div class="pv-src"><div class="pv-cat" style="margin-top:0">Source — ${escapeHtml(SRC.heRef || SRC.ref || ref)}</div>`;
+    const n = Math.max(SRC.he.length, SRC.text.length);
+    for (let i = 0; i < n; i++) {
+      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) html += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`; }
+      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) html += `<p class="pv-en">${escapeHtml(en)}</p>`; }
+    }
+    html += `</div>`;
+  }
+
+  for (const cat of CAT_ORDER) {
+    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
+    if (!active.length) continue;
+    html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
+    for (const comm of active) {
+      html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+      for (const l of TREE[cat][comm]) {
+        const enRef = l.sourceRef || l.ref || "";
+        const heRef = l.sourceHeRef || "";
+        html += `<div class="pv-ref">${escapeHtml(enRef + (heRef ? "  —  " + heRef : ""))}</div>`;
+        if (incHe) { const he = stripHtml(asText(l.he)); if (he) html += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`; }
+        if (incEn) { const en = stripHtml(asText(l.text)); if (en) html += `<p class="pv-en">${escapeHtml(en)}</p>`; }
+        count++;
+      }
+    }
+  }
+
+  $("preview").innerHTML = html || "<p class='pv-en'>Nothing to show.</p>";
+  const bits = [];
+  if (haveSrc) bits.push("source text");
+  if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
+  $("previewCount").textContent = "Showing " + (bits.join(" + ") || "nothing");
+  $("previewCard").style.display = "block";
+  setStatus("");
+  $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+$("previewBtn").onclick = renderPreview;
 $("fetchBtn").onclick = fetchLinks;
 $("genBtn").onclick = buildDoc;
 </script>
