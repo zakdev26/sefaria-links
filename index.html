@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sefaria Links → Word</title>
+<script src="https://unpkg.com/docx@8.5.0/build/index.js"></script>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --card: #fffdf8;
+    --ink: #2b2620;
+    --muted: #6f675a;
+    --line: #ddd5c7;
+    --accent: #8a6d3b;
+    --accent-dark: #6b5329;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 18px 64px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input[type=text] {
+    width: 100%; padding: 12px; font-size: 16px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  button {
+    font-family: inherit; font-size: 16px; cursor: pointer;
+    border: none; border-radius: 8px; padding: 12px 16px;
+    background: var(--accent); color: #fff; width: 100%; margin-top: 12px;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .status { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 10px; }
+  .status.err { color: #a23b2c; }
+  .toggles { display: flex; gap: 18px; margin: 4px 0 0; }
+  .toggles label { display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink); margin: 0; }
+  .cats { display: none; }
+  .cats .row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 15px;
+  }
+  .cats .row:last-child { border-bottom: none; }
+  .cats .count { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .cathead { display: flex; align-items: center; margin-bottom: 6px; }
+  .cathead a { font-size: 13px; color: var(--accent); cursor: pointer; margin-left: auto; text-decoration: underline; }
+  .hidden { display: none; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 14px; }
+  code { background: #efeade; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sefaria Links → Word</h1>
+  <p class="sub">Enter a reference, pull every linked text, get a Word document.</p>
+
+  <div class="card">
+    <label for="ref">Reference</label>
+    <input type="text" id="ref" placeholder="e.g. Shabbat 100a  ·  Genesis 1:1  ·  Berakhot 2a:1" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="toggles">
+      <label><input type="checkbox" id="incHe" checked> Hebrew</label>
+      <label><input type="checkbox" id="incEn" checked> English</label>
+    </div>
+    <button id="fetchBtn">Fetch links</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card cats" id="catsCard">
+    <div class="cathead">
+      <strong>Filter by category</strong>
+      <a id="toggleAll">select / clear all</a>
+    </div>
+    <div id="cats"></div>
+    <button id="genBtn">Build Word document</button>
+  </div>
+
+  <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the doc, then use the share sheet → <em>Send to Kindle</em>.</p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const API = "https://www.sefaria.org/api/links/";
+let LINKS = [];        // filtered link objects with text
+let BY_CAT = {};       // category -> array of links
+
+const statusEl = $("status");
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = "status" + (isErr ? " err" : "");
+}
+
+// --- helpers ---------------------------------------------------------------
+function asText(field) {
+  // Sefaria text fields may be a string or (nested) array; flatten to string
+  if (!field) return "";
+  if (Array.isArray(field)) return field.map(asText).join(" ");
+  return String(field);
+}
+
+function stripHtml(html) {
+  if (!html) return "";
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  // drop footnote markers / footnotes to keep the doc clean
+  div.querySelectorAll("sup, .footnote, i.footnote, .mam-spi-pe").forEach(n => n.remove());
+  return (div.textContent || "").replace(/\s+/g, " ").trim();
+}
+
+function refLabel(link) {
+  return link.sourceRef || link.ref || "";
+}
+function heRefLabel(link) {
+  return link.sourceHeRef || "";
+}
+
+// --- fetch -----------------------------------------------------------------
+async function fetchLinks() {
+  const ref = $("ref").value.trim();
+  if (!ref) { setStatus("Enter a reference first.", true); return; }
+
+  $("fetchBtn").disabled = true;
+  $("catsCard").style.display = "none";
+  setStatus("Fetching…");
+
+  try {
+    const res = await fetch(API + encodeURIComponent(ref) + "?with_text=1");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!Array.isArray(data) || data.length === 0) {
+      setStatus("No links found for that reference.", true);
+      $("fetchBtn").disabled = false;
+      return;
+    }
+
+    // keep only links that actually carry text
+    LINKS = data.filter(l => asText(l.he) || asText(l.text));
+    BY_CAT = {};
+    for (const l of LINKS) {
+      const c = l.category || "Other";
+      (BY_CAT[c] = BY_CAT[c] || []).push(l);
+    }
+    renderCats();
+    setStatus(`Found ${LINKS.length} linked texts across ${Object.keys(BY_CAT).length} categories.`);
+  } catch (e) {
+    setStatus("Could not fetch: " + e.message + ". Check the reference spelling.", true);
+  } finally {
+    $("fetchBtn").disabled = false;
+  }
+}
+
+function renderCats() {
+  const order = Object.keys(BY_CAT).sort((a,b) => BY_CAT[b].length - BY_CAT[a].length);
+  const html = order.map(c =>
+    `<label class="row"><input type="checkbox" class="catbox" value="${c}" checked>
+       <span>${c}</span><span class="count">${BY_CAT[c].length}</span></label>`
+  ).join("");
+  $("cats").innerHTML = html;
+  $("catsCard").style.display = "block";
+}
+
+$("toggleAll").onclick = () => {
+  const boxes = [...document.querySelectorAll(".catbox")];
+  const anyUnchecked = boxes.some(b => !b.checked);
+  boxes.forEach(b => b.checked = anyUnchecked);
+};
+
+// --- build docx ------------------------------------------------------------
+async function buildDoc() {
+  const d = window.docx;
+  if (!d) { setStatus("Document library failed to load — check your connection.", true); return; }
+
+  const chosen = new Set([...document.querySelectorAll(".catbox:checked")].map(b => b.value));
+  const incHe = $("incHe").checked;
+  const incEn = $("incEn").checked;
+  if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
+
+  const selected = LINKS.filter(l => chosen.has(l.category || "Other"));
+  if (selected.length === 0) { setStatus("No categories selected.", true); return; }
+
+  $("genBtn").disabled = true;
+  setStatus("Building document…");
+
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = d;
+  const ref = $("ref").value.trim();
+  const children = [];
+
+  // title
+  children.push(new Paragraph({
+    heading: HeadingLevel.TITLE,
+    children: [new TextRun({ text: "Linked texts: " + ref })]
+  }));
+
+  const order = Object.keys(BY_CAT).sort((a,b) => BY_CAT[b].length - BY_CAT[a].length);
+  for (const cat of order) {
+    if (!chosen.has(cat)) continue;
+    children.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 300, after: 120 },
+      children: [new TextRun({ text: cat })]
+    }));
+
+    for (const l of BY_CAT[cat]) {
+      // source heading (English + Hebrew ref)
+      const enRef = refLabel(l);
+      const heRef = heRefLabel(l);
+      children.push(new Paragraph({
+        heading: HeadingLevel.HEADING_3,
+        spacing: { before: 180, after: 40 },
+        children: [new TextRun({ text: enRef + (heRef ? "  —  " + heRef : "") })]
+      }));
+
+      if (incHe) {
+        const he = stripHtml(asText(l.he));
+        if (he) children.push(new Paragraph({
+          bidirectional: true,
+          alignment: AlignmentType.RIGHT,
+          spacing: { after: 80 },
+          children: [new TextRun({ text: he, rightToLeft: true, font: "David", size: 26 })]
+        }));
+      }
+      if (incEn) {
+        const en = stripHtml(asText(l.text));
+        if (en) children.push(new Paragraph({
+          spacing: { after: 120 },
+          children: [new TextRun({ text: en, size: 22 })]
+        }));
+      }
+    }
+  }
+
+  try {
+    const doc = new Document({ sections: [{ properties: {}, children }] });
+    const blob = await Packer.toBlob(doc);
+    const fname = ref.replace(/[^\w\u0590-\u05FF]+/g, "_").replace(/^_|_$/g, "") || "sefaria_links";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = fname + ".docx";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    setStatus(`Done — ${selected.length} texts written to ${fname}.docx`);
+  } catch (e) {
+    setStatus("Failed to build document: " + e.message, true);
+  } finally {
+    $("genBtn").disabled = false;
+  }
+}
+
+$("fetchBtn").onclick = fetchLinks;
+$("genBtn").onclick = buildDoc;
+$("ref").addEventListener("keydown", e => { if (e.key === "Enter") fetchLinks(); });
+</script>
+</body>
+</html>
