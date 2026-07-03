@@ -103,6 +103,8 @@
   .donate-bar a { color: var(--accent); font-weight: bold; text-decoration: none; }
   .donate-bar a:hover { text-decoration: underline; }
   .cat-head .catbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .srcrow .cat-head { cursor: default; }
+  .srcrow .srcbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -119,7 +121,6 @@
     <div class="toggles">
       <label><input type="checkbox" id="incHe" checked> Hebrew</label>
       <label><input type="checkbox" id="incEn" checked> English</label>
-      <label><input type="checkbox" id="incSrc" checked> Source text</label>
     </div>
     <button id="fetchBtn">Fetch links</button>
     <div class="status" id="status"></div>
@@ -304,10 +305,7 @@ async function fetchLinks() {
     const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
     CAT_ORDER = Object.keys(TREE).sort((a, b) => catCount(b) - catCount(a));
 
-    renderTree(catCount);
-    setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
-
-    // also fetch the reference's own text, for context (non-fatal)
+    // fetch the reference's own text first, so "Original Text" can head the list (non-fatal)
     SRC = null;
     try {
       const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
@@ -316,6 +314,9 @@ async function fetchLinks() {
         if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
       }
     } catch (e) { /* silent: source text just won't be available */ }
+
+    renderTree(catCount);
+    setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
   } finally {
@@ -324,7 +325,17 @@ async function fetchLinks() {
 }
 
 function renderTree(catCount) {
-  const html = CAT_ORDER.map(cat => {
+  const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
+  const srcRow = `<div class="cat srcrow">
+      <div class="cat-head">
+        <input type="checkbox" class="srcbox" id="srcbox" ${srcAvailable ? "checked" : "disabled"}>
+        <span class="caret" style="visibility:hidden">▾</span>
+        <strong>Original Text</strong>
+        <span class="count">${srcAvailable ? "the passage itself" : "not available"}</span>
+      </div>
+    </div>`;
+
+  const catsHtml = CAT_ORDER.map(cat => {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
     const rows = comms.map(comm => {
       const n = TREE[cat][comm].length;
@@ -343,9 +354,9 @@ function renderTree(catCount) {
       <div class="comm-list">${rows}</div>
     </div>`;
   }).join("");
-  $("tree").innerHTML = html;
+  $("tree").innerHTML = srcRow + catsHtml;
 
-  [...$("tree").querySelectorAll(".cat")].forEach(cat => {
+  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(cat => {
     const head = cat.querySelector(".cat-head");
     const catbox = cat.querySelector(".catbox");
     const commboxes = [...cat.querySelectorAll(".commbox")];
@@ -371,10 +382,12 @@ function renderTree(catCount) {
 }
 
 $("toggleAll").onclick = () => {
+  const src = $("srcbox");
   const boxes = [...document.querySelectorAll(".commbox")];
-  const anyOff = boxes.some(b => !b.checked);
+  const anyOff = boxes.some(b => !b.checked) || (src && !src.disabled && !src.checked);
   boxes.forEach(b => b.checked = anyOff);
   [...document.querySelectorAll(".catbox")].forEach(cb => { cb.checked = anyOff; cb.indeterminate = false; });
+  if (src && !src.disabled) src.checked = anyOff;
 };
 
 // ===========================================================================
@@ -389,7 +402,7 @@ async function buildDoc() {
     .map(b => decodeURIComponent(b.value)));
   const incHe = $("incHe").checked;
   const incEn = $("incEn").checked;
-  const incSrc = $("incSrc").checked;
+  const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
   const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
   if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
   if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the source text.", true); return; }
@@ -515,7 +528,7 @@ function renderPreview() {
     .map(b => decodeURIComponent(b.value)));
   const incHe = $("incHe").checked;
   const incEn = $("incEn").checked;
-  const incSrc = $("incSrc").checked;
+  const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
   const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
   if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
   if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the source text.", true); return; }
