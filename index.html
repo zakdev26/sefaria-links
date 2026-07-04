@@ -327,6 +327,60 @@ $("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
 // ===========================================================================
 // Fetch links + build the source tree
 // ===========================================================================
+function isMultiSegmentSection(ref) {
+  if (ref.indexOf(":") >= 0) return false;   // already a specific segment
+  if (/\d+[ab]$/.test(ref)) return false;     // Talmud daf (e.g. 100a)
+  return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
+}
+
+async function mapPool(items, worker, poolSize, onProgress) {
+  const results = new Array(items.length);
+  let idx = 0, done = 0;
+  async function run() {
+    while (idx < items.length) {
+      const my = idx++;
+      results[my] = await worker(items[my], my);
+      done++; if (onProgress) onProgress(done, items.length);
+    }
+  }
+  const runners = [];
+  for (let k = 0; k < Math.min(poolSize, items.length); k++) runners.push(run());
+  await Promise.all(runners);
+  return results;
+}
+
+// A whole chapter/section: Sefaria's links API doesn't reliably return the
+// linked *text* for a multi-segment ref, so walk it segment-by-segment and
+// merge. Each per-segment call does return text, which is what we need.
+async function fetchLinksBySegments(ref) {
+  setStatus("Reading " + ref + "…");
+  let n = 0;
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    if (r.ok) {
+      const j = await r.json();
+      const arr = (j.he && j.he.length) ? j.he : j.text;
+      if (Array.isArray(arr)) n = arr.length;
+    }
+  } catch (e) {}
+  if (!n) {   // couldn't expand — fall back to a single call
+    const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  }
+  const segs = [];
+  for (let i = 1; i <= n; i++) segs.push(ref + ":" + i);
+  const chunks = await mapPool(segs, async (sref) => {
+    try {
+      const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
+    } catch (e) { return []; }
+  }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
+  return [].concat.apply([], chunks);
+}
+
 async function fetchLinks() {
   const ref = $("ref").value.trim();
   if (!ref) { setStatus("Enter a reference first.", true); return; }
@@ -336,10 +390,15 @@ async function fetchLinks() {
   setStatus("Fetching…");
 
   try {
-    const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    let data;
+    if (isMultiSegmentSection(ref)) {
+      data = await fetchLinksBySegments(ref);
+    } else {
+      const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      data = await res.json();
+      if (data && data.error) throw new Error(data.error);
+    }
     if (!Array.isArray(data) || data.length === 0) {
       setStatus("No links found for that reference.", true);
       return;
@@ -668,6 +727,7 @@ const CORPORA = [
   { label: "Mishnah",  he: "משנה",   match: ["mishnah"] },
   { label: "Talmud",   he: "תלמוד",  match: ["talmud"] },
   { label: "Halakhah", he: "הלכה",   match: ["halakhah", "halacha"] },
+  { label: "Kabbalah", he: "קבלה",   match: ["kabbalah", "kabbala"] },
   { label: "Chasidut", he: "חסידות", match: ["chasidut", "chassidut", "hasidut"] }
 ];
 
