@@ -115,6 +115,32 @@
   .cat-head .catbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
   .srcrow .cat-head { cursor: default; }
   .srcrow .srcbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+
+  /* ---- reference builder: mode switch + browse navigator ---- */
+  .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
+  .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .modeseg button:hover { background: #ece3d0; }
+  .modeseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .navpanel { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fbf8f0; }
+  .crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; font-size: 13px; min-height: 20px; }
+  .crumb { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .crumb.here { color: var(--muted); cursor: default; text-decoration: none; }
+  .crumbsep { color: var(--muted); }
+  .navlist { display: flex; flex-direction: column; }
+  .navrow { display: flex; align-items: center; gap: 8px; padding: 11px 8px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 15px; }
+  .navrow:last-child { border-bottom: none; }
+  .navrow:hover { background: #f2ecdd; }
+  .navrow .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; color: var(--muted); font-size: 15px; direction: rtl; }
+  .navrow .chev { color: var(--muted); font-size: 13px; margin-left: 6px; }
+  .navrow .he + .chev { margin-left: 6px; }
+  .navgrid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .navgrid button { width: auto; min-width: 44px; margin: 0; padding: 9px 10px; font-size: 14px; background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .navgrid button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .navnote { font-size: 12px; color: var(--muted); margin: 8px 2px 2px; }
+  .navwhole { margin: 2px 0 6px; }
+  .navwhole button { margin: 0; }
+  .navloading { font-size: 13px; color: var(--muted); padding: 8px 2px; }
+  .naverr { font-size: 13px; color: #a23b2c; padding: 8px 2px; }
 </style>
 </head>
 <body>
@@ -128,6 +154,17 @@
       <input type="text" id="ref" placeholder="Start typing… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false">
       <div class="ac" id="ac"></div>
     </div>
+
+    <div class="modeseg">
+      <button type="button" data-mode="type" class="on">Type</button>
+      <button type="button" data-mode="browse">Browse</button>
+    </div>
+
+    <div class="navpanel" id="browsePanel" style="display:none">
+      <div class="crumbs" id="crumbs"></div>
+      <div id="navBody"></div>
+    </div>
+
     <div class="toggles">
       <label><input type="checkbox" id="incHe" checked> Hebrew</label>
       <label><input type="checkbox" id="incEn" checked> English</label>
@@ -617,6 +654,248 @@ $("pvHe").onchange = applyPvLang;
 $("pvEn").onchange = applyPvLang;
 $("pvExpandAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.remove("collapsed"));
 $("pvCollapseAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.add("collapsed"));
+
+// ===========================================================================
+// Reference builder — Browse (category drill-down)
+// Fills the reference box, then hands off to the existing pipeline unchanged.
+// ===========================================================================
+const TOC_API = "https://www.sefaria.org/api/index";
+const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
+const SHAPE_API = "https://www.sefaria.org/api/shape/";
+
+const CORPORA = [
+  { label: "Tanakh",   he: "תנ״ך",   match: ["tanakh", "tanach"] },
+  { label: "Mishnah",  he: "משנה",   match: ["mishnah"] },
+  { label: "Talmud",   he: "תלמוד",  match: ["talmud"] },
+  { label: "Halakhah", he: "הלכה",   match: ["halakhah", "halacha"] },
+  { label: "Chasidut", he: "חסידות", match: ["chasidut", "chassidut", "hasidut"] }
+];
+
+let TOC = null;
+let backStack = [];
+
+function setMode(m) {
+  document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  $("browsePanel").style.display = m === "browse" ? "block" : "none";
+  if (m === "browse" && backStack.length === 0) startBrowse();
+}
+
+function commitRef(ref) {
+  $("ref").value = ref;
+  setStatus('Selected: ' + ref + ' — now tap “Fetch links”.');
+  setMode("type");
+  $("ref").focus();
+}
+
+function mk(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
+function navBody() { return $("navBody"); }
+function navLoading(msg) { navBody().innerHTML = '<div class="navloading">' + (msg || "Loading…") + '</div>'; }
+function navError(msg) { navBody().innerHTML = '<div class="naverr">' + msg + '</div>'; }
+
+function nodeHe(n) {
+  if (n.heTitle) return n.heTitle;
+  if (n.heCategory) return n.heCategory;
+  if (Array.isArray(n.titles)) { const t = n.titles.find(x => x.lang === "he" && x.primary) || n.titles.find(x => x.lang === "he"); if (t) return t.text; }
+  return "";
+}
+function nodeEn(n) {
+  if (n.title) return n.title;
+  if (n.category) return n.category;
+  if (Array.isArray(n.titles)) { const t = n.titles.find(x => x.lang === "en" && x.primary) || n.titles.find(x => x.lang === "en"); if (t) return t.text; }
+  if (n.key) return n.key;
+  return "section";
+}
+
+function rowList(items, onPick) {
+  const wrap = document.createElement("div"); wrap.className = "navlist";
+  items.forEach(it => {
+    const r = document.createElement("div"); r.className = "navrow";
+    const name = document.createElement("span"); name.textContent = it.label; r.appendChild(name);
+    if (it.he) { const h = document.createElement("span"); h.className = "he"; h.textContent = it.he; r.appendChild(h); }
+    const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "›"; r.appendChild(chev);
+    r.onclick = () => onPick(it);
+    wrap.appendChild(r);
+  });
+  return wrap;
+}
+
+function renderCrumbs() {
+  const c = $("crumbs"); c.innerHTML = "";
+  backStack.forEach((f, i) => {
+    if (i) { const s = document.createElement("span"); s.className = "crumbsep"; s.textContent = "›"; c.appendChild(s); }
+    const span = document.createElement("span"); span.textContent = f.label;
+    if (i === backStack.length - 1) { span.className = "crumb here"; }
+    else { span.className = "crumb"; span.onclick = () => { backStack = backStack.slice(0, i + 1); renderCrumbs(); backStack[i].render(); }; }
+    c.appendChild(span);
+  });
+}
+function pushView(label, render) { backStack.push({ label, render }); renderCrumbs(); render(); }
+
+async function ensureToc() {
+  if (TOC) return TOC;
+  const res = await fetch(TOC_API);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  TOC = await res.json();
+  return TOC;
+}
+
+function startBrowse() { backStack = []; pushView("Texts", renderCorpora); }
+
+function renderCorpora() {
+  navLoading();
+  ensureToc().then(toc => {
+    const items = [];
+    CORPORA.forEach(c => {
+      const node = toc.find(n => n.category && c.match.includes(String(n.category).toLowerCase()));
+      if (node) items.push({ label: c.label, he: c.he, node });
+    });
+    if (!items.length) { navError("Couldn’t find the expected categories in the library index."); return; }
+    navBody().innerHTML = "";
+    navBody().appendChild(rowList(items, it => pushView(it.label, () => renderToc(it.node))));
+  }).catch(e => navError("Couldn’t load the library index: " + e.message));
+}
+
+function renderToc(node) {
+  const items = (node.contents || []).map(ch => {
+    if (ch.contents) return { type: "cat", label: nodeEn(ch), he: nodeHe(ch), node: ch };
+    if (ch.title) return { type: "book", label: ch.title, he: ch.heTitle || "", title: ch.title };
+    return null;
+  }).filter(Boolean);
+  if (!items.length) { navError("Nothing to browse here."); return; }
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    if (it.type === "cat") pushView(it.label, () => renderToc(it.node));
+    else pushView(it.label, () => openBook(it.title));
+  }));
+}
+
+async function openBook(title) {
+  navLoading('Loading “' + title + '”…');
+  let rec;
+  try {
+    const res = await fetch(BOOK_INDEX_API + encodeURIComponent(title));
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    rec = await res.json();
+  } catch (e) {
+    navError('Couldn’t load the structure of “' + title + '”. Filling the box so you can type the rest.');
+    setTimeout(() => commitRef(title), 900);
+    return;
+  }
+  const schema = rec.schema;
+  if (!schema) { commitRef(title); return; }
+  if (schema.nodes) renderSchemaNodes(title, schema, title);
+  else renderJagged(title, schema);
+}
+
+function renderSchemaNodes(title, node, prefix) {
+  const items = (node.nodes || []).map(ch => ({
+    label: ch.default ? "(main text)" : nodeEn(ch),
+    he: ch.default ? "" : nodeHe(ch),
+    ch
+  }));
+  if (!items.length) { commitRef(prefix); return; }
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    const ch = it.ch;
+    const childPrefix = ch.default ? prefix : (prefix + ", " + nodeEn(ch));
+    const crumb = ch.default ? "main" : nodeEn(ch);
+    if (ch.nodes) pushView(crumb, () => renderSchemaNodes(title, ch, childPrefix));
+    else pushView(crumb, () => renderJagged(childPrefix, ch));
+  }));
+}
+
+function renderJagged(prefix, node) {
+  const addr = (node.addressTypes && node.addressTypes[0]) || "Integer";
+  const sname = (node.sectionNames && node.sectionNames[0]) || "section";
+  navBody().innerHTML = "";
+
+  if (addr === "Talmud") {
+    const build = (amudim) => {
+      navBody().innerHTML = "";
+      navBody().appendChild(mk('<div class="navnote">Pick a page — a is the front, b the back.</div>'));
+      const grid = document.createElement("div"); grid.className = "navgrid";
+      for (let i = 0; i < amudim; i++) {
+        const b = document.createElement("button"); b.textContent = dafLabel(i);
+        b.onclick = () => commitRef(prefix + " " + dafLabel(i));
+        grid.appendChild(b);
+      }
+      navBody().appendChild(grid);
+    };
+    const n0 = node.lengths && node.lengths[0];
+    if (n0) build(n0);
+    else { navLoading(); shapeLen(prefix).then(len => build(len ? len * 2 : 180)).catch(() => build(180)); }
+    return;
+  }
+
+  const draw = (count) => {
+    navBody().innerHTML = "";
+    navBody().appendChild(mk('<div class="navnote">Pick a ' + String(sname).toLowerCase() + '.</div>'));
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    for (let i = 1; i <= count; i++) {
+      const b = document.createElement("button"); b.textContent = i;
+      b.onclick = () => pickNumber(prefix, node, [i]);
+      grid.appendChild(b);
+    }
+    navBody().appendChild(grid);
+  };
+  const n0 = node.lengths && node.lengths[0];
+  if (n0) draw(n0);
+  else {
+    navLoading();
+    shapeLen(prefix).then(len => { if (len) draw(len); else fetchCount(prefix).then(c => c ? draw(c) : commitRef(prefix)); })
+      .catch(() => commitRef(prefix));
+  }
+}
+
+function pickNumber(prefix, node, sections) {
+  const depth = (node.sectionNames || []).length || 1;
+  if (sections.length >= depth) { commitRef(refJoin(prefix, sections)); return; }
+  const cur = refJoin(prefix, sections);
+  const nextName = (node.sectionNames && node.sectionNames[sections.length]) || "part";
+  navBody().innerHTML = "";
+  const whole = document.createElement("div"); whole.className = "navwhole";
+  const wb = document.createElement("button"); wb.className = "secondary"; wb.textContent = "Use all of " + cur;
+  wb.onclick = () => commitRef(cur); whole.appendChild(wb);
+  navBody().appendChild(whole);
+  navBody().appendChild(mk('<div class="navnote">…or narrow to a ' + String(nextName).toLowerCase() + ':</div>'));
+  const holder = document.createElement("div"); holder.innerHTML = '<div class="navloading">Loading…</div>';
+  navBody().appendChild(holder);
+  fetchCount(cur).then(c => {
+    holder.innerHTML = "";
+    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn’t list these — use the button above, or type it.</div>')); return; }
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    for (let i = 1; i <= c; i++) {
+      const b = document.createElement("button"); b.textContent = i;
+      b.onclick = () => pickNumber(prefix, node, [...sections, i]);
+      grid.appendChild(b);
+    }
+    holder.appendChild(grid);
+  });
+}
+
+function refJoin(prefix, sections) { return prefix + " " + sections.join(":"); }
+function dafLabel(i) { const d = 2 + Math.floor(i / 2); return d + (i % 2 === 0 ? "a" : "b"); }
+
+async function shapeLen(title) {
+  try {
+    const r = await fetch(SHAPE_API + encodeURIComponent(title));
+    if (!r.ok) return null;
+    const j = await r.json();
+    const first = Array.isArray(j) ? j[0] : j;
+    return first && (first.length || (first.chapters && first.chapters.length)) || null;
+  } catch (e) { return null; }
+}
+async function fetchCount(ref) {
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    if (!r.ok) return null;
+    const j = await r.json();
+    const arr = (j.he && j.he.length) ? j.he : j.text;
+    return Array.isArray(arr) ? arr.length : null;
+  } catch (e) { return null; }
+}
+
+document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
 
 $("previewBtn").onclick = renderPreview;
 $("fetchBtn").onclick = fetchLinks;
