@@ -615,10 +615,12 @@ async function buildDoc() {
   }));
 
   if (toc.length) {
+    // Bookmark named "toc" — Send-to-Kindle looks for this to register the page as
+    // the book's Table of Contents (surfaces it in the Kindle "Go To" menu).
     children.push(new Paragraph({
       heading: HeadingLevel.HEADING_1,
       spacing: { before: 120, after: 80 },
-      children: [new TextRun({ text: "Contents" })]
+      children: [new Bookmark({ id: "toc", children: [new TextRun({ text: "Contents" })] })]
     }));
     for (const t of toc) {
       children.push(new Paragraph({
