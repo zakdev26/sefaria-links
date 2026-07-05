@@ -80,7 +80,7 @@
   .pv-count { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
   .status { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 10px; }
   .status.err { color: #a23b2c; }
-  .toggles { display: flex; gap: 18px; margin: 4px 0 0; }
+  .toggles { display: flex; gap: 18px; margin: 14px 0 0; }
   .toggles label { display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink); margin: 0; }
   .tree { display: none; }
   .cat { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
@@ -116,12 +116,8 @@
   .srcrow .cat-head { cursor: default; }
   .srcrow .srcbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
 
-  /* ---- reference builder: mode switch + browse navigator ---- */
-  .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
-  .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
-  .modeseg button:hover { background: #ece3d0; }
-  .modeseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .navpanel { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fbf8f0; }
+  /* ---- browse navigator ---- */
+  .navpanel { border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fbf8f0; }
   .crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; font-size: 13px; min-height: 20px; }
   .crumb { color: var(--accent); cursor: pointer; text-decoration: underline; }
   .crumb.here { color: var(--muted); cursor: default; text-decoration: none; }
@@ -146,21 +142,14 @@
 <body>
 <div class="wrap">
   <h1>Sefaria Links → Word</h1>
-  <p class="sub">Enter a reference, choose which commentaries you want, get a Word document.</p>
+  <p class="sub">Browse to a text, choose which commentaries you want, get a Word document.</p>
 
   <div class="card">
-    <label for="ref">Reference</label>
-    <div class="refwrap">
-      <input type="text" id="ref" placeholder="Start typing… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <div class="ac" id="ac"></div>
-    </div>
+    <!-- reference is chosen entirely by browsing; this hidden field carries the value -->
+    <input type="hidden" id="ref">
+    <div class="ac" id="ac" style="display:none"></div>
 
-    <div class="modeseg">
-      <button type="button" data-mode="type" class="on">Type</button>
-      <button type="button" data-mode="browse">Browse</button>
-    </div>
-
-    <div class="navpanel" id="browsePanel" style="display:none">
+    <div class="navpanel" id="browsePanel">
       <div class="crumbs" id="crumbs"></div>
       <div id="navBody"></div>
     </div>
@@ -169,7 +158,8 @@
       <label><input type="checkbox" id="incHe" checked> Hebrew</label>
       <label><input type="checkbox" id="incEn" checked> English</label>
     </div>
-    <button id="fetchBtn">Fetch links</button>
+
+    <button id="clearBtn" class="secondary">Clear / start over</button>
     <div class="status" id="status"></div>
   </div>
 
@@ -263,68 +253,6 @@ function catName(l) { return l.category || "Other"; }
 function keyFor(cat, comm) { return cat + "||" + comm; }
 
 // ===========================================================================
-// Reference autocomplete (Sefaria's own name API)
-// ===========================================================================
-const acBox = $("ac");
-let acItems = [], acActive = -1, acTimer = null;
-
-function hideAC() { acBox.style.display = "none"; acItems = []; acActive = -1; }
-
-function renderAC(list) {
-  if (!list.length) { hideAC(); return; }
-  acItems = list;
-  acActive = -1;
-  acBox.innerHTML = list.map((s, i) =>
-    `<div class="item" data-i="${i}">${s}</div>`
-  ).join("");
-  acBox.style.display = "block";
-  [...acBox.querySelectorAll(".item")].forEach(el => {
-    el.addEventListener("mousedown", e => {   // mousedown fires before blur
-      e.preventDefault();
-      pickAC(parseInt(el.dataset.i, 10));
-    });
-  });
-}
-function pickAC(i) {
-  if (i < 0 || i >= acItems.length) return;
-  $("ref").value = acItems[i];
-  hideAC();
-  $("ref").focus();
-}
-async function queryNames(q) {
-  try {
-    const res = await fetch(NAME_API + encodeURIComponent(q) + "?limit=8");
-    if (!res.ok) return;
-    const data = await res.json();
-    const list = Array.isArray(data.completions) ? data.completions.slice(0, 8) : [];
-    renderAC(list);
-  } catch (e) { /* silent: typing still works */ }
-}
-$("ref").addEventListener("input", () => {
-  const q = $("ref").value.trim();
-  clearTimeout(acTimer);
-  if (q.length < 2) { hideAC(); return; }
-  acTimer = setTimeout(() => queryNames(q), 220);
-});
-$("ref").addEventListener("keydown", e => {
-  if (acBox.style.display === "block" && acItems.length) {
-    if (e.key === "ArrowDown") { e.preventDefault(); acActive = (acActive + 1) % acItems.length; }
-    else if (e.key === "ArrowUp") { e.preventDefault(); acActive = (acActive - 1 + acItems.length) % acItems.length; }
-    else if (e.key === "Enter") {
-      if (acActive >= 0) { e.preventDefault(); pickAC(acActive); return; }
-      hideAC(); fetchLinks(); return;
-    }
-    else if (e.key === "Escape") { hideAC(); return; }
-    else return;
-    [...acBox.querySelectorAll(".item")].forEach((el, i) =>
-      el.classList.toggle("active", i === acActive));
-    return;
-  }
-  if (e.key === "Enter") fetchLinks();
-});
-$("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
-
-// ===========================================================================
 // Fetch links + build the source tree
 // ===========================================================================
 function isMultiSegmentSection(ref) {
@@ -383,10 +311,10 @@ async function fetchLinksBySegments(ref) {
 
 async function fetchLinks() {
   const ref = $("ref").value.trim();
-  if (!ref) { setStatus("Enter a reference first.", true); return; }
+  if (!ref) { setStatus("Pick a text by browsing above.", true); return; }
 
-  $("fetchBtn").disabled = true;
   $("treeCard").style.display = "none";
+  $("previewCard").style.display = "none";
   setStatus("Fetching…");
 
   try {
@@ -427,11 +355,9 @@ async function fetchLinks() {
     } catch (e) { /* silent: source text just won't be available */ }
 
     renderTree(catCount);
-    setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
+    setStatus(`Found ${LINKS.length} texts for ${ref}. Choose which to include below.`);
   } catch (e) {
-    setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
-  } finally {
-    $("fetchBtn").disabled = false;
+    setStatus("Could not fetch: " + e.message + ". Try another reference.", true);
   }
 }
 
@@ -502,7 +428,7 @@ $("toggleAll").onclick = () => {
 };
 
 // ===========================================================================
-// Build the Word document
+// Build the Word document (with a clickable Table of Contents)
 // ===========================================================================
 async function buildDoc() {
   setStatus("Loading document library…");
@@ -521,36 +447,40 @@ async function buildDoc() {
   $("genBtn").disabled = true;
   setStatus("Building document…");
 
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } = d;
+  const {
+    Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
+    Bookmark, InternalHyperlink, PageBreak
+  } = d;
   const ref = $("ref").value.trim();
-  const children = [];
+
+  const body = [];     // the document body, in order
+  const toc = [];      // { level: 1 | 2, text, anchor } — one entry per selected section
+  let bmId = 0;
+  const nextId = () => "sec" + (bmId++);
   let written = 0;
 
-  children.push(new Paragraph({
-    heading: HeadingLevel.TITLE,
-    children: [new TextRun({ text: "Linked texts: " + ref })]
-  }));
-
-  // source text first, for context
+  // ---- source text first, for context ----
   if (haveSrc) {
     const srcLabel = SRC.heRef || SRC.ref || ref;
-    children.push(new Paragraph({
+    const anchor = nextId();
+    toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
+    body.push(new Paragraph({
       heading: HeadingLevel.HEADING_1,
       spacing: { before: 120, after: 120 },
-      children: [new TextRun({ text: "Source — " + srcLabel })]
+      children: [new Bookmark({ id: anchor, children: [new TextRun({ text: "Source — " + srcLabel })] })]
     }));
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
       if (incHe) {
         const he = stripHtml(SRC.he[i] || "");
-        if (he) children.push(new Paragraph({
+        if (he) body.push(new Paragraph({
           bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { after: 80 },
           children: [new TextRun({ text: he, rightToLeft: true, font: "David", size: 26 })]
         }));
       }
       if (incEn) {
         const en = stripHtml(SRC.text[i] || "");
-        if (en) children.push(new Paragraph({
+        if (en) body.push(new Paragraph({
           spacing: { after: 120 },
           children: [new TextRun({ text: en, size: 22 })]
         }));
@@ -558,35 +488,40 @@ async function buildDoc() {
     }
   }
 
+  // ---- selected categories / commentators ----
   for (const cat of CAT_ORDER) {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
     const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
     if (!active.length) continue;
 
-    children.push(new Paragraph({
+    const catAnchor = nextId();
+    toc.push({ level: 1, text: cat, anchor: catAnchor });
+    body.push(new Paragraph({
       heading: HeadingLevel.HEADING_1,
       spacing: { before: 320, after: 120 },
-      children: [new TextRun({ text: cat })]
+      children: [new Bookmark({ id: catAnchor, children: [new TextRun({ text: cat })] })]
     }));
 
     for (const comm of active) {
-      children.push(new Paragraph({
+      const commAnchor = nextId();
+      toc.push({ level: 2, text: comm, anchor: commAnchor });
+      body.push(new Paragraph({
         heading: HeadingLevel.HEADING_2,
         spacing: { before: 220, after: 60 },
-        children: [new TextRun({ text: comm })]
+        children: [new Bookmark({ id: commAnchor, children: [new TextRun({ text: comm })] })]
       }));
 
       for (const l of TREE[cat][comm]) {
         const enRef = l.sourceRef || l.ref || "";
         const heRef = l.sourceHeRef || "";
-        children.push(new Paragraph({
+        body.push(new Paragraph({
           heading: HeadingLevel.HEADING_4,
           spacing: { before: 120, after: 30 },
           children: [new TextRun({ text: enRef + (heRef ? "  —  " + heRef : "") })]
         }));
         if (incHe) {
           const he = stripHtml(asText(l.he));
-          if (he) children.push(new Paragraph({
+          if (he) body.push(new Paragraph({
             bidirectional: true,
             alignment: AlignmentType.RIGHT,
             spacing: { after: 80 },
@@ -595,7 +530,7 @@ async function buildDoc() {
         }
         if (incEn) {
           const en = stripHtml(asText(l.text));
-          if (en) children.push(new Paragraph({
+          if (en) body.push(new Paragraph({
             spacing: { after: 120 },
             children: [new TextRun({ text: en, size: 22 })]
           }));
@@ -604,6 +539,34 @@ async function buildDoc() {
       }
     }
   }
+
+  // ---- assemble: title, then a clickable TOC of exactly what was selected, then body ----
+  const children = [];
+  children.push(new Paragraph({
+    heading: HeadingLevel.TITLE,
+    children: [new TextRun({ text: "Linked texts: " + ref })]
+  }));
+
+  if (toc.length) {
+    children.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 120, after: 80 },
+      children: [new TextRun({ text: "Contents" })]
+    }));
+    for (const t of toc) {
+      children.push(new Paragraph({
+        spacing: { after: 30 },
+        indent: t.level === 2 ? { left: 360 } : undefined,
+        children: [new InternalHyperlink({
+          anchor: t.anchor,
+          children: [new TextRun({ text: t.text, color: "0563C1", underline: {} })]
+        })]
+      }));
+    }
+    children.push(new Paragraph({ children: [new PageBreak()] }));
+  }
+
+  for (const p of body) children.push(p);
 
   try {
     const doc = new Document({ sections: [{ properties: {}, children }] });
@@ -716,7 +679,7 @@ $("pvCollapseAll").onclick = () => [...document.querySelectorAll("#preview .pv-i
 
 // ===========================================================================
 // Reference builder — Browse (category drill-down)
-// Fills the reference box, then hands off to the existing pipeline unchanged.
+// Selecting a reference fetches its links automatically. No typing.
 // ===========================================================================
 const TOC_API = "https://www.sefaria.org/api/index";
 const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
@@ -734,17 +697,9 @@ const CORPORA = [
 let TOC = null;
 let backStack = [];
 
-function setMode(m) {
-  document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
-  $("browsePanel").style.display = m === "browse" ? "block" : "none";
-  if (m === "browse" && backStack.length === 0) startBrowse();
-}
-
 function commitRef(ref) {
   $("ref").value = ref;
-  setStatus('Selected: ' + ref + ' — now tap “Fetch links”.');
-  setMode("type");
-  $("ref").focus();
+  fetchLinks();
 }
 
 function mk(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
@@ -837,7 +792,7 @@ async function openBook(title) {
     if (!res.ok) throw new Error("HTTP " + res.status);
     rec = await res.json();
   } catch (e) {
-    navError('Couldn’t load the structure of “' + title + '”. Filling the box so you can type the rest.');
+    navError('Couldn’t load the structure of “' + title + '”. Fetching the whole book instead…');
     setTimeout(() => commitRef(title), 900);
     return;
   }
@@ -922,7 +877,7 @@ function pickNumber(prefix, node, sections) {
   navBody().appendChild(holder);
   fetchCount(cur).then(c => {
     holder.innerHTML = "";
-    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn’t list these — use the button above, or type it.</div>')); return; }
+    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn’t list these — use the button above.</div>')); return; }
     const grid = document.createElement("div"); grid.className = "navgrid";
     for (let i = 1; i <= c; i++) {
       const b = document.createElement("button"); b.textContent = i;
@@ -955,11 +910,25 @@ async function fetchCount(ref) {
   } catch (e) { return null; }
 }
 
-document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+// ===========================================================================
+// Wiring
+// ===========================================================================
+$("clearBtn").onclick = () => {
+  $("ref").value = "";
+  LINKS = []; TREE = {}; CAT_ORDER = []; SRC = null;
+  $("treeCard").style.display = "none";
+  $("previewCard").style.display = "none";
+  $("tree").innerHTML = "";
+  $("preview").innerHTML = "";
+  setStatus("");
+  startBrowse();
+};
 
 $("previewBtn").onclick = renderPreview;
-$("fetchBtn").onclick = fetchLinks;
 $("genBtn").onclick = buildDoc;
+
+// start in Browse mode straight away
+startBrowse();
 </script>
 </body>
 </html>
