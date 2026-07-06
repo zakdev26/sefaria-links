@@ -596,9 +596,8 @@ async function buildDoc() {
         const enRef = l.sourceRef || l.ref || "";
         const heRef = l.sourceHeRef || "";
         body.push(new Paragraph({
-          heading: HeadingLevel.HEADING_4,
           spacing: { before: 120, after: 30 },
-          children: [new TextRun({ text: enRef + (heRef ? "  —  " + heRef : "") })]
+          children: [new TextRun({ text: enRef + (heRef ? "  —  " + heRef : ""), bold: true, size: 20, color: "6f675a" })]
         }));
         if (incHe) { const he = stripHtml(asText(l.he)); if (he) body.push(heParagraph(he)); }
         if (incEn) { const en = stripHtml(asText(l.text)); if (en) body.push(enParagraph(en)); }
