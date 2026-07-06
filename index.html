@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sefaria Links → Word</title>
+<title>Sefaria Links → Kindle / Word / PDF</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
@@ -144,12 +144,20 @@
 
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
+
+  /* ---- output-format selector ---- */
+  .fmtlabel { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  .fmtseg { display: flex; gap: 6px; }
+  .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .fmtseg button:hover { background: #ece3d0; }
+  .fmtseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .fmthint { font-size: 12px; color: var(--muted); margin-top: 8px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Sefaria Links → Word</h1>
-  <p class="sub">Enter a reference (or browse to one), choose which commentaries you want, get a Word document.</p>
+  <h1>Sefaria Links → Kindle / Word / PDF</h1>
+  <p class="sub">Enter a reference (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
 
   <div class="card">
     <label for="ref">Reference</label>
@@ -185,7 +193,15 @@
     </div>
     <div id="tree"></div>
     <button id="previewBtn">Preview selected texts</button>
-    <button id="genBtn" class="secondary">Build Word document</button>
+
+    <div class="fmtlabel">Format</div>
+    <div class="fmtseg">
+      <button type="button" data-fmt="kindle" class="on">Kindle (EPUB)</button>
+      <button type="button" data-fmt="word">Word</button>
+      <button type="button" data-fmt="pdf">PDF</button>
+    </div>
+    <button id="genBtn" class="secondary">Build &amp; download</button>
+    <div class="fmthint" id="fmthint"></div>
   </div>
 
   <div class="card" id="previewCard" style="display:none">
@@ -198,7 +214,7 @@
     <div class="preview" id="preview"></div>
   </div>
 
-  <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the doc, then use the share sheet → <em>Send to Kindle</em>.</p>
+  <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the file, then use the share sheet → <em>Send to Kindle</em> (EPUB and Word both work; EPUB gives the richer Go&nbsp;To menu).</p>
   <p class="hint">Texts and links from Sefaria's open library.</p>
 </div>
 
@@ -220,7 +236,7 @@ function toArr(v) {
   return [asText(v)];
 }
 
-// --- load the Word-doc library (with CDN fallback) -------------------------
+// --- load an external library (with CDN fallback) --------------------------
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement("script");
@@ -238,6 +254,17 @@ async function ensureDocx() {
   ];
   for (const url of cdns) {
     try { await loadScript(url); if (window.docx) return window.docx; } catch (e) {}
+  }
+  return null;
+}
+async function ensureJSZip() {
+  if (window.JSZip) return window.JSZip;
+  const cdns = [
+    "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+    "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
+  ];
+  for (const url of cdns) {
+    try { await loadScript(url); if (window.JSZip) return window.JSZip; } catch (e) {}
   }
   return null;
 }
@@ -508,46 +535,25 @@ $("toggleAll").onclick = () => {
 };
 
 // ===========================================================================
-// Build the Word document (with a clickable Table of Contents)
+// Gather the selected texts into a format-neutral structure.
+// Every builder (Word / EPUB / PDF) consumes this same shape.
+//   blocks: ordered [{type:"h1"|"h2"|"ref"|"he"|"en", text, anchor?, first?}]
+//   toc:    [{level:1|2, text, anchor}]
 // ===========================================================================
-async function buildDoc() {
-  setStatus("Loading document library…");
-  const d = await ensureDocx();
-  if (!d) { setStatus("Document library failed to load — check your connection and try again.", true); return; }
-
+function gatherContent() {
   const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
     .map(b => decodeURIComponent(b.value)));
   const incHe = $("incHe").checked;
   const incEn = $("incEn").checked;
   const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
   const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
-  if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
-  if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the source text.", true); return; }
 
-  $("genBtn").disabled = true;
-  setStatus("Building document…");
+  if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
+  if (chosen.size === 0 && !haveSrc) return { error: "Select at least one source, or include the source text." };
 
-  const {
-    Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
-    Bookmark, InternalHyperlink, PageBreak
-  } = d;
   const ref = $("ref").value.trim();
-
-  // helpers so every text row fills the full column width (justified => equal-width rows)
-  const heParagraph = (he) => new Paragraph({
-    bidirectional: true,
-    alignment: AlignmentType.JUSTIFIED,
-    spacing: { after: 80 },
-    children: [new TextRun({ text: he, rightToLeft: true, font: "David", size: 26 })]
-  });
-  const enParagraph = (en) => new Paragraph({
-    alignment: AlignmentType.JUSTIFIED,
-    spacing: { after: 120 },
-    children: [new TextRun({ text: en, size: 22 })]
-  });
-
-  const body = [];     // the document body, in order
-  const toc = [];      // { level: 1 | 2, text, anchor } — one entry per selected section
+  const blocks = [];
+  const toc = [];
   let bmId = 0;
   const nextId = () => "sec" + (bmId++);
   let written = 0;
@@ -557,15 +563,11 @@ async function buildDoc() {
     const srcLabel = SRC.heRef || SRC.ref || ref;
     const anchor = nextId();
     toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
-    body.push(new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      spacing: { before: 120, after: 120 },
-      children: [new Bookmark({ id: anchor, children: [new TextRun({ text: "Source — " + srcLabel })] })]
-    }));
+    blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true });
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
-      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) body.push(heParagraph(he)); }
-      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) body.push(enParagraph(en)); }
+      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
+      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
     }
   }
 
@@ -577,80 +579,388 @@ async function buildDoc() {
 
     const catAnchor = nextId();
     toc.push({ level: 1, text: cat, anchor: catAnchor });
-    body.push(new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      spacing: { before: 320, after: 120 },
-      children: [new Bookmark({ id: catAnchor, children: [new TextRun({ text: cat })] })]
-    }));
+    blocks.push({ type: "h1", text: cat, anchor: catAnchor });
 
     for (const comm of active) {
       const commAnchor = nextId();
       toc.push({ level: 2, text: comm, anchor: commAnchor });
-      body.push(new Paragraph({
-        heading: HeadingLevel.HEADING_2,
-        spacing: { before: 220, after: 60 },
-        children: [new Bookmark({ id: commAnchor, children: [new TextRun({ text: comm })] })]
-      }));
+      blocks.push({ type: "h2", text: comm, anchor: commAnchor });
 
       for (const l of TREE[cat][comm]) {
         const enRef = l.sourceRef || l.ref || "";
         const heRef = l.sourceHeRef || "";
-        body.push(new Paragraph({
-          spacing: { before: 120, after: 30 },
-          children: [new TextRun({ text: enRef + (heRef ? "  —  " + heRef : ""), bold: true, size: 20, color: "6f675a" })]
-        }));
-        if (incHe) { const he = stripHtml(asText(l.he)); if (he) body.push(heParagraph(he)); }
-        if (incEn) { const en = stripHtml(asText(l.text)); if (en) body.push(enParagraph(en)); }
+        blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
+        if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
+        if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
         written++;
       }
     }
   }
 
-  // ---- assemble: title, then a clickable TOC of exactly what was selected, then body ----
-  const children = [];
-  children.push(new Paragraph({
-    heading: HeadingLevel.TITLE,
-    children: [new TextRun({ text: "Linked texts: " + ref })]
-  }));
+  return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
+}
 
-  if (toc.length) {
-    // Bookmark named "toc" — Send-to-Kindle looks for this to register the page as
-    // the book's Table of Contents (surfaces it in the Kindle "Go To" menu).
+// --- shared output helpers -------------------------------------------------
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function fnameFor(ref) {
+  return ref.replace(/[^\w\u0590-\u05FF]+/g, "_").replace(/^_|_$/g, "") || "sefaria_links";
+}
+function finishStatus(content, ext) {
+  const parts = [];
+  if (content.haveSrc) parts.push("source text");
+  if (content.written) parts.push(content.written + " linked texts");
+  setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
+}
+
+// Build a nested TOC tree (level-1 with level-2 kids) from the flat list.
+function tocTree(toc) {
+  const tree = [];
+  for (const t of toc) {
+    if (t.level === 1) tree.push({ text: t.text, anchor: t.anchor, kids: [] });
+    else if (tree.length) tree[tree.length - 1].kids.push({ text: t.text, anchor: t.anchor });
+    else tree.push({ text: t.text, anchor: t.anchor, kids: [] });
+  }
+  return tree;
+}
+
+// ===========================================================================
+// Word (.docx) — clickable Contents; a bookmark named "toc" lets
+// Send-to-Kindle register the Contents page in the Kindle "Go To" menu.
+// ===========================================================================
+async function buildDocx(content) {
+  setStatus("Loading document library…");
+  const d = await ensureDocx();
+  if (!d) { setStatus("Document library failed to load — check your connection and try again.", true); return; }
+
+  const {
+    Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
+    Bookmark, InternalHyperlink, PageBreak
+  } = d;
+  setStatus("Building Word document…");
+
+  const heParagraph = (he) => new Paragraph({
+    bidirectional: true, alignment: AlignmentType.JUSTIFIED, spacing: { after: 80 },
+    children: [new TextRun({ text: he, rightToLeft: true, font: "David", size: 26 })]
+  });
+  const enParagraph = (en) => new Paragraph({
+    alignment: AlignmentType.JUSTIFIED, spacing: { after: 120 },
+    children: [new TextRun({ text: en, size: 22 })]
+  });
+
+  const body = [];
+  for (const b of content.blocks) {
+    if (b.type === "h1") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1, spacing: { before: b.first ? 120 : 320, after: 120 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
+    else if (b.type === "h2") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_2, spacing: { before: 220, after: 60 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
+    else if (b.type === "ref") body.push(new Paragraph({
+      spacing: { before: 120, after: 30 },
+      children: [new TextRun({ text: b.text, bold: true, size: 20, color: "6f675a" })]
+    }));
+    else if (b.type === "he") body.push(heParagraph(b.text));
+    else if (b.type === "en") body.push(enParagraph(b.text));
+  }
+
+  const children = [];
+  children.push(new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: content.title })] }));
+
+  if (content.toc.length) {
     children.push(new Paragraph({
-      heading: HeadingLevel.HEADING_1,
-      spacing: { before: 120, after: 80 },
+      heading: HeadingLevel.HEADING_1, spacing: { before: 120, after: 80 },
       children: [new Bookmark({ id: "toc", children: [new TextRun({ text: "Contents" })] })]
     }));
-    for (const t of toc) {
+    for (const t of content.toc) {
       children.push(new Paragraph({
-        spacing: { after: 30 },
-        indent: t.level === 2 ? { left: 360 } : undefined,
+        spacing: { after: 30 }, indent: t.level === 2 ? { left: 360 } : undefined,
         children: [new InternalHyperlink({
-          anchor: t.anchor,
-          children: [new TextRun({ text: t.text, color: "0563C1", underline: {} })]
+          anchor: t.anchor, children: [new TextRun({ text: t.text, color: "0563C1", underline: {} })]
         })]
       }));
     }
     children.push(new Paragraph({ children: [new PageBreak()] }));
   }
-
   for (const p of body) children.push(p);
 
+  const doc = new Document({ sections: [{ properties: {}, children }] });
+  const blob = await Packer.toBlob(doc);
+  download(blob, fnameFor(content.ref) + ".docx");
+  finishStatus(content, "docx");
+}
+
+// ===========================================================================
+// Kindle (EPUB) — a real EPUB3 with nav.xhtml + toc.ncx. Send-to-Kindle turns
+// this navigation into the book's own TOC, which appears in the Kindle "Go To"
+// dropdown from any page, hierarchically (category → commentator).
+// ===========================================================================
+function xmlEsc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function uuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c === "x" ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+function navOl(tree) {
+  let s = "<ol>\n";
+  for (const n of tree) {
+    s += `  <li><a href="text.xhtml#${n.anchor}">${xmlEsc(n.text)}</a>`;
+    if (n.kids && n.kids.length) {
+      s += "\n    <ol>\n";
+      for (const k of n.kids) s += `      <li><a href="text.xhtml#${k.anchor}">${xmlEsc(k.text)}</a></li>\n`;
+      s += "    </ol>\n  ";
+    }
+    s += "</li>\n";
+  }
+  return s + "</ol>";
+}
+function ncxMap(tree) {
+  let po = 0, s = "";
+  for (const n of tree) {
+    po++;
+    s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(n.text)}</text></navLabel><content src="text.xhtml#${n.anchor}"/>`;
+    if (n.kids && n.kids.length) {
+      for (const k of n.kids) {
+        po++;
+        s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(k.text)}</text></navLabel><content src="text.xhtml#${k.anchor}"/></navPoint>`;
+      }
+    }
+    s += `</navPoint>\n`;
+  }
+  return s;
+}
+function epubBody(content) {
+  let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
+  for (const b of content.blocks) {
+    if (b.type === "h1") s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
+    else if (b.type === "h2") s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
+    else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
+  }
+  return s;
+}
+async function buildEpub(content) {
+  setStatus("Loading e-book library…");
+  const JSZip = await ensureJSZip();
+  if (!JSZip) { setStatus("E-book library failed to load — check your connection and try again.", true); return; }
+  setStatus("Building Kindle (EPUB) document…");
+
+  const id = "urn:uuid:" + uuid();
+  const title = content.title;
+  const tree = tocTree(content.toc);
+  const modified = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
+  const containerXml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+`;
+
+  const opf =
+`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="he">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">${xmlEsc(id)}</dc:identifier>
+    <dc:title>${xmlEsc(title)}</dc:title>
+    <dc:language>he</dc:language>
+    <dc:creator>Sefaria</dc:creator>
+    <meta property="dcterms:modified">${modified}</meta>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="css" href="style.css" media-type="text/css"/>
+    <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="nav"/>
+    <itemref idref="text"/>
+  </spine>
+</package>
+`;
+
+  const navXhtml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
+<head><meta charset="utf-8"/><title>Contents</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body>
+<nav epub:type="toc" id="toc">
+<h1>Contents</h1>
+${navOl(tree)}
+</nav>
+</body>
+</html>
+`;
+
+  const ncx =
+`<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en">
+<head>
+<meta name="dtb:uid" content="${xmlEsc(id)}"/>
+<meta name="dtb:depth" content="2"/>
+<meta name="dtb:totalPageCount" content="0"/>
+<meta name="dtb:maxPageNumber" content="0"/>
+</head>
+<docTitle><text>${xmlEsc(title)}</text></docTitle>
+<navMap>
+${ncxMap(tree)}</navMap>
+</ncx>
+`;
+
+  const css =
+`body { font-family: serif; line-height: 1.5; margin: 1em; }
+h1 { font-size: 1.4em; margin: 1em 0 .4em; }
+h2 { font-size: 1.15em; color: #6b5329; margin: .8em 0 .3em; }
+h1.doctitle { text-align: center; font-size: 1.6em; }
+p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
+p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
+p.en { line-height: 1.6; }
+nav ol { list-style: none; }
+`;
+
+  const textXhtml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head><meta charset="utf-8"/><title>${xmlEsc(title)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body>
+${epubBody(content)}</body>
+</html>
+`;
+
+  const zip = new JSZip();
+  // mimetype must be first and uncompressed
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", containerXml);
+  const oebps = zip.folder("OEBPS");
+  oebps.file("content.opf", opf);
+  oebps.file("nav.xhtml", navXhtml);
+  oebps.file("toc.ncx", ncx);
+  oebps.file("style.css", css);
+  oebps.file("text.xhtml", textXhtml);
+
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE" });
+  download(blob, fnameFor(content.ref) + ".epub");
+  finishStatus(content, "epub");
+}
+
+// ===========================================================================
+// PDF — opens a print-ready view; the reader chooses "Save as PDF".
+// Print-to-PDF is used deliberately: it renders Hebrew RTL correctly (client-
+// side PDF libraries mangle mixed Hebrew/English) and keeps the Contents links
+// clickable. Note: PDFs are fixed-layout, so Kindle won't give a Go To dropdown
+// for them — use Kindle (EPUB) for that.
+// ===========================================================================
+function buildPdf(content) {
+  const w = window.open("", "_blank");
+  if (!w) { setStatus("Pop-up blocked — allow pop-ups for this site, then try PDF again.", true); return; }
+
+  const tree = tocTree(content.toc);
+  let tocHtml = "<ol class='toc'>";
+  for (const n of tree) {
+    tocHtml += `<li><a href="#${n.anchor}">${escapeHtml(n.text)}</a>`;
+    if (n.kids && n.kids.length) {
+      tocHtml += "<ol>";
+      for (const k of n.kids) tocHtml += `<li><a href="#${k.anchor}">${escapeHtml(k.text)}</a></li>`;
+      tocHtml += "</ol>";
+    }
+    tocHtml += "</li>";
+  }
+  tocHtml += "</ol>";
+
+  let bodyHtml = "";
+  for (const b of content.blocks) {
+    if (b.type === "h1") bodyHtml += `<h1 id="${b.anchor}">${escapeHtml(b.text)}</h1>`;
+    else if (b.type === "h2") bodyHtml += `<h2 id="${b.anchor}">${escapeHtml(b.text)}</h2>`;
+    else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
+  }
+
+  const doc =
+`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(content.title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { font-family: Georgia,'Times New Roman',serif; line-height: 1.5; color: #2b2620; margin: 40px; }
+  h1 { font-size: 20px; margin: 22px 0 8px; }
+  h2 { font-size: 16px; color: #6b5329; margin: 16px 0 4px; }
+  h1.title { font-size: 24px; text-align: center; margin: 0 0 6px; }
+  p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
+  p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
+  p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
+  .contents-h { font-size: 18px; margin: 18px 0 8px; }
+  .toc { list-style: none; padding-left: 0; }
+  .toc ol { list-style: none; padding-left: 18px; }
+  .toc a { color: #0563C1; text-decoration: none; }
+  .toc li { margin: 3px 0; }
+  .note { font-size: 12px; color: #6f675a; margin: 0 0 16px; padding: 8px 10px; border: 1px solid #ddd5c7; border-radius: 6px; background: #fbf8f0; }
+  @media print { .note { display: none; } .pagebreak { page-break-before: always; } a { color: #0563C1; } }
+</style></head><body>
+<p class="note">Use your browser's print dialog and choose &ldquo;Save as PDF&rdquo;. The Contents links below stay clickable in the saved PDF.</p>
+<h1 class="title">${escapeHtml(content.title)}</h1>
+<div class="contents-h">Contents</div>
+${tocHtml}
+<div class="pagebreak"></div>
+${bodyHtml}
+</body></html>`;
+
+  w.document.open();
+  w.document.write(doc);
+  w.document.close();
+
+  const go = () => { try { w.focus(); w.print(); } catch (e) {} };
+  if (w.document.fonts && w.document.fonts.ready) w.document.fonts.ready.then(() => setTimeout(go, 150));
+  else setTimeout(go, 600);
+
+  finishStatus(content, "pdf (print view)");
+  setStatus("Opened a print view — choose “Save as PDF”.");
+}
+
+// ===========================================================================
+// Format selector + dispatch
+// ===========================================================================
+let OUTFMT = "kindle";
+const FMT_HINTS = {
+  kindle: "EPUB with a built-in navigation menu. On Kindle it appears in the Go To menu, reachable from any page. On mobile: build, then share → Send to Kindle.",
+  word:   "Editable .docx. Send-to-Kindle converts it and registers the Contents page in the Go To menu (flatter than EPUB).",
+  pdf:    "Fixed-layout PDF for printing or reading on a computer. Opens a print view — choose “Save as PDF”. Kindle navigation is limited for PDFs, so use Kindle (EPUB) if you want the drop-down menu."
+};
+function setFmt(f) {
+  OUTFMT = f;
+  document.querySelectorAll(".fmtseg button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
+  $("fmthint").textContent = FMT_HINTS[f] || "";
+}
+
+async function buildOutput() {
+  const content = gatherContent();
+  if (content.error) { setStatus(content.error, true); return; }
+
+  $("genBtn").disabled = true;
   try {
-    const doc = new Document({ sections: [{ properties: {}, children }] });
-    const blob = await Packer.toBlob(doc);
-    const fname = ref.replace(/[^\w\u0590-\u05FF]+/g, "_").replace(/^_|_$/g, "") || "sefaria_links";
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = fname + ".docx";
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    const parts = [];
-    if (haveSrc) parts.push("source text");
-    if (written) parts.push(written + " linked texts");
-    setStatus(`Done — ${parts.join(" + ") || "document"} → ${fname}.docx`);
+    if (OUTFMT === "word") await buildDocx(content);
+    else if (OUTFMT === "pdf") buildPdf(content);
+    else await buildEpub(content);
   } catch (e) {
-    setStatus("Failed to build document: " + e.message, true);
+    setStatus("Failed to build: " + e.message, true);
   } finally {
     $("genBtn").disabled = false;
   }
@@ -989,6 +1299,7 @@ async function fetchCount(ref) {
 // Wiring
 // ===========================================================================
 document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll(".fmtseg button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
 
 $("clearBtn").onclick = () => {
   $("ref").value = "";
@@ -1005,7 +1316,9 @@ $("clearBtn").onclick = () => {
 
 $("previewBtn").onclick = renderPreview;
 $("fetchBtn").onclick = fetchLinks;
-$("genBtn").onclick = buildDoc;
+$("genBtn").onclick = buildOutput;
+
+setFmt("kindle");
 </script>
 </body>
 </html>
