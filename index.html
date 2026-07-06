@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sefaria Links → Kindle / PDF / Word</title>
+<title>Sefaria Links → Kindle / Word / PDF</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
@@ -151,7 +151,6 @@
   .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
   .fmtseg button:hover { background: #ece3d0; }
   .fmtseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .fmthint { font-size: 12px; color: var(--muted); margin-top: 8px; }
 </style>
 </head>
 <body>
@@ -201,7 +200,6 @@
       <button type="button" data-fmt="pdf">PDF</button>
     </div>
     <button id="genBtn" class="secondary">Build &amp; download</button>
-    <div class="fmthint" id="fmthint"></div>
   </div>
 
   <div class="card" id="previewCard" style="display:none">
@@ -293,6 +291,22 @@ function commName(l) {
 }
 function catName(l) { return l.category || "Other"; }
 function keyFor(cat, comm) { return cat + "||" + comm; }
+
+// Fixed section order: Source Text is emitted first separately; then these
+// categories in this order (if present), then everything else by frequency.
+const FIXED_ORDER = [
+  ["commentary"],
+  ["mishnah", "mishna"],
+  ["talmud"],
+  ["halakhah", "halacha", "halakha"],
+  ["tosefta"],
+  ["responsa"]
+];
+function catRank(c) {
+  const lc = String(c).toLowerCase();
+  for (let i = 0; i < FIXED_ORDER.length; i++) if (FIXED_ORDER[i].includes(lc)) return i;
+  return Infinity;   // unranked → placed after the fixed list, by frequency
+}
 
 // ===========================================================================
 // Reference autocomplete (Sefaria's own name API)
@@ -447,7 +461,11 @@ async function fetchLinks() {
       (TREE[c][n] = TREE[c][n] || []).push(l);
     }
     const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
-    CAT_ORDER = Object.keys(TREE).sort((a, b) => catCount(b) - catCount(a));
+    CAT_ORDER = Object.keys(TREE).sort((a, b) => {
+      const ra = catRank(a), rb = catRank(b);
+      if (ra !== rb) return ra - rb;            // fixed order wins
+      return catCount(b) - catCount(a);         // else frequency, descending
+    });
 
     // fetch the reference's own text first, so "Original Text" can head the list (non-fatal)
     SRC = null;
@@ -939,15 +957,9 @@ ${bodyHtml}
 // Format selector + dispatch
 // ===========================================================================
 let OUTFMT = "kindle";
-const FMT_HINTS = {
-  kindle: "EPUB with a built-in navigation menu. On Kindle it appears in the Go To menu, reachable from any page. On mobile: build, then share → Send to Kindle.",
-  word:   "Editable .docx. Send-to-Kindle converts it and registers the Contents page in the Go To menu (flatter than EPUB).",
-  pdf:    "Fixed-layout PDF for printing or reading on a computer. Opens a print view — choose “Save as PDF”. Kindle navigation is limited for PDFs, so use Kindle (EPUB) if you want the drop-down menu."
-};
 function setFmt(f) {
   OUTFMT = f;
   document.querySelectorAll(".fmtseg button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
-  $("fmthint").textContent = FMT_HINTS[f] || "";
 }
 
 async function buildOutput() {
