@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sefaria Links → Kindle / Word / PDF</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --card: #fffdf8;
+    --ink: #2b2620;
+    --muted: #6f675a;
+    --line: #ddd5c7;
+    --accent: #8a6d3b;
+    --accent-dark: #6b5329;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 18px 64px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .refwrap { position: relative; }
+  input[type=text] {
+    width: 100%; padding: 12px; font-size: 16px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  .ac {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
+    background: #fff; border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.08); overflow: hidden; display: none;
+  }
+  .ac .item { padding: 10px 12px; font-size: 15px; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .ac .item:last-child { border-bottom: none; }
+  .ac .item:hover, .ac .item.active { background: #f2ecdd; }
+  button {
+    font-family: inherit; font-size: 16px; cursor: pointer;
+    border: none; border-radius: 8px; padding: 12px 16px;
+    background: var(--accent); color: #fff; width: 100%; margin-top: 12px;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.secondary:hover { background: #f2ecdd; }
+  .preview { }
+  .pv-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 14px; }
+  .pv-controls label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--ink); }
+  .pv-controls .pv-links { margin-left: auto; font-size: 13px; }
+  .pv-controls .pv-links a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .pv-cat { font-size: 18px; margin: 20px 0 8px; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
+  .pv-comm { font-size: 16px; margin: 16px 0 4px; color: var(--accent-dark); }
+  .pv-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 0; }
+  .pv-item-src { background: #fbf8f0; }
+  .pv-ref { font-size: 12px; color: var(--muted); margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+  .pv-caret { font-size: 10px; transition: transform .15s; }
+  .pv-item.collapsed .pv-caret { transform: rotate(-90deg); }
+  .pv-item.collapsed .pv-body { display: none; }
+  .pv-body { margin-top: 6px; }
+  .pv-he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre', 'David Libre', 'Times New Roman', serif; font-size: 20px; line-height: 1.9; margin: 2px 0 6px; }
+  .pv-en { font-size: 15px; line-height: 1.65; margin: 2px 0 6px; }
+  .preview.hide-he .pv-he { display: none; }
+  .preview.hide-en .pv-en { display: none; }
+  .pv-count { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .status { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 10px; }
+  .status.err { color: #a23b2c; }
+  .toggles { display: flex; gap: 18px; margin: 14px 0 0; }
+  .toggles label { display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink); margin: 0; }
+  .tree { display: none; }
+  .cat { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+  .cat-head {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    background: #f2ecdd; cursor: pointer; font-size: 15px;
+  }
+  .cat-head .caret { transition: transform .15s; font-size: 12px; color: var(--muted); }
+  .cat.collapsed .caret { transform: rotate(-90deg); }
+  .cat-head .count { color: var(--muted); font-size: 13px; }
+  .comm-list { padding: 4px 12px 8px; }
+  .cat.collapsed .comm-list { display: none; }
+  .comm {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 15px; margin: 0;
+  }
+  .comm:last-child { border-bottom: none; }
+  .comm .count { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .globaltoggle { font-size: 13px; color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .treehead { display: flex; align-items: center; margin-bottom: 10px; }
+  .treehead strong { font-size: 15px; }
+  .treehead .globaltoggle { margin-left: auto; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 14px; }
+  .hint a { color: var(--accent); }
+  .donate-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: var(--card); border-top: 1px solid var(--line);
+    text-align: center; padding: 10px 12px; font-size: 13px;
+  }
+  .donate-bar a { color: var(--accent); font-weight: bold; text-decoration: none; }
+  .donate-bar a:hover { text-decoration: underline; }
+  .cat-head .catbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .srcrow .cat-head { cursor: default; }
+  .srcrow .srcbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+
+  /* ---- reference builder: mode switch + browse navigator ---- */
+  .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
+  .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .modeseg button:hover { background: #ece3d0; }
+  .modeseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .navpanel { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fbf8f0; }
+  .crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; font-size: 13px; min-height: 20px; }
+  .crumb { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .crumb.here { color: var(--muted); cursor: default; text-decoration: none; }
+  .crumbsep { color: var(--muted); }
+  .navlist { display: flex; flex-direction: column; }
+  .navrow { display: flex; align-items: center; gap: 8px; padding: 11px 8px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 15px; }
+  .navrow:last-child { border-bottom: none; }
+  .navrow:hover { background: #f2ecdd; }
+  .navrow .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; color: var(--muted); font-size: 15px; direction: rtl; }
+  .navrow .chev { color: var(--muted); font-size: 13px; margin-left: 6px; }
+  .navrow .he + .chev { margin-left: 6px; }
+  .navgrid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .navgrid button { width: auto; min-width: 44px; margin: 0; padding: 9px 10px; font-size: 14px; background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .navgrid button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .navnote { font-size: 12px; color: var(--muted); margin: 8px 2px 2px; }
+  .navwhole { margin: 2px 0 6px; }
+  .navwhole button { margin: 0; }
+  .navloading { font-size: 13px; color: var(--muted); padding: 8px 2px; }
+  .naverr { font-size: 13px; color: #a23b2c; padding: 8px 2px; }
+
+  /* small "clear" link, sized like the select-all / none toggle */
+  .clearrow { text-align: right; margin-top: 8px; }
+
+  /* ---- output-format selector ---- */
+  .fmtlabel { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  .fmtseg { display: flex; gap: 6px; }
+  .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .fmtseg button:hover { background: #ece3d0; }
+  .fmtseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sefaria Links → Kindle / Word / PDF</h1>
+  <p class="sub">Enter a reference (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
+
+  <div class="card">
+    <label for="ref">Reference</label>
+    <div class="refwrap">
+      <input type="text" id="ref" placeholder="Start typing… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div class="ac" id="ac"></div>
+    </div>
+
+    <div class="modeseg">
+      <button type="button" data-mode="type" class="on">Type</button>
+      <button type="button" data-mode="browse">Browse</button>
+    </div>
+
+    <div class="navpanel" id="browsePanel" style="display:none">
+      <div class="crumbs" id="crumbs"></div>
+      <div id="navBody"></div>
+    </div>
+
+    <div class="toggles">
+      <label><input type="checkbox" id="incHe" checked> Hebrew</label>
+      <label><input type="checkbox" id="incEn" checked> English</label>
+    </div>
+
+    <button id="fetchBtn">Fetch links</button>
+    <div class="clearrow"><span class="globaltoggle" id="clearBtn">clear</span></div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card tree" id="treeCard">
+    <div class="treehead">
+      <strong>Choose sources</strong>
+      <span class="globaltoggle" id="toggleAll">select all / none</span>
+    </div>
+    <div id="tree"></div>
+    <button id="previewBtn">Preview selected texts</button>
+
+    <div class="fmtlabel">Format</div>
+    <div class="fmtseg">
+      <button type="button" data-fmt="kindle" class="on">Kindle (EPUB)</button>
+      <button type="button" data-fmt="word">Word</button>
+      <button type="button" data-fmt="pdf">PDF</button>
+    </div>
+    <button id="genBtn" class="secondary">Build &amp; download</button>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none">
+    <div class="pv-count" id="previewCount"></div>
+    <div class="pv-controls">
+      <label><input type="checkbox" id="pvHe" checked> Hebrew</label>
+      <label><input type="checkbox" id="pvEn" checked> English</label>
+      <span class="pv-links"><a id="pvExpandAll">expand all</a> · <a id="pvCollapseAll">collapse all</a></span>
+    </div>
+    <div class="preview" id="preview"></div>
+  </div>
+
+  <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the file, then use the share sheet → <em>Send to Kindle</em> (EPUB and Word both work; EPUB gives the richer Go&nbsp;To menu).</p>
+  <p class="hint">Texts and links from Sefaria's open library.</p>
+</div>
+
+<div class="donate-bar"><a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">♥ Donate to Sefaria</a></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const NAME_API = "https://www.sefaria.org/api/name/";
+const LINKS_API = "https://www.sefaria.org/api/links/";
+const TEXTS_API = "https://www.sefaria.org/api/texts/";
+let LINKS = [];      // link objects with text
+let TREE = {};       // category -> { commentator -> [links] }
+let CAT_ORDER = [];  // categories, most links first
+let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
+
+function toArr(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map(x => Array.isArray(x) ? x.map(asText).join(" ") : asText(x));
+  return [asText(v)];
+}
+
+// --- load an external library (with CDN fallback) --------------------------
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("load failed: " + src));
+    document.head.appendChild(s);
+  });
+}
+async function ensureDocx() {
+  if (window.docx) return window.docx;
+  const cdns = [
+    "https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.umd.cjs",
+    "https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"
+  ];
+  for (const url of cdns) {
+    try { await loadScript(url); if (window.docx) return window.docx; } catch (e) {}
+  }
+  return null;
+}
+async function ensureJSZip() {
+  if (window.JSZip) return window.JSZip;
+  const cdns = [
+    "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+    "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
+  ];
+  for (const url of cdns) {
+    try { await loadScript(url); if (window.JSZip) return window.JSZip; } catch (e) {}
+  }
+  return null;
+}
+
+const statusEl = $("status");
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = "status" + (isErr ? " err" : "");
+}
+
+// --- helpers ---------------------------------------------------------------
+function asText(field) {
+  if (!field) return "";
+  if (Array.isArray(field)) return field.map(asText).join(" ");
+  return String(field);
+}
+function stripHtml(html) {
+  if (!html) return "";
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  div.querySelectorAll("sup, .footnote, i.footnote, .mam-spi-pe").forEach(n => n.remove());
+  return (div.textContent || "").replace(/\s+/g, " ").trim();
+}
+function commName(l) {
+  return (l.collectiveTitle && l.collectiveTitle.en) || l.index_title || l.category || "Other";
+}
+function catName(l) { return l.category || "Other"; }
+function keyFor(cat, comm) { return cat + "||" + comm; }
+
+// Fixed section order: Source Text is emitted first separately; then these
+// categories in this order (if present), then everything else by frequency.
+const FIXED_ORDER = [
+  ["commentary"],
+  ["mishnah", "mishna"],
+  ["talmud"],
+  ["halakhah", "halacha", "halakha"],
+  ["tosefta"],
+  ["responsa"]
+];
+function catRank(c) {
+  const lc = String(c).toLowerCase();
+  for (let i = 0; i < FIXED_ORDER.length; i++) if (FIXED_ORDER[i].includes(lc)) return i;
+  return Infinity;   // unranked → placed after the fixed list, by frequency
+}
+
+// ===========================================================================
+// Reference autocomplete (Sefaria's own name API)
+// ===========================================================================
+const acBox = $("ac");
+let acItems = [], acActive = -1, acTimer = null;
+
+function hideAC() { acBox.style.display = "none"; acItems = []; acActive = -1; }
+
+function renderAC(list) {
+  if (!list.length) { hideAC(); return; }
+  acItems = list;
+  acActive = -1;
+  acBox.innerHTML = list.map((s, i) =>
+    `<div class="item" data-i="${i}">${s}</div>`
+  ).join("");
+  acBox.style.display = "block";
+  [...acBox.querySelectorAll(".item")].forEach(el => {
+    el.addEventListener("mousedown", e => {   // mousedown fires before blur
+      e.preventDefault();
+      pickAC(parseInt(el.dataset.i, 10));
+    });
+  });
+}
+function pickAC(i) {
+  if (i < 0 || i >= acItems.length) return;
+  $("ref").value = acItems[i];
+  hideAC();
+  $("ref").focus();
+}
+async function queryNames(q) {
+  try {
+    const res = await fetch(NAME_API + encodeURIComponent(q) + "?limit=8");
+    if (!res.ok) return;
+    const data = await res.json();
+    const list = Array.isArray(data.completions) ? data.completions.slice(0, 8) : [];
+    renderAC(list);
+  } catch (e) { /* silent: typing still works */ }
+}
+$("ref").addEventListener("input", () => {
+  const q = $("ref").value.trim();
+  clearTimeout(acTimer);
+  if (q.length < 2) { hideAC(); return; }
+  acTimer = setTimeout(() => queryNames(q), 220);
+});
+$("ref").addEventListener("keydown", e => {
+  if (acBox.style.display === "block" && acItems.length) {
+    if (e.key === "ArrowDown") { e.preventDefault(); acActive = (acActive + 1) % acItems.length; }
+    else if (e.key === "ArrowUp") { e.preventDefault(); acActive = (acActive - 1 + acItems.length) % acItems.length; }
+    else if (e.key === "Enter") {
+      if (acActive >= 0) { e.preventDefault(); pickAC(acActive); return; }
+      hideAC(); fetchLinks(); return;
+    }
+    else if (e.key === "Escape") { hideAC(); return; }
+    else return;
+    [...acBox.querySelectorAll(".item")].forEach((el, i) =>
+      el.classList.toggle("active", i === acActive));
+    return;
+  }
+  if (e.key === "Enter") fetchLinks();
+});
+$("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
+
+// ===========================================================================
+// Fetch links + build the source tree
+// ===========================================================================
+function isMultiSegmentSection(ref) {
+  if (ref.indexOf(":") >= 0) return false;   // already a specific segment
+  if (/\d+[ab]$/.test(ref)) return false;     // Talmud daf (e.g. 100a)
+  return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
+}
+
+async function mapPool(items, worker, poolSize, onProgress) {
+  const results = new Array(items.length);
+  let idx = 0, done = 0;
+  async function run() {
+    while (idx < items.length) {
+      const my = idx++;
+      results[my] = await worker(items[my], my);
+      done++; if (onProgress) onProgress(done, items.length);
+    }
+  }
+  const runners = [];
+  for (let k = 0; k < Math.min(poolSize, items.length); k++) runners.push(run());
+  await Promise.all(runners);
+  return results;
+}
+
+// A whole chapter/section: Sefaria's links API doesn't reliably return the
+// linked *text* for a multi-segment ref, so walk it segment-by-segment and
+// merge. Each per-segment call does return text, which is what we need.
+async function fetchLinksBySegments(ref) {
+  setStatus("Reading " + ref + "…");
+  let n = 0;
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    if (r.ok) {
+      const j = await r.json();
+      const arr = (j.he && j.he.length) ? j.he : j.text;
+      if (Array.isArray(arr)) n = arr.length;
+    }
+  } catch (e) {}
+  if (!n) {   // couldn't expand — fall back to a single call
+    const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  }
+  const segs = [];
+  for (let i = 1; i <= n; i++) segs.push(ref + ":" + i);
+  const chunks = await mapPool(segs, async (sref) => {
+    try {
+      const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
+      if (!r.ok) return [];
+      const d = await r.json();
+      return Array.isArray(d) ? d : [];
+    } catch (e) { return []; }
+  }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
+  return [].concat.apply([], chunks);
+}
+
+async function fetchLinks() {
+  const ref = $("ref").value.trim();
+  if (!ref) { setStatus("Enter a reference, or switch to Browse.", true); return; }
+
+  $("fetchBtn").disabled = true;
+  $("treeCard").style.display = "none";
+  $("previewCard").style.display = "none";
+  setStatus("Fetching…");
+
+  try {
+    let data;
+    if (isMultiSegmentSection(ref)) {
+      data = await fetchLinksBySegments(ref);
+    } else {
+      const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      data = await res.json();
+      if (data && data.error) throw new Error(data.error);
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      setStatus("No links found for that reference.", true);
+      return;
+    }
+
+    LINKS = data.filter(l => asText(l.he) || asText(l.text));
+
+    // group: category -> commentator -> links
+    TREE = {};
+    for (const l of LINKS) {
+      const c = catName(l), n = commName(l);
+      (TREE[c] = TREE[c] || {});
+      (TREE[c][n] = TREE[c][n] || []).push(l);
+    }
+    const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
+    CAT_ORDER = Object.keys(TREE).sort((a, b) => {
+      const ra = catRank(a), rb = catRank(b);
+      if (ra !== rb) return ra - rb;            // fixed order wins
+      return catCount(b) - catCount(a);         // else frequency, descending
+    });
+
+    // fetch the reference's own text first, so "Original Text" can head the list (non-fatal)
+    SRC = null;
+    try {
+      const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+      if (r.ok) {
+        const t = await r.json();
+        if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
+      }
+    } catch (e) { /* silent: source text just won't be available */ }
+
+    renderTree(catCount);
+    setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
+  } catch (e) {
+    setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
+  } finally {
+    $("fetchBtn").disabled = false;
+  }
+}
+
+function renderTree(catCount) {
+  const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
+  const srcRow = `<div class="cat srcrow">
+      <div class="cat-head">
+        <input type="checkbox" class="srcbox" id="srcbox" ${srcAvailable ? "checked" : "disabled"}>
+        <span class="caret" style="visibility:hidden">▾</span>
+        <strong>Original Text</strong>
+        <span class="count">${srcAvailable ? "the passage itself" : "not available"}</span>
+      </div>
+    </div>`;
+
+  const catsHtml = CAT_ORDER.map(cat => {
+    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+    const rows = comms.map(comm => {
+      const n = TREE[cat][comm].length;
+      const k = keyFor(cat, comm);
+      return `<label class="comm">
+        <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" value="${encodeURIComponent(k)}" checked>
+        <span>${comm}</span><span class="count">${n}</span>
+      </label>`;
+    }).join("");
+    return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
+      <div class="cat-head">
+        <input type="checkbox" class="catbox" checked>
+        <span class="caret">▾</span>
+        <strong>${cat}</strong><span class="count">${catCount(cat)}</span>
+      </div>
+      <div class="comm-list">${rows}</div>
+    </div>`;
+  }).join("");
+  $("tree").innerHTML = srcRow + catsHtml;
+
+  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(cat => {
+    const head = cat.querySelector(".cat-head");
+    const catbox = cat.querySelector(".catbox");
+    const commboxes = [...cat.querySelectorAll(".commbox")];
+
+    // click the header to drill in / collapse (but not when hitting the checkbox)
+    head.addEventListener("click", e => {
+      if (e.target === catbox) return;
+      cat.classList.toggle("collapsed");
+    });
+    // the section checkbox selects / clears the whole section
+    catbox.addEventListener("change", () => {
+      commboxes.forEach(b => b.checked = catbox.checked);
+    });
+    // individual commentators feed back into the section checkbox
+    commboxes.forEach(b => b.addEventListener("change", () => {
+      const on = commboxes.filter(x => x.checked).length;
+      catbox.checked = on > 0;
+      catbox.indeterminate = on > 0 && on < commboxes.length;
+    }));
+  });
+
+  $("treeCard").style.display = "block";
+}
+
+$("toggleAll").onclick = () => {
+  const src = $("srcbox");
+  const boxes = [...document.querySelectorAll(".commbox")];
+  const anyOff = boxes.some(b => !b.checked) || (src && !src.disabled && !src.checked);
+  boxes.forEach(b => b.checked = anyOff);
+  [...document.querySelectorAll(".catbox")].forEach(cb => { cb.checked = anyOff; cb.indeterminate = false; });
+  if (src && !src.disabled) src.checked = anyOff;
+};
+
+// ===========================================================================
+// Gather the selected texts into a format-neutral structure.
+// Every builder (Word / EPUB / PDF) consumes this same shape.
+//   blocks: ordered [{type:"h1"|"h2"|"ref"|"he"|"en", text, anchor?, first?}]
+//   toc:    [{level:1|2, text, anchor}]
+// ===========================================================================
+function gatherContent() {
+  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
+    .map(b => decodeURIComponent(b.value)));
+  const incHe = $("incHe").checked;
+  const incEn = $("incEn").checked;
+  const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
+  const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
+
+  if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
+  if (chosen.size === 0 && !haveSrc) return { error: "Select at least one source, or include the source text." };
+
+  const ref = $("ref").value.trim();
+  const blocks = [];
+  const toc = [];
+  let bmId = 0;
+  const nextId = () => "sec" + (bmId++);
+  let written = 0;
+
+  // ---- source text first, for context ----
+  if (haveSrc) {
+    const srcLabel = SRC.heRef || SRC.ref || ref;
+    const anchor = nextId();
+    toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
+    blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true });
+    const n = Math.max(SRC.he.length, SRC.text.length);
+    for (let i = 0; i < n; i++) {
+      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
+      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
+    }
+  }
+
+  // ---- selected categories / commentators ----
+  for (const cat of CAT_ORDER) {
+    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
+    if (!active.length) continue;
+
+    const catAnchor = nextId();
+    toc.push({ level: 1, text: cat, anchor: catAnchor });
+    blocks.push({ type: "h1", text: cat, anchor: catAnchor });
+
+    for (const comm of active) {
+      const commAnchor = nextId();
+      toc.push({ level: 2, text: comm, anchor: commAnchor });
+      blocks.push({ type: "h2", text: comm, anchor: commAnchor });
+
+      for (const l of TREE[cat][comm]) {
+        const enRef = l.sourceRef || l.ref || "";
+        const heRef = l.sourceHeRef || "";
+        blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
+        if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
+        if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+        written++;
+      }
+    }
+  }
+
+  return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
+}
+
+// --- shared output helpers -------------------------------------------------
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function fnameFor(ref) {
+  return ref.replace(/[^\w\u0590-\u05FF]+/g, "_").replace(/^_|_$/g, "") || "sefaria_links";
+}
+function finishStatus(content, ext) {
+  const parts = [];
+  if (content.haveSrc) parts.push("source text");
+  if (content.written) parts.push(content.written + " linked texts");
+  setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
+}
+
+// Build a nested TOC tree (level-1 with level-2 kids) from the flat list.
+function tocTree(toc) {
+  const tree = [];
+  for (const t of toc) {
+    if (t.level === 1) tree.push({ text: t.text, anchor: t.anchor, kids: [] });
+    else if (tree.length) tree[tree.length - 1].kids.push({ text: t.text, anchor: t.anchor });
+    else tree.push({ text: t.text, anchor: t.anchor, kids: [] });
+  }
+  return tree;
+}
+
+// ===========================================================================
+// Word (.docx) — clickable Contents; a bookmark named "toc" lets
+// Send-to-Kindle register the Contents page in the Kindle "Go To" menu.
+// ===========================================================================
+async function buildDocx(content) {
+  setStatus("Loading document library…");
+  const d = await ensureDocx();
+  if (!d) { setStatus("Document library failed to load — check your connection and try again.", true); return; }
+
+  const {
+    Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
+    Bookmark, InternalHyperlink, PageBreak
+  } = d;
+  setStatus("Building Word document…");
+
+  const heParagraph = (he) => new Paragraph({
+    bidirectional: true, alignment: AlignmentType.JUSTIFIED, spacing: { after: 80 },
+    children: [new TextRun({ text: he, rightToLeft: true, font: "David", size: 26 })]
+  });
+  const enParagraph = (en) => new Paragraph({
+    alignment: AlignmentType.JUSTIFIED, spacing: { after: 120 },
+    children: [new TextRun({ text: en, size: 22 })]
+  });
+
+  const body = [];
+  for (const b of content.blocks) {
+    if (b.type === "h1") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1, spacing: { before: b.first ? 120 : 320, after: 120 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
+    else if (b.type === "h2") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_2, spacing: { before: 220, after: 60 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
+    else if (b.type === "ref") body.push(new Paragraph({
+      spacing: { before: 120, after: 30 },
+      children: [new TextRun({ text: b.text, bold: true, size: 20, color: "6f675a" })]
+    }));
+    else if (b.type === "he") body.push(heParagraph(b.text));
+    else if (b.type === "en") body.push(enParagraph(b.text));
+  }
+
+  const children = [];
+  children.push(new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: content.title })] }));
+
+  if (content.toc.length) {
+    children.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1, spacing: { before: 120, after: 80 },
+      children: [new Bookmark({ id: "toc", children: [new TextRun({ text: "Contents" })] })]
+    }));
+    for (const t of content.toc) {
+      children.push(new Paragraph({
+        spacing: { after: 30 }, indent: t.level === 2 ? { left: 360 } : undefined,
+        children: [new InternalHyperlink({
+          anchor: t.anchor, children: [new TextRun({ text: t.text, color: "0563C1", underline: {} })]
+        })]
+      }));
+    }
+    children.push(new Paragraph({ children: [new PageBreak()] }));
+  }
+  for (const p of body) children.push(p);
+
+  const doc = new Document({ sections: [{ properties: {}, children }] });
+  const blob = await Packer.toBlob(doc);
+  download(blob, fnameFor(content.ref) + ".docx");
+  finishStatus(content, "docx");
+}
+
+// ===========================================================================
+// Kindle (EPUB) — a real EPUB3 with nav.xhtml + toc.ncx. Send-to-Kindle turns
+// this navigation into the book's own TOC, which appears in the Kindle "Go To"
+// dropdown from any page, hierarchically (category → commentator).
+// ===========================================================================
+function xmlEsc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function uuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c === "x" ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+function navOl(tree) {
+  let s = "<ol>\n";
+  for (const n of tree) {
+    s += `  <li><a href="text.xhtml#${n.anchor}">${xmlEsc(n.text)}</a>`;
+    if (n.kids && n.kids.length) {
+      s += "\n    <ol>\n";
+      for (const k of n.kids) s += `      <li><a href="text.xhtml#${k.anchor}">${xmlEsc(k.text)}</a></li>\n`;
+      s += "    </ol>\n  ";
+    }
+    s += "</li>\n";
+  }
+  return s + "</ol>";
+}
+function ncxMap(tree) {
+  let po = 0, s = "";
+  for (const n of tree) {
+    po++;
+    s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(n.text)}</text></navLabel><content src="text.xhtml#${n.anchor}"/>`;
+    if (n.kids && n.kids.length) {
+      for (const k of n.kids) {
+        po++;
+        s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(k.text)}</text></navLabel><content src="text.xhtml#${k.anchor}"/></navPoint>`;
+      }
+    }
+    s += `</navPoint>\n`;
+  }
+  return s;
+}
+function epubBody(content) {
+  let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
+  for (const b of content.blocks) {
+    if (b.type === "h1") s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
+    else if (b.type === "h2") s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
+    else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
+  }
+  return s;
+}
+async function buildEpub(content) {
+  setStatus("Loading e-book library…");
+  const JSZip = await ensureJSZip();
+  if (!JSZip) { setStatus("E-book library failed to load — check your connection and try again.", true); return; }
+  setStatus("Building Kindle (EPUB) document…");
+
+  const id = "urn:uuid:" + uuid();
+  const title = content.title;
+  const tree = tocTree(content.toc);
+  const modified = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+
+  const containerXml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+`;
+
+  const opf =
+`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="he">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">${xmlEsc(id)}</dc:identifier>
+    <dc:title>${xmlEsc(title)}</dc:title>
+    <dc:language>he</dc:language>
+    <dc:creator>Sefaria</dc:creator>
+    <meta property="dcterms:modified">${modified}</meta>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="css" href="style.css" media-type="text/css"/>
+    <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="nav"/>
+    <itemref idref="text"/>
+  </spine>
+</package>
+`;
+
+  const navXhtml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
+<head><meta charset="utf-8"/><title>Contents</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body>
+<nav epub:type="toc" id="toc">
+<h1>Contents</h1>
+${navOl(tree)}
+</nav>
+</body>
+</html>
+`;
+
+  const ncx =
+`<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en">
+<head>
+<meta name="dtb:uid" content="${xmlEsc(id)}"/>
+<meta name="dtb:depth" content="2"/>
+<meta name="dtb:totalPageCount" content="0"/>
+<meta name="dtb:maxPageNumber" content="0"/>
+</head>
+<docTitle><text>${xmlEsc(title)}</text></docTitle>
+<navMap>
+${ncxMap(tree)}</navMap>
+</ncx>
+`;
+
+  const css =
+`body { font-family: serif; line-height: 1.5; margin: 1em; }
+h1 { font-size: 1.4em; margin: 1em 0 .4em; }
+h2 { font-size: 1.15em; color: #6b5329; margin: .8em 0 .3em; }
+h1.doctitle { text-align: center; font-size: 1.6em; }
+p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
+p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
+p.en { line-height: 1.6; }
+nav ol { list-style: none; }
+`;
+
+  const textXhtml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head><meta charset="utf-8"/><title>${xmlEsc(title)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body>
+${epubBody(content)}</body>
+</html>
+`;
+
+  const zip = new JSZip();
+  // mimetype must be first and uncompressed
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", containerXml);
+  const oebps = zip.folder("OEBPS");
+  oebps.file("content.opf", opf);
+  oebps.file("nav.xhtml", navXhtml);
+  oebps.file("toc.ncx", ncx);
+  oebps.file("style.css", css);
+  oebps.file("text.xhtml", textXhtml);
+
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE" });
+  download(blob, fnameFor(content.ref) + ".epub");
+  finishStatus(content, "epub");
+}
+
+// ===========================================================================
+// PDF — opens a print-ready view; the reader chooses "Save as PDF".
+// Print-to-PDF is used deliberately: it renders Hebrew RTL correctly (client-
+// side PDF libraries mangle mixed Hebrew/English) and keeps the Contents links
+// clickable. Note: PDFs are fixed-layout, so Kindle won't give a Go To dropdown
+// for them — use Kindle (EPUB) for that.
+// ===========================================================================
+function buildPdf(content) {
+  const w = window.open("", "_blank");
+  if (!w) { setStatus("Pop-up blocked — allow pop-ups for this site, then try PDF again.", true); return; }
+
+  const tree = tocTree(content.toc);
+  let tocHtml = "<ol class='toc'>";
+  for (const n of tree) {
+    tocHtml += `<li><a href="#${n.anchor}">${escapeHtml(n.text)}</a>`;
+    if (n.kids && n.kids.length) {
+      tocHtml += "<ol>";
+      for (const k of n.kids) tocHtml += `<li><a href="#${k.anchor}">${escapeHtml(k.text)}</a></li>`;
+      tocHtml += "</ol>";
+    }
+    tocHtml += "</li>";
+  }
+  tocHtml += "</ol>";
+
+  let bodyHtml = "";
+  for (const b of content.blocks) {
+    if (b.type === "h1") bodyHtml += `<h1 id="${b.anchor}">${escapeHtml(b.text)}</h1>`;
+    else if (b.type === "h2") bodyHtml += `<h2 id="${b.anchor}">${escapeHtml(b.text)}</h2>`;
+    else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
+  }
+
+  const doc =
+`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(content.title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { font-family: Georgia,'Times New Roman',serif; line-height: 1.5; color: #2b2620; margin: 40px; }
+  h1 { font-size: 20px; margin: 22px 0 8px; }
+  h2 { font-size: 16px; color: #6b5329; margin: 16px 0 4px; }
+  h1.title { font-size: 24px; text-align: center; margin: 0 0 6px; }
+  p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
+  p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
+  p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
+  .contents-h { font-size: 18px; margin: 18px 0 8px; }
+  .toc { list-style: none; padding-left: 0; }
+  .toc ol { list-style: none; padding-left: 18px; }
+  .toc a { color: #0563C1; text-decoration: none; }
+  .toc li { margin: 3px 0; }
+  .note { font-size: 12px; color: #6f675a; margin: 0 0 16px; padding: 8px 10px; border: 1px solid #ddd5c7; border-radius: 6px; background: #fbf8f0; }
+  @media print { .note { display: none; } .pagebreak { page-break-before: always; } a { color: #0563C1; } }
+</style></head><body>
+<p class="note">Use your browser's print dialog and choose &ldquo;Save as PDF&rdquo;. The Contents links below stay clickable in the saved PDF.</p>
+<h1 class="title">${escapeHtml(content.title)}</h1>
+<div class="contents-h">Contents</div>
+${tocHtml}
+<div class="pagebreak"></div>
+${bodyHtml}
+</body></html>`;
+
+  w.document.open();
+  w.document.write(doc);
+  w.document.close();
+
+  const go = () => { try { w.focus(); w.print(); } catch (e) {} };
+  if (w.document.fonts && w.document.fonts.ready) w.document.fonts.ready.then(() => setTimeout(go, 150));
+  else setTimeout(go, 600);
+
+  finishStatus(content, "pdf (print view)");
+  setStatus("Opened a print view — choose “Save as PDF”.");
+}
+
+// ===========================================================================
+// Format selector + dispatch
+// ===========================================================================
+let OUTFMT = "kindle";
+function setFmt(f) {
+  OUTFMT = f;
+  document.querySelectorAll(".fmtseg button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
+}
+
+async function buildOutput() {
+  const content = gatherContent();
+  if (content.error) { setStatus(content.error, true); return; }
+
+  $("genBtn").disabled = true;
+  try {
+    if (OUTFMT === "word") await buildDocx(content);
+    else if (OUTFMT === "pdf") buildPdf(content);
+    else await buildEpub(content);
+  } catch (e) {
+    setStatus("Failed to build: " + e.message, true);
+  } finally {
+    $("genBtn").disabled = false;
+  }
+}
+
+// ===========================================================================
+// On-page preview of the selected texts
+// ===========================================================================
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+function pvItem(label, he, en, isSrc) {
+  let body = "";
+  if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
+  if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
+  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}">
+    <div class="pv-ref pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</div>
+    <div class="pv-body">${body}</div>
+  </div>`;
+}
+
+function applyPvLang() {
+  const pv = $("preview");
+  pv.classList.toggle("hide-he", !$("pvHe").checked);
+  pv.classList.toggle("hide-en", !$("pvEn").checked);
+}
+
+function renderPreview() {
+  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
+    .map(b => decodeURIComponent(b.value)));
+  const srcOn = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
+  const haveSrc = srcOn && SRC && (SRC.he.length || SRC.text.length);
+  if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
+
+  const ref = $("ref").value.trim();
+  let html = "", count = 0;
+
+  // Original Text as one collapsible block
+  if (haveSrc) {
+    const n = Math.max(SRC.he.length, SRC.text.length);
+    let he = "", en = "";
+    for (let i = 0; i < n; i++) {
+      const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
+      const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
+    }
+    html += pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true);
+  }
+
+  for (const cat of CAT_ORDER) {
+    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
+    if (!active.length) continue;
+    html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
+    for (const comm of active) {
+      html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+      for (const l of TREE[cat][comm]) {
+        const enRef = l.sourceRef || l.ref || "";
+        const heRef = l.sourceHeRef || "";
+        const label = enRef + (heRef ? "  —  " + heRef : "");
+        html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
+        count++;
+      }
+    }
+  }
+
+  $("preview").innerHTML = html || "<p class='pv-en'>Nothing to show.</p>";
+
+  // start the preview language toggles from the document settings
+  $("pvHe").checked = $("incHe").checked;
+  $("pvEn").checked = $("incEn").checked;
+  applyPvLang();
+
+  const bits = [];
+  if (haveSrc) bits.push("Original Text");
+  if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
+  $("previewCount").textContent = "Showing " + (bits.join(" + ") || "nothing") + " — tap a heading to collapse it";
+  $("previewCard").style.display = "block";
+  setStatus("");
+  $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// per-item collapse (event delegation), language toggles, expand/collapse all
+$("preview").addEventListener("click", e => {
+  const t = e.target.closest(".pv-toggle");
+  if (t) t.parentElement.classList.toggle("collapsed");
+});
+$("pvHe").onchange = applyPvLang;
+$("pvEn").onchange = applyPvLang;
+$("pvExpandAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.remove("collapsed"));
+$("pvCollapseAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.add("collapsed"));
+
+// ===========================================================================
+// Reference builder — Browse (category drill-down)
+// Selecting a reference fills the box and fetches its links automatically.
+// ===========================================================================
+const TOC_API = "https://www.sefaria.org/api/index";
+const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
+const SHAPE_API = "https://www.sefaria.org/api/shape/";
+
+const CORPORA = [
+  { label: "Tanakh",   he: "תנ״ך",   match: ["tanakh", "tanach"] },
+  { label: "Mishnah",  he: "משנה",   match: ["mishnah"] },
+  { label: "Talmud",   he: "תלמוד",  match: ["talmud"] },
+  { label: "Halakhah", he: "הלכה",   match: ["halakhah", "halacha"] },
+  { label: "Kabbalah", he: "קבלה",   match: ["kabbalah", "kabbala"] },
+  { label: "Chasidut", he: "חסידות", match: ["chasidut", "chassidut", "hasidut"] }
+];
+
+let TOC = null;
+let backStack = [];
+
+function setMode(m) {
+  document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  $("browsePanel").style.display = m === "browse" ? "block" : "none";
+  if (m === "browse" && backStack.length === 0) startBrowse();
+}
+
+function commitRef(ref) {
+  $("ref").value = ref;
+  setMode("type");
+  fetchLinks();
+}
+
+function mk(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
+function navBody() { return $("navBody"); }
+function navLoading(msg) { navBody().innerHTML = '<div class="navloading">' + (msg || "Loading…") + '</div>'; }
+function navError(msg) { navBody().innerHTML = '<div class="naverr">' + msg + '</div>'; }
+
+function nodeHe(n) {
+  if (n.heTitle) return n.heTitle;
+  if (n.heCategory) return n.heCategory;
+  if (Array.isArray(n.titles)) { const t = n.titles.find(x => x.lang === "he" && x.primary) || n.titles.find(x => x.lang === "he"); if (t) return t.text; }
+  return "";
+}
+function nodeEn(n) {
+  if (n.title) return n.title;
+  if (n.category) return n.category;
+  if (Array.isArray(n.titles)) { const t = n.titles.find(x => x.lang === "en" && x.primary) || n.titles.find(x => x.lang === "en"); if (t) return t.text; }
+  if (n.key) return n.key;
+  return "section";
+}
+
+function rowList(items, onPick) {
+  const wrap = document.createElement("div"); wrap.className = "navlist";
+  items.forEach(it => {
+    const r = document.createElement("div"); r.className = "navrow";
+    const name = document.createElement("span"); name.textContent = it.label; r.appendChild(name);
+    if (it.he) { const h = document.createElement("span"); h.className = "he"; h.textContent = it.he; r.appendChild(h); }
+    const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "›"; r.appendChild(chev);
+    r.onclick = () => onPick(it);
+    wrap.appendChild(r);
+  });
+  return wrap;
+}
+
+function renderCrumbs() {
+  const c = $("crumbs"); c.innerHTML = "";
+  backStack.forEach((f, i) => {
+    if (i) { const s = document.createElement("span"); s.className = "crumbsep"; s.textContent = "›"; c.appendChild(s); }
+    const span = document.createElement("span"); span.textContent = f.label;
+    if (i === backStack.length - 1) { span.className = "crumb here"; }
+    else { span.className = "crumb"; span.onclick = () => { backStack = backStack.slice(0, i + 1); renderCrumbs(); backStack[i].render(); }; }
+    c.appendChild(span);
+  });
+}
+function pushView(label, render) { backStack.push({ label, render }); renderCrumbs(); render(); }
+
+async function ensureToc() {
+  if (TOC) return TOC;
+  const res = await fetch(TOC_API);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  TOC = await res.json();
+  return TOC;
+}
+
+function startBrowse() { backStack = []; pushView("Texts", renderCorpora); }
+
+function renderCorpora() {
+  navLoading();
+  ensureToc().then(toc => {
+    const items = [];
+    CORPORA.forEach(c => {
+      const node = toc.find(n => n.category && c.match.includes(String(n.category).toLowerCase()));
+      if (node) items.push({ label: c.label, he: c.he, node });
+    });
+    if (!items.length) { navError("Couldn’t find the expected categories in the library index."); return; }
+    navBody().innerHTML = "";
+    navBody().appendChild(rowList(items, it => pushView(it.label, () => renderToc(it.node))));
+  }).catch(e => navError("Couldn’t load the library index: " + e.message));
+}
+
+function renderToc(node) {
+  const items = (node.contents || []).map(ch => {
+    if (ch.contents) return { type: "cat", label: nodeEn(ch), he: nodeHe(ch), node: ch };
+    if (ch.title) return { type: "book", label: ch.title, he: ch.heTitle || "", title: ch.title };
+    return null;
+  }).filter(Boolean);
+  if (!items.length) { navError("Nothing to browse here."); return; }
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    if (it.type === "cat") pushView(it.label, () => renderToc(it.node));
+    else pushView(it.label, () => openBook(it.title));
+  }));
+}
+
+async function openBook(title) {
+  navLoading('Loading “' + title + '”…');
+  let rec;
+  try {
+    const res = await fetch(BOOK_INDEX_API + encodeURIComponent(title));
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    rec = await res.json();
+  } catch (e) {
+    navError('Couldn’t load the structure of “' + title + '”. Filling the box so you can type the rest.');
+    setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
+    return;
+  }
+  const schema = rec.schema;
+  if (!schema) { commitRef(title); return; }
+  if (schema.nodes) renderSchemaNodes(title, schema, title);
+  else renderJagged(title, schema);
+}
+
+function renderSchemaNodes(title, node, prefix) {
+  const items = (node.nodes || []).map(ch => ({
+    label: ch.default ? "(main text)" : nodeEn(ch),
+    he: ch.default ? "" : nodeHe(ch),
+    ch
+  }));
+  if (!items.length) { commitRef(prefix); return; }
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    const ch = it.ch;
+    const childPrefix = ch.default ? prefix : (prefix + ", " + nodeEn(ch));
+    const crumb = ch.default ? "main" : nodeEn(ch);
+    if (ch.nodes) pushView(crumb, () => renderSchemaNodes(title, ch, childPrefix));
+    else pushView(crumb, () => renderJagged(childPrefix, ch));
+  }));
+}
+
+function renderJagged(prefix, node) {
+  const addr = (node.addressTypes && node.addressTypes[0]) || "Integer";
+  const sname = (node.sectionNames && node.sectionNames[0]) || "section";
+  navBody().innerHTML = "";
+
+  if (addr === "Talmud") {
+    const build = (amudim) => {
+      navBody().innerHTML = "";
+      navBody().appendChild(mk('<div class="navnote">Pick a page — a is the front, b the back.</div>'));
+      const grid = document.createElement("div"); grid.className = "navgrid";
+      for (let i = 0; i < amudim; i++) {
+        const b = document.createElement("button"); b.textContent = dafLabel(i);
+        b.onclick = () => commitRef(prefix + " " + dafLabel(i));
+        grid.appendChild(b);
+      }
+      navBody().appendChild(grid);
+    };
+    const n0 = node.lengths && node.lengths[0];
+    if (n0) build(n0);
+    else { navLoading(); shapeLen(prefix).then(len => build(len ? len * 2 : 180)).catch(() => build(180)); }
+    return;
+  }
+
+  const draw = (count) => {
+    navBody().innerHTML = "";
+    navBody().appendChild(mk('<div class="navnote">Pick a ' + String(sname).toLowerCase() + '.</div>'));
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    for (let i = 1; i <= count; i++) {
+      const b = document.createElement("button"); b.textContent = i;
+      b.onclick = () => pickNumber(prefix, node, [i]);
+      grid.appendChild(b);
+    }
+    navBody().appendChild(grid);
+  };
+  const n0 = node.lengths && node.lengths[0];
+  if (n0) draw(n0);
+  else {
+    navLoading();
+    shapeLen(prefix).then(len => { if (len) draw(len); else fetchCount(prefix).then(c => c ? draw(c) : commitRef(prefix)); })
+      .catch(() => commitRef(prefix));
+  }
+}
+
+function pickNumber(prefix, node, sections) {
+  const depth = (node.sectionNames || []).length || 1;
+  if (sections.length >= depth) { commitRef(refJoin(prefix, sections)); return; }
+  const cur = refJoin(prefix, sections);
+  const nextName = (node.sectionNames && node.sectionNames[sections.length]) || "part";
+  navBody().innerHTML = "";
+  const whole = document.createElement("div"); whole.className = "navwhole";
+  const wb = document.createElement("button"); wb.className = "secondary"; wb.textContent = "Use all of " + cur;
+  wb.onclick = () => commitRef(cur); whole.appendChild(wb);
+  navBody().appendChild(whole);
+  navBody().appendChild(mk('<div class="navnote">…or narrow to a ' + String(nextName).toLowerCase() + ':</div>'));
+  const holder = document.createElement("div"); holder.innerHTML = '<div class="navloading">Loading…</div>';
+  navBody().appendChild(holder);
+  fetchCount(cur).then(c => {
+    holder.innerHTML = "";
+    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn’t list these — use the button above, or type it.</div>')); return; }
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    for (let i = 1; i <= c; i++) {
+      const b = document.createElement("button"); b.textContent = i;
+      b.onclick = () => pickNumber(prefix, node, [...sections, i]);
+      grid.appendChild(b);
+    }
+    holder.appendChild(grid);
+  });
+}
+
+function refJoin(prefix, sections) { return prefix + " " + sections.join(":"); }
+function dafLabel(i) { const d = 2 + Math.floor(i / 2); return d + (i % 2 === 0 ? "a" : "b"); }
+
+async function shapeLen(title) {
+  try {
+    const r = await fetch(SHAPE_API + encodeURIComponent(title));
+    if (!r.ok) return null;
+    const j = await r.json();
+    const first = Array.isArray(j) ? j[0] : j;
+    return first && (first.length || (first.chapters && first.chapters.length)) || null;
+  } catch (e) { return null; }
+}
+async function fetchCount(ref) {
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    if (!r.ok) return null;
+    const j = await r.json();
+    const arr = (j.he && j.he.length) ? j.he : j.text;
+    return Array.isArray(arr) ? arr.length : null;
+  } catch (e) { return null; }
+}
+
+// ===========================================================================
+// Wiring
+// ===========================================================================
+document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll(".fmtseg button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
+
+$("clearBtn").onclick = () => {
+  $("ref").value = "";
+  LINKS = []; TREE = {}; CAT_ORDER = []; SRC = null;
+  $("treeCard").style.display = "none";
+  $("previewCard").style.display = "none";
+  $("tree").innerHTML = "";
+  $("preview").innerHTML = "";
+  setStatus("");
+  backStack = [];
+  if ($("browsePanel").style.display !== "none") startBrowse();
+  $("ref").focus();
+};
+
+$("previewBtn").onclick = renderPreview;
+$("fetchBtn").onclick = fetchLinks;
+$("genBtn").onclick = buildOutput;
+
+setFmt("kindle");
+</script>
+</body>
+</html>
