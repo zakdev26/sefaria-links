@@ -69,6 +69,7 @@
   .pv-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 0; }
   .pv-item-src { background: #fbf8f0; }
   .pv-ref { font-size: 12px; color: var(--muted); margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+  .pv-ref .pv-check { margin: 0 2px 0 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
   .pv-caret { font-size: 10px; transition: transform .15s; }
   .pv-item.collapsed .pv-caret { transform: rotate(-90deg); }
   .pv-item.collapsed .pv-body { display: none; }
@@ -145,7 +146,7 @@
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
 
-  /* ---- output-format selector ---- */
+  /* ---- arrange-by + output-format selectors (shared look) ---- */
   .fmtlabel { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
   .fmtseg { display: flex; gap: 6px; }
   .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
@@ -191,10 +192,17 @@
       <span class="globaltoggle" id="toggleAll">select all / none</span>
     </div>
     <div id="tree"></div>
-    <button id="previewBtn">Preview selected texts</button>
+
+    <div class="fmtlabel">Arrange by</div>
+    <div class="fmtseg" id="grpSeg">
+      <button type="button" data-grp="category" class="on">Category</button>
+      <button type="button" data-grp="section">Section of text</button>
+    </div>
+
+    <button id="previewBtn">Preview &amp; pick texts</button>
 
     <div class="fmtlabel">Format</div>
-    <div class="fmtseg">
+    <div class="fmtseg" id="fmtSeg">
       <button type="button" data-fmt="kindle" class="on">Kindle (EPUB)</button>
       <button type="button" data-fmt="word">Word</button>
       <button type="button" data-fmt="pdf">PDF</button>
@@ -207,7 +215,10 @@
     <div class="pv-controls">
       <label><input type="checkbox" id="pvHe" checked> Hebrew</label>
       <label><input type="checkbox" id="pvEn" checked> English</label>
-      <span class="pv-links"><a id="pvExpandAll">expand all</a> · <a id="pvCollapseAll">collapse all</a></span>
+      <span class="pv-links">
+        <a id="pvCheckAll">check all</a> · <a id="pvUncheckAll">uncheck all</a> ·
+        <a id="pvExpandAll">expand</a> · <a id="pvCollapseAll">collapse</a>
+      </span>
     </div>
     <div class="preview" id="preview"></div>
   </div>
@@ -219,22 +230,103 @@
 <div class="donate-bar"><a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">♥ Donate to Sefaria</a></div>
 
 <script>
+/* ============================================================================
+   INDEX — edit any part by jumping to its banner:
+     SECTION 1  — Config, constants & global state
+     SECTION 2  — Small helpers (text / DOM utilities)
+     SECTION 3  — External library loaders (docx, JSZip)
+     SECTION 4  — Reference autocomplete
+     SECTION 5  — Fetch links + base text; build the data model
+     SECTION 6  — Source-selector tree (coarse filter: commentators)
+     SECTION 7  — Grouping + selection helpers (category | section, tree, items)
+     SECTION 8  — Content gathering (format-neutral block list, both modes)
+     SECTION 9  — Builder: Word (.docx)
+     SECTION 10 — Builder: Kindle (EPUB)
+     SECTION 11 — Builder: PDF (print view)
+     SECTION 12 — Arrange-by + Format selectors, and build dispatch
+     SECTION 13 — Preview (final stage: per-text checkboxes, both modes)
+     SECTION 14 — Browse navigator (category drill-down)
+     SECTION 15 — Wiring
+   ============================================================================ */
+
+/* ============================================================================
+   SECTION 1 — Config, constants & global state
+   ============================================================================ */
 const $ = id => document.getElementById(id);
-const NAME_API = "https://www.sefaria.org/api/name/";
+const NAME_API  = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
-let LINKS = [];      // link objects with text
-let TREE = {};       // category -> { commentator -> [links] }
-let CAT_ORDER = [];  // categories, most links first
-let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
 
+let LINKS = [];       // raw link objects from Sefaria (filtered to those with text)
+let ITEMS = [];       // normalised per-text records — the working data model
+let TREE = {};         // category -> { commentator -> [ITEMS] }  (drives the tree UI)
+let CAT_ORDER = [];    // categories in display order (fixed list, then by frequency)
+let SRC = null;        // base text: { ref, heRef, he:[segments], text:[segments] }
+
+let EXCLUDED = new Set();      // lids the user has unticked in the preview
+let GROUPING = "category";     // "category" | "section" — how output is arranged
+let OUTFMT   = "kindle";       // "kindle" | "word" | "pdf"
+
+let SHOWN_LIDS = [];           // lids currently rendered in the preview
+let PREVIEW_HAS_SRC = false;   // whether the preview included base text
+
+// Fixed section order: Source/base text leads; then these categories in this
+// order (if present); then everything else by frequency, descending.
+const FIXED_ORDER = [
+  ["commentary"],
+  ["mishnah", "mishna"],
+  ["talmud"],
+  ["halakhah", "halacha", "halakha"],
+  ["tosefta"],
+  ["responsa"]
+];
+function catRank(c) {
+  const lc = String(c).toLowerCase();
+  for (let i = 0; i < FIXED_ORDER.length; i++) if (FIXED_ORDER[i].includes(lc)) return i;
+  return Infinity;   // unranked → after the fixed list, by frequency
+}
+
+/* ============================================================================
+   SECTION 2 — Small helpers (text / DOM utilities)
+   ============================================================================ */
+const statusEl = $("status");
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = "status" + (isErr ? " err" : "");
+}
+function asText(field) {
+  if (!field) return "";
+  if (Array.isArray(field)) return field.map(asText).join(" ");
+  return String(field);
+}
 function toArr(v) {
   if (!v) return [];
   if (Array.isArray(v)) return v.map(x => Array.isArray(x) ? x.map(asText).join(" ") : asText(x));
   return [asText(v)];
 }
+function stripHtml(html) {
+  if (!html) return "";
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  div.querySelectorAll("sup, .footnote, i.footnote, .mam-spi-pe").forEach(n => n.remove());
+  return (div.textContent || "").replace(/\s+/g, " ").trim();
+}
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+function commName(l) {
+  return (l.collectiveTitle && l.collectiveTitle.en) || l.index_title || l.category || "Other";
+}
+function catName(l) { return l.category || "Other"; }
+function keyFor(cat, comm) { return cat + "||" + comm; }
+// Trailing segment number from a ref, e.g. "Shabbat 100a:5" -> 5, "Genesis 1:5" -> 5.
+function segNum(ref) { const m = String(ref).match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : 0; }
 
-// --- load an external library (with CDN fallback) --------------------------
+/* ============================================================================
+   SECTION 3 — External library loaders (docx, JSZip), loaded on demand
+   ============================================================================ */
 function loadScript(src) {
   return new Promise((resolve, reject) => {
     const s = document.createElement("script");
@@ -250,9 +342,7 @@ async function ensureDocx() {
     "https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.umd.cjs",
     "https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"
   ];
-  for (const url of cdns) {
-    try { await loadScript(url); if (window.docx) return window.docx; } catch (e) {}
-  }
+  for (const url of cdns) { try { await loadScript(url); if (window.docx) return window.docx; } catch (e) {} }
   return null;
 }
 async function ensureJSZip() {
@@ -261,81 +351,29 @@ async function ensureJSZip() {
     "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
     "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
   ];
-  for (const url of cdns) {
-    try { await loadScript(url); if (window.JSZip) return window.JSZip; } catch (e) {}
-  }
+  for (const url of cdns) { try { await loadScript(url); if (window.JSZip) return window.JSZip; } catch (e) {} }
   return null;
 }
 
-const statusEl = $("status");
-function setStatus(msg, isErr) {
-  statusEl.textContent = msg;
-  statusEl.className = "status" + (isErr ? " err" : "");
-}
-
-// --- helpers ---------------------------------------------------------------
-function asText(field) {
-  if (!field) return "";
-  if (Array.isArray(field)) return field.map(asText).join(" ");
-  return String(field);
-}
-function stripHtml(html) {
-  if (!html) return "";
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  div.querySelectorAll("sup, .footnote, i.footnote, .mam-spi-pe").forEach(n => n.remove());
-  return (div.textContent || "").replace(/\s+/g, " ").trim();
-}
-function commName(l) {
-  return (l.collectiveTitle && l.collectiveTitle.en) || l.index_title || l.category || "Other";
-}
-function catName(l) { return l.category || "Other"; }
-function keyFor(cat, comm) { return cat + "||" + comm; }
-
-// Fixed section order: Source Text is emitted first separately; then these
-// categories in this order (if present), then everything else by frequency.
-const FIXED_ORDER = [
-  ["commentary"],
-  ["mishnah", "mishna"],
-  ["talmud"],
-  ["halakhah", "halacha", "halakha"],
-  ["tosefta"],
-  ["responsa"]
-];
-function catRank(c) {
-  const lc = String(c).toLowerCase();
-  for (let i = 0; i < FIXED_ORDER.length; i++) if (FIXED_ORDER[i].includes(lc)) return i;
-  return Infinity;   // unranked → placed after the fixed list, by frequency
-}
-
-// ===========================================================================
-// Reference autocomplete (Sefaria's own name API)
-// ===========================================================================
+/* ============================================================================
+   SECTION 4 — Reference autocomplete (Sefaria's own name API)
+   ============================================================================ */
 const acBox = $("ac");
 let acItems = [], acActive = -1, acTimer = null;
 
 function hideAC() { acBox.style.display = "none"; acItems = []; acActive = -1; }
-
 function renderAC(list) {
   if (!list.length) { hideAC(); return; }
-  acItems = list;
-  acActive = -1;
-  acBox.innerHTML = list.map((s, i) =>
-    `<div class="item" data-i="${i}">${s}</div>`
-  ).join("");
+  acItems = list; acActive = -1;
+  acBox.innerHTML = list.map((s, i) => `<div class="item" data-i="${i}">${s}</div>`).join("");
   acBox.style.display = "block";
   [...acBox.querySelectorAll(".item")].forEach(el => {
-    el.addEventListener("mousedown", e => {   // mousedown fires before blur
-      e.preventDefault();
-      pickAC(parseInt(el.dataset.i, 10));
-    });
+    el.addEventListener("mousedown", e => { e.preventDefault(); pickAC(parseInt(el.dataset.i, 10)); });
   });
 }
 function pickAC(i) {
   if (i < 0 || i >= acItems.length) return;
-  $("ref").value = acItems[i];
-  hideAC();
-  $("ref").focus();
+  $("ref").value = acItems[i]; hideAC(); $("ref").focus();
 }
 async function queryNames(q) {
   try {
@@ -362,20 +400,19 @@ $("ref").addEventListener("keydown", e => {
     }
     else if (e.key === "Escape") { hideAC(); return; }
     else return;
-    [...acBox.querySelectorAll(".item")].forEach((el, i) =>
-      el.classList.toggle("active", i === acActive));
+    [...acBox.querySelectorAll(".item")].forEach((el, i) => el.classList.toggle("active", i === acActive));
     return;
   }
   if (e.key === "Enter") fetchLinks();
 });
 $("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
 
-// ===========================================================================
-// Fetch links + build the source tree
-// ===========================================================================
+/* ============================================================================
+   SECTION 5 — Fetch links + base text; build the data model (ITEMS / TREE)
+   ============================================================================ */
 function isMultiSegmentSection(ref) {
   if (ref.indexOf(":") >= 0) return false;   // already a specific segment
-  if (/\d+[ab]$/.test(ref)) return false;     // Talmud daf (e.g. 100a)
+  if (/\d+[ab]$/.test(ref)) return false;     // Talmud daf (e.g. 100a) — one call is fine
   return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
 }
 
@@ -395,9 +432,10 @@ async function mapPool(items, worker, poolSize, onProgress) {
   return results;
 }
 
-// A whole chapter/section: Sefaria's links API doesn't reliably return the
-// linked *text* for a multi-segment ref, so walk it segment-by-segment and
-// merge. Each per-segment call does return text, which is what we need.
+// A whole chapter/section: the links API doesn't reliably return linked *text*
+// for a multi-segment ref, so walk it segment-by-segment and merge. Each
+// per-segment call still returns each link's own anchorRef, so section grouping
+// works either way.
 async function fetchLinksBySegments(ref) {
   setStatus("Reading " + ref + "…");
   let n = 0;
@@ -409,7 +447,7 @@ async function fetchLinksBySegments(ref) {
       if (Array.isArray(arr)) n = arr.length;
     }
   } catch (e) {}
-  if (!n) {   // couldn't expand — fall back to a single call
+  if (!n) {
     const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
     if (!res.ok) throw new Error("HTTP " + res.status);
     return await res.json();
@@ -425,6 +463,23 @@ async function fetchLinksBySegments(ref) {
     } catch (e) { return []; }
   }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
   return [].concat.apply([], chunks);
+}
+
+// Turn a raw link into our normalised record. anchorRefExpanded[0] / anchorRef
+// tell us which base segment the link hangs off; anchorVerse gives its number.
+function makeItem(l, i) {
+  const category = catName(l), commentator = commName(l);
+  const secRef = (Array.isArray(l.anchorRefExpanded) && l.anchorRefExpanded[0]) || l.anchorRef || "";
+  const secVerse = (typeof l.anchorVerse === "number" && l.anchorVerse) || segNum(secRef);
+  return {
+    lid: "L" + i,
+    category, commentator, commKey: keyFor(category, commentator),
+    secRef, secVerse,
+    enRef: l.sourceRef || l.ref || "",
+    heRef: l.sourceHeRef || "",
+    he: asText(l.he),
+    text: asText(l.text)
+  };
 }
 
 async function fetchLinks() {
@@ -452,13 +507,14 @@ async function fetchLinks() {
     }
 
     LINKS = data.filter(l => asText(l.he) || asText(l.text));
+    ITEMS = LINKS.map(makeItem);
+    EXCLUDED = new Set();
 
-    // group: category -> commentator -> links
+    // group: category -> commentator -> items
     TREE = {};
-    for (const l of LINKS) {
-      const c = catName(l), n = commName(l);
-      (TREE[c] = TREE[c] || {});
-      (TREE[c][n] = TREE[c][n] || []).push(l);
+    for (const it of ITEMS) {
+      (TREE[it.category] = TREE[it.category] || {});
+      (TREE[it.category][it.commentator] = TREE[it.category][it.commentator] || []).push(it);
     }
     const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
     CAT_ORDER = Object.keys(TREE).sort((a, b) => {
@@ -467,7 +523,7 @@ async function fetchLinks() {
       return catCount(b) - catCount(a);         // else frequency, descending
     });
 
-    // fetch the reference's own text first, so "Original Text" can head the list (non-fatal)
+    // fetch the reference's own text so it can head things (non-fatal)
     SRC = null;
     try {
       const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
@@ -475,10 +531,10 @@ async function fetchLinks() {
         const t = await r.json();
         if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
       }
-    } catch (e) { /* silent: source text just won't be available */ }
+    } catch (e) { /* silent */ }
 
     renderTree(catCount);
-    setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
+    setStatus(`Found ${ITEMS.length} texts. Choose sources, then Preview & pick.`);
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
   } finally {
@@ -486,6 +542,9 @@ async function fetchLinks() {
   }
 }
 
+/* ============================================================================
+   SECTION 6 — Source-selector tree (coarse filter: which commentators at all)
+   ============================================================================ */
 function renderTree(catCount) {
   const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
   const srcRow = `<div class="cat srcrow">
@@ -523,16 +582,13 @@ function renderTree(catCount) {
     const catbox = cat.querySelector(".catbox");
     const commboxes = [...cat.querySelectorAll(".commbox")];
 
-    // click the header to drill in / collapse (but not when hitting the checkbox)
     head.addEventListener("click", e => {
       if (e.target === catbox) return;
       cat.classList.toggle("collapsed");
     });
-    // the section checkbox selects / clears the whole section
     catbox.addEventListener("change", () => {
       commboxes.forEach(b => b.checked = catbox.checked);
     });
-    // individual commentators feed back into the section checkbox
     commboxes.forEach(b => b.addEventListener("change", () => {
       const on = commboxes.filter(x => x.checked).length;
       catbox.checked = on > 0;
@@ -552,36 +608,89 @@ $("toggleAll").onclick = () => {
   if (src && !src.disabled) src.checked = anyOff;
 };
 
-// ===========================================================================
-// Gather the selected texts into a format-neutral structure.
-// Every builder (Word / EPUB / PDF) consumes this same shape.
-//   blocks: ordered [{type:"h1"|"h2"|"ref"|"he"|"en", text, anchor?, first?}]
-//   toc:    [{level:1|2, text, anchor}]
-// ===========================================================================
+/* ============================================================================
+   SECTION 7 — Grouping + selection helpers
+   Tree = coarse (commentators). EXCLUDED = fine (individual texts, from preview).
+   A text makes the final cut when its commentator is ticked in the tree AND its
+   lid is not in EXCLUDED.
+   ============================================================================ */
+function treeChosen() {
+  return new Set([...document.querySelectorAll(".commbox:checked")].map(b => decodeURIComponent(b.value)));
+}
+function srcIncluded() {
+  return !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
+}
+function itemKept(it, chosen) {
+  return chosen.has(it.commKey) && !EXCLUDED.has(it.lid);
+}
+// Base text (he/en) for a given section verse number, indexed into SRC segments.
+function baseTextForVerse(v) {
+  if (!SRC) return { he: "", en: "" };
+  const n = Math.max(SRC.he.length, SRC.text.length);
+  let idx = (n <= 1) ? 0 : ((v && v >= 1) ? v - 1 : 0);
+  if (idx < 0 || idx >= n) return { he: "", en: "" };
+  return { he: stripHtml(SRC.he[idx] || ""), en: stripHtml(SRC.text[idx] || "") };
+}
+// Group a set of items by category (fixed order) then commentator (by frequency).
+function groupByCatComm(items) {
+  const byCat = {};
+  for (const it of items) (byCat[it.category] = byCat[it.category] || []).push(it);
+  const order = Object.keys(byCat).sort((a, b) => {
+    const ra = catRank(a), rb = catRank(b);
+    if (ra !== rb) return ra - rb;
+    return byCat[b].length - byCat[a].length;
+  });
+  const g = { order };
+  for (const cat of order) {
+    const byComm = {};
+    for (const it of byCat[cat]) (byComm[it.commentator] = byComm[it.commentator] || []).push(it);
+    const commOrder = Object.keys(byComm).sort((a, b) => byComm[b].length - byComm[a].length);
+    g[cat] = { commOrder, byComm };
+  }
+  return g;
+}
+// Sections (base segments) that have surviving items, in natural order.
+function keptSections(chosen) {
+  const map = new Map();
+  for (const it of ITEMS) {
+    if (!itemKept(it, chosen)) continue;
+    let s = map.get(it.secRef);
+    if (!s) { s = { secRef: it.secRef, verse: it.secVerse, items: [] }; map.set(it.secRef, s); }
+    s.items.push(it);
+  }
+  return [...map.values()].sort((a, b) => (a.verse - b.verse) || String(a.secRef).localeCompare(String(b.secRef)));
+}
+
+/* ============================================================================
+   SECTION 8 — Content gathering (format-neutral)
+   Produces { ref, title, blocks:[{type,text,anchor?,first?}], toc:[{level,text,anchor}],
+              haveSrc, written }. All three builders consume this same shape.
+   ============================================================================ */
 function gatherContent() {
-  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-    .map(b => decodeURIComponent(b.value)));
-  const incHe = $("incHe").checked;
-  const incEn = $("incEn").checked;
-  const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
-  const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
-
+  const incHe = $("incHe").checked, incEn = $("incEn").checked;
   if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
-  if (chosen.size === 0 && !haveSrc) return { error: "Select at least one source, or include the source text." };
 
+  const chosen = treeChosen();
+  const haveSrc = srcIncluded() && SRC && (SRC.he.length || SRC.text.length);
+  const anyItems = ITEMS.some(it => itemKept(it, chosen));
+  if (!anyItems && !haveSrc) return { error: "Keep at least one text, or include the Original Text." };
+
+  return GROUPING === "section"
+    ? gatherBySection(incHe, incEn, chosen, haveSrc)
+    : gatherByCategory(incHe, incEn, chosen, haveSrc);
+}
+
+function gatherByCategory(incHe, incEn, chosen, haveSrc) {
   const ref = $("ref").value.trim();
-  const blocks = [];
-  const toc = [];
-  let bmId = 0;
-  const nextId = () => "sec" + (bmId++);
+  const blocks = [], toc = [];
+  let bmId = 0; const nextId = () => "sec" + (bmId++);
   let written = 0;
 
-  // ---- source text first, for context ----
   if (haveSrc) {
     const srcLabel = SRC.heRef || SRC.ref || ref;
-    const anchor = nextId();
-    toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
-    blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true });
+    const a = nextId();
+    toc.push({ level: 1, text: "Source — " + srcLabel, anchor: a });
+    blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor: a, first: true });
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
@@ -589,36 +698,74 @@ function gatherContent() {
     }
   }
 
-  // ---- selected categories / commentators ----
   for (const cat of CAT_ORDER) {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
-    if (!active.length) continue;
+    const emit = [];
+    for (const comm of comms) {
+      if (!chosen.has(keyFor(cat, comm))) continue;
+      const items = TREE[cat][comm].filter(it => !EXCLUDED.has(it.lid));
+      if (items.length) emit.push({ comm, items });
+    }
+    if (!emit.length) continue;
 
-    const catAnchor = nextId();
-    toc.push({ level: 1, text: cat, anchor: catAnchor });
-    blocks.push({ type: "h1", text: cat, anchor: catAnchor });
+    const ca = nextId();
+    toc.push({ level: 1, text: cat, anchor: ca });
+    blocks.push({ type: "h1", text: cat, anchor: ca });
 
-    for (const comm of active) {
-      const commAnchor = nextId();
-      toc.push({ level: 2, text: comm, anchor: commAnchor });
-      blocks.push({ type: "h2", text: comm, anchor: commAnchor });
-
-      for (const l of TREE[cat][comm]) {
-        const enRef = l.sourceRef || l.ref || "";
-        const heRef = l.sourceHeRef || "";
-        blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
-        if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
-        if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+    for (const { comm, items } of emit) {
+      const ma = nextId();
+      toc.push({ level: 2, text: comm, anchor: ma });
+      blocks.push({ type: "h2", text: comm, anchor: ma });
+      for (const it of items) {
+        blocks.push({ type: "ref", text: it.enRef + (it.heRef ? "  —  " + it.heRef : "") });
+        if (incHe) { const he = stripHtml(it.he); if (he) blocks.push({ type: "he", text: he }); }
+        if (incEn) { const en = stripHtml(it.text); if (en) blocks.push({ type: "en", text: en }); }
         written++;
       }
     }
   }
-
-  return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
+  return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written };
 }
 
-// --- shared output helpers -------------------------------------------------
+function gatherBySection(incHe, incEn, chosen, haveSrc) {
+  const ref = $("ref").value.trim();
+  const blocks = [], toc = [];
+  let bmId = 0; const nextId = () => "sec" + (bmId++);
+  let written = 0;
+
+  const sections = keptSections(chosen);
+  let first = true;
+  for (const sec of sections) {
+    const secLabel = sec.secRef || ref;
+    const a = nextId();
+    toc.push({ level: 1, text: secLabel, anchor: a });   // section is the nav level
+    blocks.push({ type: "h1", text: secLabel, anchor: a, first });
+    first = false;
+
+    if (haveSrc) {
+      const bt = baseTextForVerse(sec.verse);
+      if (incHe && bt.he) blocks.push({ type: "he", text: bt.he });
+      if (incEn && bt.en) blocks.push({ type: "en", text: bt.en });
+    }
+
+    const g = groupByCatComm(sec.items);
+    for (const cat of g.order) {
+      // category shown as a sub-heading within the section, but not in the TOC
+      blocks.push({ type: "h2", text: cat, anchor: nextId() });
+      for (const comm of g[cat].commOrder) {
+        for (const it of g[cat].byComm[comm]) {
+          blocks.push({ type: "ref", text: it.enRef + (it.heRef ? "  —  " + it.heRef : "") });
+          if (incHe) { const he = stripHtml(it.he); if (he) blocks.push({ type: "he", text: he }); }
+          if (incEn) { const en = stripHtml(it.text); if (en) blocks.push({ type: "en", text: en }); }
+          written++;
+        }
+      }
+    }
+  }
+  return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written };
+}
+
+/* ---- shared output helpers ---- */
 function download(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -635,8 +782,7 @@ function finishStatus(content, ext) {
   if (content.written) parts.push(content.written + " linked texts");
   setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
 }
-
-// Build a nested TOC tree (level-1 with level-2 kids) from the flat list.
+// Nested TOC tree (level-1 with level-2 kids) from the flat toc list.
 function tocTree(toc) {
   const tree = [];
   for (const t of toc) {
@@ -647,10 +793,10 @@ function tocTree(toc) {
   return tree;
 }
 
-// ===========================================================================
-// Word (.docx) — clickable Contents; a bookmark named "toc" lets
-// Send-to-Kindle register the Contents page in the Kindle "Go To" menu.
-// ===========================================================================
+/* ============================================================================
+   SECTION 9 — Builder: Word (.docx)
+   A bookmark named "toc" lets Send-to-Kindle register the Contents page.
+   ============================================================================ */
 async function buildDocx(content) {
   setStatus("Loading document library…");
   const d = await ensureDocx();
@@ -715,11 +861,11 @@ async function buildDocx(content) {
   finishStatus(content, "docx");
 }
 
-// ===========================================================================
-// Kindle (EPUB) — a real EPUB3 with nav.xhtml + toc.ncx. Send-to-Kindle turns
-// this navigation into the book's own TOC, which appears in the Kindle "Go To"
-// dropdown from any page, hierarchically (category → commentator).
-// ===========================================================================
+/* ============================================================================
+   SECTION 10 — Builder: Kindle (EPUB)
+   Real EPUB3 with nav.xhtml + toc.ncx. Send-to-Kindle turns this into the
+   book's own navigation, shown in the Go To dropdown from any page.
+   ============================================================================ */
 function xmlEsc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -865,8 +1011,7 @@ ${epubBody(content)}</body>
 `;
 
   const zip = new JSZip();
-  // mimetype must be first and uncompressed
-  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });   // must be first & stored
   zip.file("META-INF/container.xml", containerXml);
   const oebps = zip.folder("OEBPS");
   oebps.file("content.opf", opf);
@@ -880,13 +1025,10 @@ ${epubBody(content)}</body>
   finishStatus(content, "epub");
 }
 
-// ===========================================================================
-// PDF — opens a print-ready view; the reader chooses "Save as PDF".
-// Print-to-PDF is used deliberately: it renders Hebrew RTL correctly (client-
-// side PDF libraries mangle mixed Hebrew/English) and keeps the Contents links
-// clickable. Note: PDFs are fixed-layout, so Kindle won't give a Go To dropdown
-// for them — use Kindle (EPUB) for that.
-// ===========================================================================
+/* ============================================================================
+   SECTION 11 — Builder: PDF (opens a print view; user picks "Save as PDF")
+   Print-to-PDF keeps Hebrew RTL correct and Contents links clickable.
+   ============================================================================ */
 function buildPdf(content) {
   const w = window.open("", "_blank");
   if (!w) { setStatus("Pop-up blocked — allow pop-ups for this site, then try PDF again.", true); return; }
@@ -941,10 +1083,7 @@ ${tocHtml}
 ${bodyHtml}
 </body></html>`;
 
-  w.document.open();
-  w.document.write(doc);
-  w.document.close();
-
+  w.document.open(); w.document.write(doc); w.document.close();
   const go = () => { try { w.focus(); w.print(); } catch (e) {} };
   if (w.document.fonts && w.document.fonts.ready) w.document.fonts.ready.then(() => setTimeout(go, 150));
   else setTimeout(go, 600);
@@ -953,15 +1092,18 @@ ${bodyHtml}
   setStatus("Opened a print view — choose “Save as PDF”.");
 }
 
-// ===========================================================================
-// Format selector + dispatch
-// ===========================================================================
-let OUTFMT = "kindle";
+/* ============================================================================
+   SECTION 12 — Arrange-by + Format selectors, and build dispatch
+   ============================================================================ */
+function setGrouping(g) {
+  GROUPING = g;
+  document.querySelectorAll("#grpSeg button").forEach(b => b.classList.toggle("on", b.dataset.grp === g));
+  if ($("previewCard").style.display !== "none") renderPreview();   // re-lay-out if open
+}
 function setFmt(f) {
   OUTFMT = f;
-  document.querySelectorAll(".fmtseg button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
+  document.querySelectorAll("#fmtSeg button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
 }
-
 async function buildOutput() {
   const content = gatherContent();
   if (content.error) { setStatus(content.error, true); return; }
@@ -978,25 +1120,21 @@ async function buildOutput() {
   }
 }
 
-// ===========================================================================
-// On-page preview of the selected texts
-// ===========================================================================
-function escapeHtml(s) {
-  const d = document.createElement("div");
-  d.textContent = s == null ? "" : String(s);
-  return d.innerHTML;
-}
-
-function pvItem(label, he, en, isSrc) {
+/* ============================================================================
+   SECTION 13 — Preview (final stage): shows every candidate text with its own
+   checkbox, in the current arrangement. Ticking/unticking updates EXCLUDED,
+   which the builders honour. Works in both Category and Section modes.
+   ============================================================================ */
+function pvItem(label, he, en, isSrc, lid) {
+  const check = lid ? `<input type="checkbox" class="pv-check" data-lid="${lid}" ${EXCLUDED.has(lid) ? "" : "checked"}>` : "";
   let body = "";
   if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
   if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
   return `<div class="pv-item${isSrc ? " pv-item-src" : ""}">
-    <div class="pv-ref pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</div>
+    <div class="pv-ref pv-toggle">${check}<span class="pv-caret">▾</span>${escapeHtml(label)}</div>
     <div class="pv-body">${body}</div>
   </div>`;
 }
-
 function applyPvLang() {
   const pv = $("preview");
   pv.classList.toggle("hide-he", !$("pvHe").checked);
@@ -1004,61 +1142,101 @@ function applyPvLang() {
 }
 
 function renderPreview() {
-  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-    .map(b => decodeURIComponent(b.value)));
-  const srcOn = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
-  const haveSrc = srcOn && SRC && (SRC.he.length || SRC.text.length);
-  if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
+  const chosen = treeChosen();
+  const haveSrc = srcIncluded() && SRC && (SRC.he.length || SRC.text.length);
+  // Preview shows every item under a ticked commentator (whether or not it's in
+  // EXCLUDED), so the user can re-tick things they'd dropped.
+  const anyShown = ITEMS.some(it => chosen.has(it.commKey));
+  if (!anyShown && !haveSrc) { setStatus("Tick at least one source in the tree, or include the Original Text.", true); return; }
 
   const ref = $("ref").value.trim();
-  let html = "", count = 0;
+  SHOWN_LIDS = [];
+  PREVIEW_HAS_SRC = !!haveSrc;
+  let html = "";
 
-  // Original Text as one collapsible block
-  if (haveSrc) {
-    const n = Math.max(SRC.he.length, SRC.text.length);
-    let he = "", en = "";
-    for (let i = 0; i < n; i++) {
-      const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
-      const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
+  if (GROUPING === "section") {
+    // build sections from all items under chosen commentators
+    const map = new Map();
+    for (const it of ITEMS) {
+      if (!chosen.has(it.commKey)) continue;
+      let s = map.get(it.secRef);
+      if (!s) { s = { secRef: it.secRef, verse: it.secVerse, items: [] }; map.set(it.secRef, s); }
+      s.items.push(it);
     }
-    html += pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true);
-  }
-
-  for (const cat of CAT_ORDER) {
-    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
-    if (!active.length) continue;
-    html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
-    for (const comm of active) {
-      html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
-      for (const l of TREE[cat][comm]) {
-        const enRef = l.sourceRef || l.ref || "";
-        const heRef = l.sourceHeRef || "";
-        const label = enRef + (heRef ? "  —  " + heRef : "");
-        html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
-        count++;
+    const sections = [...map.values()].sort((a, b) => (a.verse - b.verse) || String(a.secRef).localeCompare(String(b.secRef)));
+    for (const sec of sections) {
+      html += `<div class="pv-cat">${escapeHtml(sec.secRef || ref)}</div>`;
+      if (haveSrc) {
+        const bt = baseTextForVerse(sec.verse);
+        if (bt.he || bt.en) html += pvItem("Base text — " + (sec.secRef || ref), bt.he, bt.en, true, null);
+      }
+      const g = groupByCatComm(sec.items);
+      for (const cat of g.order) {
+        html += `<div class="pv-comm">${escapeHtml(cat)}</div>`;
+        for (const comm of g[cat].commOrder) {
+          for (const it of g[cat].byComm[comm]) {
+            const label = it.enRef + (it.heRef ? "  —  " + it.heRef : "");
+            html += pvItem(label, stripHtml(it.he), stripHtml(it.text), false, it.lid);
+            SHOWN_LIDS.push(it.lid);
+          }
+        }
+      }
+    }
+  } else {
+    if (haveSrc) {
+      const n = Math.max(SRC.he.length, SRC.text.length);
+      let he = "", en = "";
+      for (let i = 0; i < n; i++) {
+        const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
+        const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
+      }
+      html += pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, null);
+    }
+    for (const cat of CAT_ORDER) {
+      const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length)
+        .filter(comm => chosen.has(keyFor(cat, comm)));
+      if (!comms.length) continue;
+      html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
+      for (const comm of comms) {
+        html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+        for (const it of TREE[cat][comm]) {
+          const label = it.enRef + (it.heRef ? "  —  " + it.heRef : "");
+          html += pvItem(label, stripHtml(it.he), stripHtml(it.text), false, it.lid);
+          SHOWN_LIDS.push(it.lid);
+        }
       }
     }
   }
 
   $("preview").innerHTML = html || "<p class='pv-en'>Nothing to show.</p>";
-
-  // start the preview language toggles from the document settings
   $("pvHe").checked = $("incHe").checked;
   $("pvEn").checked = $("incEn").checked;
   applyPvLang();
-
-  const bits = [];
-  if (haveSrc) bits.push("Original Text");
-  if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
-  $("previewCount").textContent = "Showing " + (bits.join(" + ") || "nothing") + " — tap a heading to collapse it";
+  updatePreviewCount();
   $("previewCard").style.display = "block";
   setStatus("");
   $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// per-item collapse (event delegation), language toggles, expand/collapse all
+function updatePreviewCount() {
+  const kept = SHOWN_LIDS.filter(l => !EXCLUDED.has(l)).length;
+  const bits = [];
+  if (PREVIEW_HAS_SRC) bits.push("base text");
+  bits.push(kept + " of " + SHOWN_LIDS.length + " linked texts kept");
+  $("previewCount").textContent =
+    (GROUPING === "section" ? "Arranged by section — " : "Arranged by category — ") +
+    bits.join(" + ") + ". Untick a box to drop that text; the build uses what's ticked.";
+}
+
+/* preview interactions */
+$("preview").addEventListener("change", e => {
+  const cb = e.target.closest("input.pv-check");
+  if (!cb) return;
+  if (cb.checked) EXCLUDED.delete(cb.dataset.lid); else EXCLUDED.add(cb.dataset.lid);
+  updatePreviewCount();
+});
 $("preview").addEventListener("click", e => {
+  if (e.target.closest(".pv-check")) return;       // clicking the checkbox shouldn't collapse
   const t = e.target.closest(".pv-toggle");
   if (t) t.parentElement.classList.toggle("collapsed");
 });
@@ -1066,11 +1244,21 @@ $("pvHe").onchange = applyPvLang;
 $("pvEn").onchange = applyPvLang;
 $("pvExpandAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.remove("collapsed"));
 $("pvCollapseAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.add("collapsed"));
+$("pvCheckAll").onclick = () => {
+  SHOWN_LIDS.forEach(l => EXCLUDED.delete(l));
+  [...document.querySelectorAll("#preview .pv-check")].forEach(c => c.checked = true);
+  updatePreviewCount();
+};
+$("pvUncheckAll").onclick = () => {
+  SHOWN_LIDS.forEach(l => EXCLUDED.add(l));
+  [...document.querySelectorAll("#preview .pv-check")].forEach(c => c.checked = false);
+  updatePreviewCount();
+};
 
-// ===========================================================================
-// Reference builder — Browse (category drill-down)
-// Selecting a reference fills the box and fetches its links automatically.
-// ===========================================================================
+/* ============================================================================
+   SECTION 14 — Browse navigator (category drill-down)
+   Selecting a reference fills the box and fetches its links automatically.
+   ============================================================================ */
 const TOC_API = "https://www.sefaria.org/api/index";
 const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
 const SHAPE_API = "https://www.sefaria.org/api/shape/";
@@ -1092,12 +1280,7 @@ function setMode(m) {
   $("browsePanel").style.display = m === "browse" ? "block" : "none";
   if (m === "browse" && backStack.length === 0) startBrowse();
 }
-
-function commitRef(ref) {
-  $("ref").value = ref;
-  setMode("type");
-  fetchLinks();
-}
+function commitRef(ref) { $("ref").value = ref; setMode("type"); fetchLinks(); }
 
 function mk(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
 function navBody() { return $("navBody"); }
@@ -1150,7 +1333,6 @@ async function ensureToc() {
   TOC = await res.json();
   return TOC;
 }
-
 function startBrowse() { backStack = []; pushView("Texts", renderCorpora); }
 
 function renderCorpora() {
@@ -1307,15 +1489,17 @@ async function fetchCount(ref) {
   } catch (e) { return null; }
 }
 
-// ===========================================================================
-// Wiring
-// ===========================================================================
+/* ============================================================================
+   SECTION 15 — Wiring
+   ============================================================================ */
 document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-document.querySelectorAll(".fmtseg button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
+document.querySelectorAll("#grpSeg button").forEach(b => b.onclick = () => setGrouping(b.dataset.grp));
+document.querySelectorAll("#fmtSeg button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
 
 $("clearBtn").onclick = () => {
   $("ref").value = "";
-  LINKS = []; TREE = {}; CAT_ORDER = []; SRC = null;
+  LINKS = []; ITEMS = []; TREE = {}; CAT_ORDER = []; SRC = null;
+  EXCLUDED = new Set(); SHOWN_LIDS = []; PREVIEW_HAS_SRC = false;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
   $("tree").innerHTML = "";
@@ -1330,6 +1514,7 @@ $("previewBtn").onclick = renderPreview;
 $("fetchBtn").onclick = fetchLinks;
 $("genBtn").onclick = buildOutput;
 
+setGrouping("category");
 setFmt("kindle");
 </script>
 </body>
