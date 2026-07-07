@@ -314,9 +314,12 @@ function commName(l) {
 function catName(l) { return l.category || "Other"; }
 function keyFor(cat, comm) { return cat + "||" + comm; }
 
-// Which segment of the source a link hangs off. A link anchored to a range
-// (e.g. "Shabbat 100a:3-5") is filed under its first segment, so it appears once.
+// Which segment of the source a link hangs off. Prefer the segment the link
+// was actually fetched for (set during the segment-by-segment walk); fall back
+// to anchorRef only for refs that couldn't be expanded. A link spanning several
+// segments is filed under the first segment it was seen for, so it appears once.
 function segRefOf(l) {
+  if (l._seg) return l._seg;
   if (Array.isArray(l.anchorRefExpanded) && l.anchorRefExpanded.length) return l.anchorRefExpanded[0];
   return l.anchorRef || "";
 }
@@ -421,7 +424,7 @@ $("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
 // ===========================================================================
 function isMultiSegmentSection(ref) {
   if (ref.indexOf(":") >= 0) return false;   // already a specific segment
-  if (/\d+[ab]$/.test(ref)) return false;     // Talmud daf (e.g. 100a)
+  if (/\d+[ab]$/.test(ref)) return true;      // Talmud daf (e.g. 100a) — walk its segments
   return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
 }
 
@@ -467,7 +470,13 @@ async function fetchLinksBySegments(ref) {
       const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
       if (!r.ok) return [];
       const d = await r.json();
-      return Array.isArray(d) ? d : [];
+      if (!Array.isArray(d)) return [];
+      // Tag each link with the segment it was fetched for. This is the ground
+      // truth for section grouping — per-segment calls return every category
+      // (Tanakh, Talmud, Halakhah…), exactly matching Sefaria's own sidebar,
+      // whereas anchorRef on a whole-page call is unreliable outside Commentary.
+      d.forEach(l => { l._seg = sref; });
+      return d;
     } catch (e) { return []; }
   }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
   return [].concat.apply([], chunks);
