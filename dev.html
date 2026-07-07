@@ -116,6 +116,19 @@
   .srcrow .cat-head { cursor: default; }
   .srcrow .srcbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
 
+  /* ---- section-grouped tree: three checkbox levels ---- */
+  .cat-head .segbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .commgrp { border-bottom: 1px solid var(--line); }
+  .commgrp:last-child { border-bottom: none; }
+  .comm.commhead { cursor: pointer; border-bottom: none; user-select: none; }
+  .comm.commhead .commbox2 { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .comm .caret2 { font-size: 10px; color: var(--muted); transition: transform .15s; }
+  .commgrp.collapsed .caret2 { transform: rotate(-90deg); }
+  .commgrp.collapsed .linklist { display: none; }
+  .linklist { padding: 0 0 6px 26px; }
+  .linkrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13.5px; color: var(--muted); margin: 0; }
+  .linkrow input { margin: 0; flex: none; }
+
   /* ---- reference builder: mode switch + browse navigator ---- */
   .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
   .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
@@ -145,7 +158,7 @@
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
 
-  /* ---- output-format selector ---- */
+  /* ---- output-format selector (also reused for the Group-by selector) ---- */
   .fmtlabel { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
   .fmtseg { display: flex; gap: 6px; }
   .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
@@ -186,7 +199,13 @@
   </div>
 
   <div class="card tree" id="treeCard">
-    <div class="treehead">
+    <div class="fmtlabel" style="margin-top:0">Group by</div>
+    <div class="fmtseg grpseg">
+      <button type="button" data-grp="cat" class="on">Category</button>
+      <button type="button" data-grp="seg">Section</button>
+    </div>
+
+    <div class="treehead" style="margin-top:16px">
       <strong>Choose sources</strong>
       <span class="globaltoggle" id="toggleAll">select all / none</span>
     </div>
@@ -223,9 +242,12 @@ const $ = id => document.getElementById(id);
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
-let LINKS = [];      // link objects with text
+let LINKS = [];      // link objects with text (each gets a stable index l._i)
 let TREE = {};       // category -> { commentator -> [links] }
 let CAT_ORDER = [];  // categories, most links first
+let SEG_TREE = {};   // segment ref -> { commentator -> [links] }
+let SEG_ORDER = [];  // segment refs, in textual order
+let GROUPMODE = "cat"; // "cat" | "seg"
 let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
 
 function toArr(v) {
@@ -291,6 +313,30 @@ function commName(l) {
 }
 function catName(l) { return l.category || "Other"; }
 function keyFor(cat, comm) { return cat + "||" + comm; }
+
+// Which segment of the source a link hangs off. A link anchored to a range
+// (e.g. "Shabbat 100a:3-5") is filed under its first segment, so it appears once.
+function segRefOf(l) {
+  if (Array.isArray(l.anchorRefExpanded) && l.anchorRefExpanded.length) return l.anchorRefExpanded[0];
+  return l.anchorRef || "";
+}
+function segNum(ref) {
+  const m = String(ref).match(/:(\d+)$/);
+  return m ? parseInt(m[1], 10) : 0;   // whole-page anchors sort first
+}
+// Commentators within a segment: fixed category rank, then frequency.
+function segComms(seg) {
+  return Object.keys(SEG_TREE[seg]).sort((a, b) => {
+    const ra = catRank(SEG_TREE[seg][a][0].category || "");
+    const rb = catRank(SEG_TREE[seg][b][0].category || "");
+    if (ra !== rb) return ra - rb;
+    return SEG_TREE[seg][b].length - SEG_TREE[seg][a].length;
+  });
+}
+function pickedLinkSet() {
+  return new Set([...document.querySelectorAll(".linkbox:checked")]
+    .map(b => parseInt(b.dataset.i, 10)));
+}
 
 // Fixed section order: Source Text is emitted first separately; then these
 // categories in this order (if present), then everything else by frequency.
@@ -371,7 +417,7 @@ $("ref").addEventListener("keydown", e => {
 $("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
 
 // ===========================================================================
-// Fetch links + build the source tree
+// Fetch links + build the source trees (by category, and by section)
 // ===========================================================================
 function isMultiSegmentSection(ref) {
   if (ref.indexOf(":") >= 0) return false;   // already a specific segment
@@ -451,7 +497,17 @@ async function fetchLinks() {
       return;
     }
 
-    LINKS = data.filter(l => asText(l.he) || asText(l.text));
+    // keep only links with text, and dedupe (a ranged link can come back once
+    // per segment when a chapter is fetched segment-by-segment)
+    const seen = new Set();
+    LINKS = data.filter(l => {
+      if (!(asText(l.he) || asText(l.text))) return false;
+      const id = l._id || (commName(l) + "|" + (l.sourceRef || l.ref || "") + "|" + (l.anchorRef || ""));
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    LINKS.forEach((l, i) => l._i = i);   // stable index for per-link checkboxes
 
     // group: category -> commentator -> links
     TREE = {};
@@ -467,6 +523,17 @@ async function fetchLinks() {
       return catCount(b) - catCount(a);         // else frequency, descending
     });
 
+    // group: section (anchor segment) -> commentator -> links
+    SEG_TREE = {};
+    for (const l of LINKS) {
+      const s = segRefOf(l) || "(whole page)";
+      const n = commName(l);
+      (SEG_TREE[s] = SEG_TREE[s] || {});
+      (SEG_TREE[s][n] = SEG_TREE[s][n] || []).push(l);
+    }
+    SEG_ORDER = Object.keys(SEG_TREE).sort((a, b) =>
+      segNum(a) - segNum(b) || a.localeCompare(b));
+
     // fetch the reference's own text first, so "Original Text" can head the list (non-fatal)
     SRC = null;
     try {
@@ -477,7 +544,7 @@ async function fetchLinks() {
       }
     } catch (e) { /* silent: source text just won't be available */ }
 
-    renderTree(catCount);
+    renderTree();
     setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
@@ -486,16 +553,28 @@ async function fetchLinks() {
   }
 }
 
-function renderTree(catCount) {
+// ===========================================================================
+// Tree rendering — dispatches on the grouping mode
+// ===========================================================================
+function renderTree() {
+  if (GROUPMODE === "seg") renderSegTree();
+  else renderCatTree();
+}
+
+function srcRowHtml(subtitle) {
   const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
-  const srcRow = `<div class="cat srcrow">
+  return `<div class="cat srcrow">
       <div class="cat-head">
         <input type="checkbox" class="srcbox" id="srcbox" ${srcAvailable ? "checked" : "disabled"}>
         <span class="caret" style="visibility:hidden">▾</span>
         <strong>Original Text</strong>
-        <span class="count">${srcAvailable ? "the passage itself" : "not available"}</span>
+        <span class="count">${srcAvailable ? subtitle : "not available"}</span>
       </div>
     </div>`;
+}
+
+function renderCatTree() {
+  const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
 
   const catsHtml = CAT_ORDER.map(cat => {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
@@ -516,7 +595,7 @@ function renderTree(catCount) {
       <div class="comm-list">${rows}</div>
     </div>`;
   }).join("");
-  $("tree").innerHTML = srcRow + catsHtml;
+  $("tree").innerHTML = srcRowHtml("the passage itself") + catsHtml;
 
   [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(cat => {
     const head = cat.querySelector(".cat-head");
@@ -543,12 +622,97 @@ function renderTree(catCount) {
   $("treeCard").style.display = "block";
 }
 
+// Section mode: section (segment of the page) → source → individual texts,
+// with a checkbox at every level.
+function renderSegTree() {
+  const segsHtml = SEG_ORDER.map(seg => {
+    const comms = segComms(seg);
+    const total = comms.reduce((s, c) => s + SEG_TREE[seg][c].length, 0);
+    const grps = comms.map(comm => {
+      const links = SEG_TREE[seg][comm];
+      const rows = links.map(l => {
+        const label = l.sourceRef || l.ref || "(untitled)";
+        return `<label class="linkrow">
+          <input type="checkbox" class="linkbox" data-i="${l._i}" checked>
+          <span>${escapeHtml(label)}</span>
+        </label>`;
+      }).join("");
+      return `<div class="commgrp collapsed">
+        <div class="comm commhead">
+          <input type="checkbox" class="commbox2" checked>
+          <span class="caret2">▾</span>
+          <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
+        </div>
+        <div class="linklist">${rows}</div>
+      </div>`;
+    }).join("");
+    return `<div class="cat seg collapsed">
+      <div class="cat-head">
+        <input type="checkbox" class="segbox" checked>
+        <span class="caret">▾</span>
+        <strong>${escapeHtml(seg)}</strong><span class="count">${total}</span>
+      </div>
+      <div class="comm-list">${grps}</div>
+    </div>`;
+  }).join("");
+  $("tree").innerHTML = srcRowHtml("each section’s own text") + segsHtml;
+
+  [...$("tree").querySelectorAll(".cat.seg")].forEach(cat => {
+    const head = cat.querySelector(".cat-head");
+    const segbox = cat.querySelector(".segbox");
+    const grps = [...cat.querySelectorAll(".commgrp")];
+    const allLinks = [...cat.querySelectorAll(".linkbox")];
+
+    function syncSeg() {
+      const on = allLinks.filter(b => b.checked).length;
+      segbox.checked = on > 0;
+      segbox.indeterminate = on > 0 && on < allLinks.length;
+    }
+    head.addEventListener("click", e => {
+      if (e.target === segbox) return;
+      cat.classList.toggle("collapsed");
+    });
+    grps.forEach(g => {
+      const chead = g.querySelector(".commhead");
+      const cbox = g.querySelector(".commbox2");
+      const links = [...g.querySelectorAll(".linkbox")];
+      function syncComm() {
+        const on = links.filter(b => b.checked).length;
+        cbox.checked = on > 0;
+        cbox.indeterminate = on > 0 && on < links.length;
+      }
+      chead.addEventListener("click", e => {
+        if (e.target === cbox) return;
+        g.classList.toggle("collapsed");
+      });
+      cbox.addEventListener("change", () => {
+        links.forEach(b => b.checked = cbox.checked);
+        cbox.indeterminate = false;
+        syncSeg();
+      });
+      links.forEach(b => b.addEventListener("change", () => { syncComm(); syncSeg(); }));
+    });
+    segbox.addEventListener("change", () => {
+      allLinks.forEach(b => b.checked = segbox.checked);
+      grps.forEach(g => {
+        const cb = g.querySelector(".commbox2");
+        cb.checked = segbox.checked; cb.indeterminate = false;
+      });
+      segbox.indeterminate = false;
+    });
+  });
+
+  $("treeCard").style.display = "block";
+}
+
 $("toggleAll").onclick = () => {
   const src = $("srcbox");
-  const boxes = [...document.querySelectorAll(".commbox")];
-  const anyOff = boxes.some(b => !b.checked) || (src && !src.disabled && !src.checked);
-  boxes.forEach(b => b.checked = anyOff);
-  [...document.querySelectorAll(".catbox")].forEach(cb => { cb.checked = anyOff; cb.indeterminate = false; });
+  const leaves = [...document.querySelectorAll(".commbox, .linkbox")];
+  const anyOff = leaves.some(b => !b.checked) || (src && !src.disabled && !src.checked);
+  leaves.forEach(b => b.checked = anyOff);
+  [...document.querySelectorAll(".catbox, .commbox2, .segbox")].forEach(cb => {
+    cb.checked = anyOff; cb.indeterminate = false;
+  });
   if (src && !src.disabled) src.checked = anyOff;
 };
 
@@ -559,15 +723,12 @@ $("toggleAll").onclick = () => {
 //   toc:    [{level:1|2, text, anchor}]
 // ===========================================================================
 function gatherContent() {
-  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-    .map(b => decodeURIComponent(b.value)));
   const incHe = $("incHe").checked;
   const incEn = $("incEn").checked;
   const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
   const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
 
   if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
-  if (chosen.size === 0 && !haveSrc) return { error: "Select at least one source, or include the source text." };
 
   const ref = $("ref").value.trim();
   const blocks = [];
@@ -576,8 +737,7 @@ function gatherContent() {
   const nextId = () => "sec" + (bmId++);
   let written = 0;
 
-  // ---- source text first, for context ----
-  if (haveSrc) {
+  const emitWholeSource = () => {
     const srcLabel = SRC.heRef || SRC.ref || ref;
     const anchor = nextId();
     toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
@@ -587,7 +747,62 @@ function gatherContent() {
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
       if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
     }
+  };
+
+  // ---------------- section mode ----------------
+  if (GROUPMODE === "seg") {
+    const picked = pickedLinkSet();
+    if (!picked.size && !haveSrc) return { error: "Select at least one text, or include the source text." };
+
+    if (!picked.size) {          // source only — same output as category mode
+      emitWholeSource();
+      return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
+    }
+
+    for (const seg of SEG_ORDER) {
+      const comms = segComms(seg);
+      const sel = comms
+        .map(c => [c, SEG_TREE[seg][c].filter(l => picked.has(l._i))])
+        .filter(p => p[1].length);
+      if (!sel.length) continue;   // no selected texts in this section — skip it
+
+      const anchor = nextId();
+      toc.push({ level: 1, text: seg, anchor });
+      blocks.push({ type: "h1", text: seg, anchor, first: blocks.length === 0 });
+
+      // the section's own text first, if Original Text is on
+      if (haveSrc) {
+        const idx = segNum(seg) - 1;
+        if (idx >= 0) {
+          if (incHe) { const he = stripHtml(SRC.he[idx] || ""); if (he) blocks.push({ type: "he", text: he }); }
+          if (incEn) { const en = stripHtml(SRC.text[idx] || ""); if (en) blocks.push({ type: "en", text: en }); }
+        }
+      }
+
+      for (const [comm, arr] of sel) {
+        const a2 = nextId();
+        toc.push({ level: 2, text: comm, anchor: a2 });
+        blocks.push({ type: "h2", text: comm, anchor: a2 });
+        for (const l of arr) {
+          const enRef = l.sourceRef || l.ref || "";
+          const heRef = l.sourceHeRef || "";
+          blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
+          if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
+          if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+          written++;
+        }
+      }
+    }
+    return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
   }
+
+  // ---------------- category mode ----------------
+  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
+    .map(b => decodeURIComponent(b.value)));
+  if (chosen.size === 0 && !haveSrc) return { error: "Select at least one source, or include the source text." };
+
+  // ---- source text first, for context ----
+  if (haveSrc) emitWholeSource();
 
   // ---- selected categories / commentators ----
   for (const cat of CAT_ORDER) {
@@ -959,7 +1174,20 @@ ${bodyHtml}
 let OUTFMT = "kindle";
 function setFmt(f) {
   OUTFMT = f;
-  document.querySelectorAll(".fmtseg button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
+  document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
+}
+
+// Group-by selector: re-renders the tree in the chosen grouping.
+// Note: switching resets the checkbox selection (the two views select
+// by different units — commentator keys vs individual texts).
+function setGrp(g) {
+  if (g === GROUPMODE) return;
+  GROUPMODE = g;
+  document.querySelectorAll(".grpseg button").forEach(b => b.classList.toggle("on", b.dataset.grp === g));
+  if (LINKS.length) {
+    renderTree();
+    $("previewCard").style.display = "none";
+  }
 }
 
 async function buildOutput() {
@@ -1003,40 +1231,80 @@ function applyPvLang() {
   pv.classList.toggle("hide-en", !$("pvEn").checked);
 }
 
+function wholeSrcPvItem(ref) {
+  const n = Math.max(SRC.he.length, SRC.text.length);
+  let he = "", en = "";
+  for (let i = 0; i < n; i++) {
+    const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
+    const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
+  }
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true);
+}
+
 function renderPreview() {
-  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-    .map(b => decodeURIComponent(b.value)));
   const srcOn = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
   const haveSrc = srcOn && SRC && (SRC.he.length || SRC.text.length);
-  if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
-
   const ref = $("ref").value.trim();
-  let html = "", count = 0;
+  let html = "", count = 0, sections = 0;
 
-  // Original Text as one collapsible block
-  if (haveSrc) {
-    const n = Math.max(SRC.he.length, SRC.text.length);
-    let he = "", en = "";
-    for (let i = 0; i < n; i++) {
-      const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
-      const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
+  if (GROUPMODE === "seg") {
+    // ---------------- section mode ----------------
+    const picked = pickedLinkSet();
+    if (!picked.size && !haveSrc) { setStatus("Select at least one text, or include the Original Text.", true); return; }
+
+    if (!picked.size) {
+      html += wholeSrcPvItem(ref);
+    } else {
+      for (const seg of SEG_ORDER) {
+        const comms = segComms(seg);
+        const sel = comms
+          .map(c => [c, SEG_TREE[seg][c].filter(l => picked.has(l._i))])
+          .filter(p => p[1].length);
+        if (!sel.length) continue;
+        sections++;
+        html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
+        if (haveSrc) {
+          const idx = segNum(seg) - 1;
+          if (idx >= 0) {
+            const he = stripHtml(SRC.he[idx] || "");
+            const en = stripHtml(SRC.text[idx] || "");
+            if (he || en) html += pvItem("Source — " + seg, he, en, true);
+          }
+        }
+        for (const [comm, arr] of sel) {
+          html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+          for (const l of arr) {
+            const enRef = l.sourceRef || l.ref || "";
+            const heRef = l.sourceHeRef || "";
+            const label = enRef + (heRef ? "  —  " + heRef : "");
+            html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
+            count++;
+          }
+        }
+      }
     }
-    html += pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true);
-  }
+  } else {
+    // ---------------- category mode ----------------
+    const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
+      .map(b => decodeURIComponent(b.value)));
+    if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
 
-  for (const cat of CAT_ORDER) {
-    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
-    if (!active.length) continue;
-    html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
-    for (const comm of active) {
-      html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
-      for (const l of TREE[cat][comm]) {
-        const enRef = l.sourceRef || l.ref || "";
-        const heRef = l.sourceHeRef || "";
-        const label = enRef + (heRef ? "  —  " + heRef : "");
-        html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
-        count++;
+    if (haveSrc) html += wholeSrcPvItem(ref);
+
+    for (const cat of CAT_ORDER) {
+      const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+      const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
+      if (!active.length) continue;
+      html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
+      for (const comm of active) {
+        html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+        for (const l of TREE[cat][comm]) {
+          const enRef = l.sourceRef || l.ref || "";
+          const heRef = l.sourceHeRef || "";
+          const label = enRef + (heRef ? "  —  " + heRef : "");
+          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
+          count++;
+        }
       }
     }
   }
@@ -1049,9 +1317,15 @@ function renderPreview() {
   applyPvLang();
 
   const bits = [];
-  if (haveSrc) bits.push("Original Text");
-  if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
-  $("previewCount").textContent = "Showing " + (bits.join(" + ") || "nothing") + " — tap a heading to collapse it";
+  if (GROUPMODE === "seg") {
+    if (sections) bits.push(sections + " section" + (sections === 1 ? "" : "s"));
+    if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
+    if (!count && haveSrc) bits.push("Original Text");
+  } else {
+    if (haveSrc) bits.push("Original Text");
+    if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
+  }
+  $("previewCount").textContent = "Showing " + (bits.join(" · ") || "nothing") + " — tap a heading to collapse it";
   $("previewCard").style.display = "block";
   setStatus("");
   $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1311,11 +1585,12 @@ async function fetchCount(ref) {
 // Wiring
 // ===========================================================================
 document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-document.querySelectorAll(".fmtseg button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
+document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
+document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
 
 $("clearBtn").onclick = () => {
   $("ref").value = "";
-  LINKS = []; TREE = {}; CAT_ORDER = []; SRC = null;
+  LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
   $("tree").innerHTML = "";
