@@ -92,6 +92,9 @@
   .cat-head .caret { transition: transform .15s; font-size: 12px; color: var(--muted); }
   .cat.collapsed .caret { transform: rotate(-90deg); }
   .cat-head .count { color: var(--muted); font-size: 13px; }
+  .cat-head strong { font-weight: bold; }
+  .cat-head .glabel { display: flex; flex-direction: column; line-height: 1.25; }
+  .cat-head .glabel .ghe { font-family: 'Frank Ruhl Libre', serif; color: var(--muted); font-size: 13px; direction: rtl; }
   .comm-list { padding: 4px 12px 8px; }
   .cat.collapsed .comm-list { display: none; }
   .comm {
@@ -116,6 +119,7 @@
   .cat-head .catbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
   .srcrow .cat-head { cursor: default; }
   .srcrow .srcbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .comm .commbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
 
   /* ---- reference builder: mode switch + browse navigator ---- */
   .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
@@ -182,6 +186,13 @@
     </div>
 
     <button id="fetchBtn">Fetch links</button>
+
+    <div class="fmtlabel">Arrange by</div>
+    <div class="fmtseg" id="grpSeg">
+      <button type="button" data-grp="category" class="on">Category</button>
+      <button type="button" data-grp="section">Section of text</button>
+    </div>
+
     <div class="clearrow"><span class="globaltoggle" id="clearBtn">clear</span></div>
     <div class="status" id="status"></div>
   </div>
@@ -192,12 +203,6 @@
       <span class="globaltoggle" id="toggleAll">select all / none</span>
     </div>
     <div id="tree"></div>
-
-    <div class="fmtlabel">Arrange by</div>
-    <div class="fmtseg" id="grpSeg">
-      <button type="button" data-grp="category" class="on">Category</button>
-      <button type="button" data-grp="section">Section of text</button>
-    </div>
 
     <button id="previewBtn">Preview &amp; pick texts</button>
 
@@ -237,16 +242,17 @@
      SECTION 3  — External library loaders (docx, JSZip)
      SECTION 4  — Reference autocomplete
      SECTION 5  — Fetch links + base text; build the data model
-     SECTION 6  — Source-selector tree (coarse filter: commentators)
-     SECTION 7  — Grouping + selection helpers (category | section, tree, items)
-     SECTION 8  — Content gathering (format-neutral block list, both modes)
-     SECTION 9  — Builder: Word (.docx)
-     SECTION 10 — Builder: Kindle (EPUB)
-     SECTION 11 — Builder: PDF (print view)
-     SECTION 12 — Arrange-by + Format selectors, and build dispatch
-     SECTION 13 — Preview (final stage: per-text checkboxes, both modes)
-     SECTION 14 — Browse navigator (category drill-down)
-     SECTION 15 — Wiring
+     SECTION 6  — Grouping model (category | section) — one source of truth
+     SECTION 7  — Selection state (SELECTED lids) + helpers
+     SECTION 8  — "Choose sources" tree (grouped per the Arrange-by choice)
+     SECTION 9  — Content gathering (format-neutral block list)
+     SECTION 10 — Builder: Word (.docx)
+     SECTION 11 — Builder: Kindle (EPUB)
+     SECTION 12 — Builder: PDF (print view)
+     SECTION 13 — Arrange-by + Format selectors, and build dispatch
+     SECTION 14 — Preview (final stage: per-text checkboxes)
+     SECTION 15 — Browse navigator (category drill-down)
+     SECTION 16 — Wiring
    ============================================================================ */
 
 /* ============================================================================
@@ -259,19 +265,20 @@ const TEXTS_API = "https://www.sefaria.org/api/texts/";
 
 let LINKS = [];       // raw link objects from Sefaria (filtered to those with text)
 let ITEMS = [];       // normalised per-text records — the working data model
-let TREE = {};         // category -> { commentator -> [ITEMS] }  (drives the tree UI)
+let TREE = {};         // category -> { commentator -> [ITEMS] }  (for category grouping)
 let CAT_ORDER = [];    // categories in display order (fixed list, then by frequency)
 let SRC = null;        // base text: { ref, heRef, he:[segments], text:[segments] }
 
-let EXCLUDED = new Set();      // lids the user has unticked in the preview
-let GROUPING = "category";     // "category" | "section" — how output is arranged
+let SELECTED = new Set();      // lids ticked in the tree (coarse: whole commentators / sections)
+let EXCLUDED = new Set();      // lids unticked in the preview (fine: individual texts)
+let GROUPING = "category";     // "category" | "section" — arrangement of tree AND output
 let OUTFMT   = "kindle";       // "kindle" | "word" | "pdf"
 
 let SHOWN_LIDS = [];           // lids currently rendered in the preview
 let PREVIEW_HAS_SRC = false;   // whether the preview included base text
 
-// Fixed section order: Source/base text leads; then these categories in this
-// order (if present); then everything else by frequency, descending.
+// Fixed order: Source/base text leads; then these categories in this order (if
+// present); then everything else by frequency, descending.
 const FIXED_ORDER = [
   ["commentary"],
   ["mishnah", "mishna"],
@@ -283,7 +290,7 @@ const FIXED_ORDER = [
 function catRank(c) {
   const lc = String(c).toLowerCase();
   for (let i = 0; i < FIXED_ORDER.length; i++) if (FIXED_ORDER[i].includes(lc)) return i;
-  return Infinity;   // unranked → after the fixed list, by frequency
+  return Infinity;
 }
 
 /* ============================================================================
@@ -320,8 +327,6 @@ function commName(l) {
   return (l.collectiveTitle && l.collectiveTitle.en) || l.index_title || l.category || "Other";
 }
 function catName(l) { return l.category || "Other"; }
-function keyFor(cat, comm) { return cat + "||" + comm; }
-// Trailing segment number from a ref, e.g. "Shabbat 100a:5" -> 5, "Genesis 1:5" -> 5.
 function segNum(ref) { const m = String(ref).match(/(\d+)\s*$/); return m ? parseInt(m[1], 10) : 0; }
 
 /* ============================================================================
@@ -432,10 +437,6 @@ async function mapPool(items, worker, poolSize, onProgress) {
   return results;
 }
 
-// A whole chapter/section: the links API doesn't reliably return linked *text*
-// for a multi-segment ref, so walk it segment-by-segment and merge. Each
-// per-segment call still returns each link's own anchorRef, so section grouping
-// works either way.
 async function fetchLinksBySegments(ref) {
   setStatus("Reading " + ref + "…");
   let n = 0;
@@ -465,15 +466,15 @@ async function fetchLinksBySegments(ref) {
   return [].concat.apply([], chunks);
 }
 
-// Turn a raw link into our normalised record. anchorRefExpanded[0] / anchorRef
-// tell us which base segment the link hangs off; anchorVerse gives its number.
+// Normalise a raw link. anchorRefExpanded[0] / anchorRef tell us the base
+// segment the link hangs off; anchorVerse gives its number (for ordering).
 function makeItem(l, i) {
   const category = catName(l), commentator = commName(l);
   const secRef = (Array.isArray(l.anchorRefExpanded) && l.anchorRefExpanded[0]) || l.anchorRef || "";
   const secVerse = (typeof l.anchorVerse === "number" && l.anchorVerse) || segNum(secRef);
   return {
     lid: "L" + i,
-    category, commentator, commKey: keyFor(category, commentator),
+    category, commentator,
     secRef, secVerse,
     enRef: l.sourceRef || l.ref || "",
     heRef: l.sourceHeRef || "",
@@ -508,9 +509,10 @@ async function fetchLinks() {
 
     LINKS = data.filter(l => asText(l.he) || asText(l.text));
     ITEMS = LINKS.map(makeItem);
+    SELECTED = new Set(ITEMS.map(it => it.lid));   // everything on by default
     EXCLUDED = new Set();
 
-    // group: category -> commentator -> items
+    // category -> commentator -> items (used by category grouping + counts)
     TREE = {};
     for (const it of ITEMS) {
       (TREE[it.category] = TREE[it.category] || {});
@@ -519,11 +521,11 @@ async function fetchLinks() {
     const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
     CAT_ORDER = Object.keys(TREE).sort((a, b) => {
       const ra = catRank(a), rb = catRank(b);
-      if (ra !== rb) return ra - rb;            // fixed order wins
-      return catCount(b) - catCount(a);         // else frequency, descending
+      if (ra !== rb) return ra - rb;
+      return catCount(b) - catCount(a);
     });
 
-    // fetch the reference's own text so it can head things (non-fatal)
+    // base text (non-fatal)
     SRC = null;
     try {
       const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
@@ -533,7 +535,7 @@ async function fetchLinks() {
       }
     } catch (e) { /* silent */ }
 
-    renderTree(catCount);
+    renderTree();
     setStatus(`Found ${ITEMS.length} texts. Choose sources, then Preview & pick.`);
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
@@ -543,95 +545,61 @@ async function fetchLinks() {
 }
 
 /* ============================================================================
-   SECTION 6 — Source-selector tree (coarse filter: which commentators at all)
+   SECTION 6 — Grouping model: turn ITEMS into ordered groups + leaves.
+   Both groupings share the same shape so the tree, preview and output can all
+   consume them:
+     group  = { key, label, he, leaves:[leaf], count, verse? }
+     leaf   = { key, label, lids:[lid...], count }
    ============================================================================ */
-function renderTree(catCount) {
-  const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
-  const srcRow = `<div class="cat srcrow">
-      <div class="cat-head">
-        <input type="checkbox" class="srcbox" id="srcbox" ${srcAvailable ? "checked" : "disabled"}>
-        <span class="caret" style="visibility:hidden">▾</span>
-        <strong>Original Text</strong>
-        <span class="count">${srcAvailable ? "the passage itself" : "not available"}</span>
-      </div>
-    </div>`;
-
-  const catsHtml = CAT_ORDER.map(cat => {
+function categoryGroups() {
+  return CAT_ORDER.map(cat => {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-    const rows = comms.map(comm => {
-      const n = TREE[cat][comm].length;
-      const k = keyFor(cat, comm);
-      return `<label class="comm">
-        <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" value="${encodeURIComponent(k)}" checked>
-        <span>${comm}</span><span class="count">${n}</span>
-      </label>`;
-    }).join("");
-    return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
-      <div class="cat-head">
-        <input type="checkbox" class="catbox" checked>
-        <span class="caret">▾</span>
-        <strong>${cat}</strong><span class="count">${catCount(cat)}</span>
-      </div>
-      <div class="comm-list">${rows}</div>
-    </div>`;
-  }).join("");
-  $("tree").innerHTML = srcRow + catsHtml;
-
-  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(cat => {
-    const head = cat.querySelector(".cat-head");
-    const catbox = cat.querySelector(".catbox");
-    const commboxes = [...cat.querySelectorAll(".commbox")];
-
-    head.addEventListener("click", e => {
-      if (e.target === catbox) return;
-      cat.classList.toggle("collapsed");
-    });
-    catbox.addEventListener("change", () => {
-      commboxes.forEach(b => b.checked = catbox.checked);
-    });
-    commboxes.forEach(b => b.addEventListener("change", () => {
-      const on = commboxes.filter(x => x.checked).length;
-      catbox.checked = on > 0;
-      catbox.indeterminate = on > 0 && on < commboxes.length;
+    const leaves = comms.map(comm => ({
+      key: "C|" + cat + "|" + comm,
+      label: comm,
+      lids: TREE[cat][comm].map(it => it.lid),
+      count: TREE[cat][comm].length
     }));
+    return { key: "cat|" + cat, label: cat, he: "", leaves, count: leaves.reduce((s, l) => s + l.count, 0) };
   });
-
-  $("treeCard").style.display = "block";
 }
 
-$("toggleAll").onclick = () => {
-  const src = $("srcbox");
-  const boxes = [...document.querySelectorAll(".commbox")];
-  const anyOff = boxes.some(b => !b.checked) || (src && !src.disabled && !src.checked);
-  boxes.forEach(b => b.checked = anyOff);
-  [...document.querySelectorAll(".catbox")].forEach(cb => { cb.checked = anyOff; cb.indeterminate = false; });
-  if (src && !src.disabled) src.checked = anyOff;
-};
+function sectionsFrom(items) {
+  const map = new Map();
+  for (const it of items) {
+    let s = map.get(it.secRef);
+    if (!s) { s = { secRef: it.secRef, verse: it.secVerse, items: [] }; map.set(it.secRef, s); }
+    s.items.push(it);
+  }
+  return [...map.values()].sort((a, b) => (a.verse - b.verse) || String(a.secRef).localeCompare(String(b.secRef)));
+}
 
-/* ============================================================================
-   SECTION 7 — Grouping + selection helpers
-   Tree = coarse (commentators). EXCLUDED = fine (individual texts, from preview).
-   A text makes the final cut when its commentator is ticked in the tree AND its
-   lid is not in EXCLUDED.
-   ============================================================================ */
-function treeChosen() {
-  return new Set([...document.querySelectorAll(".commbox:checked")].map(b => decodeURIComponent(b.value)));
+function sectionGroups() {
+  return sectionsFrom(ITEMS).map(sec => {
+    // leaves = commentators within the section, ordered by category rank then count
+    const byComm = {};
+    for (const it of sec.items) (byComm[it.commentator] = byComm[it.commentator] || []).push(it);
+    const comms = Object.keys(byComm).sort((a, b) => {
+      const ra = catRank(byComm[a][0].category), rb = catRank(byComm[b][0].category);
+      if (ra !== rb) return ra - rb;
+      return byComm[b].length - byComm[a].length;
+    });
+    const leaves = comms.map(comm => ({
+      key: "S|" + sec.secRef + "|" + comm,
+      label: comm,
+      lids: byComm[comm].map(it => it.lid),
+      count: byComm[comm].length
+    }));
+    return { key: "sec|" + sec.secRef, label: sec.secRef, he: "", leaves, count: sec.items.length, verse: sec.verse };
+  });
 }
-function srcIncluded() {
-  return !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
+
+function currentGroups() {
+  return GROUPING === "section" ? sectionGroups() : categoryGroups();
 }
-function itemKept(it, chosen) {
-  return chosen.has(it.commKey) && !EXCLUDED.has(it.lid);
-}
-// Base text (he/en) for a given section verse number, indexed into SRC segments.
-function baseTextForVerse(v) {
-  if (!SRC) return { he: "", en: "" };
-  const n = Math.max(SRC.he.length, SRC.text.length);
-  let idx = (n <= 1) ? 0 : ((v && v >= 1) ? v - 1 : 0);
-  if (idx < 0 || idx >= n) return { he: "", en: "" };
-  return { he: stripHtml(SRC.he[idx] || ""), en: stripHtml(SRC.text[idx] || "") };
-}
-// Group a set of items by category (fixed order) then commentator (by frequency).
+
+// Group an arbitrary item list by category (fixed order) then commentator —
+// used when laying out a single section in the output / preview.
 function groupByCatComm(items) {
   const byCat = {};
   for (const it of items) (byCat[it.category] = byCat[it.category] || []).push(it);
@@ -649,20 +617,127 @@ function groupByCatComm(items) {
   }
   return g;
 }
-// Sections (base segments) that have surviving items, in natural order.
-function keptSections(chosen) {
-  const map = new Map();
-  for (const it of ITEMS) {
-    if (!itemKept(it, chosen)) continue;
-    let s = map.get(it.secRef);
-    if (!s) { s = { secRef: it.secRef, verse: it.secVerse, items: [] }; map.set(it.secRef, s); }
-    s.items.push(it);
-  }
-  return [...map.values()].sort((a, b) => (a.verse - b.verse) || String(a.secRef).localeCompare(String(b.secRef)));
+
+/* ============================================================================
+   SECTION 7 — Selection state (SELECTED lids) + helpers
+   SELECTED is the single source of truth for the tree, independent of how the
+   tree happens to be grouped, so switching Arrange-by keeps your choices.
+   ============================================================================ */
+function setLids(lids, on) { lids.forEach(l => on ? SELECTED.add(l) : SELECTED.delete(l)); }
+function lidState(lids) { let on = 0; for (const l of lids) if (SELECTED.has(l)) on++; return { on, total: lids.length }; }
+function srcIncluded() { return !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked); }
+function keptItems() { return ITEMS.filter(it => SELECTED.has(it.lid) && !EXCLUDED.has(it.lid)); }
+function selectedItems() { return ITEMS.filter(it => SELECTED.has(it.lid)); }
+
+// Base text (he/en) for a given section verse number, indexed into SRC segments.
+function baseTextForVerse(v) {
+  if (!SRC) return { he: "", en: "" };
+  const n = Math.max(SRC.he.length, SRC.text.length);
+  let idx = (n <= 1) ? 0 : ((v && v >= 1) ? v - 1 : 0);
+  if (idx < 0 || idx >= n) return { he: "", en: "" };
+  return { he: stripHtml(SRC.he[idx] || ""), en: stripHtml(SRC.text[idx] || "") };
 }
 
 /* ============================================================================
-   SECTION 8 — Content gathering (format-neutral)
+   SECTION 8 — "Choose sources" tree, grouped per the Arrange-by choice.
+   Every group (category OR section) has its own select-all checkbox; every leaf
+   (a commentator's texts within that group) has one too. Global select all/none
+   sits in the header.
+   ============================================================================ */
+function renderTree() {
+  const groups = currentGroups();
+  const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
+
+  const srcRow = `<div class="cat srcrow">
+      <div class="cat-head">
+        <input type="checkbox" class="srcbox" id="srcbox" ${srcAvailable ? "checked" : "disabled"}>
+        <span class="caret" style="visibility:hidden">▾</span>
+        <strong>Original Text</strong>
+        <span class="count">${srcAvailable ? "the passage itself" : "not available"}</span>
+      </div>
+    </div>`;
+
+  const groupsHtml = groups.map(g => {
+    const rows = g.leaves.map(leaf => `<label class="comm">
+        <input type="checkbox" class="commbox" data-lids="${leaf.lids.join(",")}" value="${encodeURIComponent(leaf.key)}">
+        <span>${escapeHtml(leaf.label)}</span><span class="count">${leaf.count}</span>
+      </label>`).join("");
+    const heBit = g.he ? `<span class="ghe">${escapeHtml(g.he)}</span>` : "";
+    return `<div class="cat collapsed" data-gkey="${encodeURIComponent(g.key)}">
+      <div class="cat-head">
+        <input type="checkbox" class="catbox">
+        <span class="caret">▾</span>
+        <span class="glabel"><strong>${escapeHtml(g.label)}</strong>${heBit}</span>
+        <span class="count" style="margin-left:auto">${g.count}</span>
+      </div>
+      <div class="comm-list">${rows}</div>
+    </div>`;
+  }).join("");
+
+  $("tree").innerHTML = srcRow + groupsHtml;
+
+  // reflect SELECTED into checkbox states (checked / indeterminate)
+  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(catEl => {
+    catEl.querySelectorAll(".commbox").forEach(b => {
+      const { on, total } = lidState(getLids(b));
+      b.checked = total > 0 && on === total;
+      b.indeterminate = on > 0 && on < total;
+    });
+    refreshGroupBox(catEl);
+    wireGroup(catEl);
+  });
+
+  $("treeCard").style.display = "block";
+}
+
+function getLids(b) { return b.dataset.lids ? b.dataset.lids.split(",") : []; }
+
+function refreshGroupBox(catEl) {
+  const catbox = catEl.querySelector(".catbox");
+  const boxes = [...catEl.querySelectorAll(".commbox")];
+  const full = boxes.filter(b => b.checked && !b.indeterminate).length;
+  const part = boxes.filter(b => b.indeterminate).length;
+  if (part > 0 || (full > 0 && full < boxes.length)) { catbox.checked = true; catbox.indeterminate = true; }
+  else if (full === 0) { catbox.checked = false; catbox.indeterminate = false; }
+  else { catbox.checked = true; catbox.indeterminate = false; }
+}
+
+function wireGroup(catEl) {
+  const head = catEl.querySelector(".cat-head");
+  const catbox = catEl.querySelector(".catbox");
+  const boxes = [...catEl.querySelectorAll(".commbox")];
+
+  head.addEventListener("click", e => {
+    if (e.target === catbox) return;         // the group checkbox toggles selection, not collapse
+    catEl.classList.toggle("collapsed");
+  });
+  // group checkbox: select / clear the entire group (whole category, or whole section)
+  catbox.addEventListener("change", () => {
+    const all = [];
+    boxes.forEach(b => { b.checked = catbox.checked; b.indeterminate = false; all.push(...getLids(b)); });
+    catbox.indeterminate = false;
+    setLids(all, catbox.checked);
+  });
+  // leaf checkbox: select / clear one commentator's texts within the group
+  boxes.forEach(b => b.addEventListener("change", () => {
+    b.indeterminate = false;
+    setLids(getLids(b), b.checked);
+    refreshGroupBox(catEl);
+  }));
+}
+
+$("toggleAll").onclick = () => {
+  const src = $("srcbox");
+  const allLids = ITEMS.map(it => it.lid);
+  const anyOff = allLids.some(l => !SELECTED.has(l)) || (src && !src.disabled && !src.checked);
+  if (anyOff) allLids.forEach(l => SELECTED.add(l)); else SELECTED.clear();
+  [...document.querySelectorAll(".commbox")].forEach(b => { b.checked = anyOff; b.indeterminate = false; });
+  [...document.querySelectorAll(".catbox")].forEach(b => { b.checked = anyOff; b.indeterminate = false; });
+  if (src && !src.disabled) src.checked = anyOff;
+};
+
+/* ============================================================================
+   SECTION 9 — Content gathering (format-neutral)
    Produces { ref, title, blocks:[{type,text,anchor?,first?}], toc:[{level,text,anchor}],
               haveSrc, written }. All three builders consume this same shape.
    ============================================================================ */
@@ -670,17 +745,23 @@ function gatherContent() {
   const incHe = $("incHe").checked, incEn = $("incEn").checked;
   if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
 
-  const chosen = treeChosen();
+  const kept = keptItems();
   const haveSrc = srcIncluded() && SRC && (SRC.he.length || SRC.text.length);
-  const anyItems = ITEMS.some(it => itemKept(it, chosen));
-  if (!anyItems && !haveSrc) return { error: "Keep at least one text, or include the Original Text." };
+  if (!kept.length && !haveSrc) return { error: "Keep at least one text, or include the Original Text." };
 
   return GROUPING === "section"
-    ? gatherBySection(incHe, incEn, chosen, haveSrc)
-    : gatherByCategory(incHe, incEn, chosen, haveSrc);
+    ? gatherBySection(kept, incHe, incEn, haveSrc)
+    : gatherByCategory(kept, incHe, incEn, haveSrc);
 }
 
-function gatherByCategory(incHe, incEn, chosen, haveSrc) {
+function pushBaseText(blocks, incHe, incEn, label, hePieces, enPieces) {
+  for (let i = 0; i < Math.max(hePieces.length, enPieces.length); i++) {
+    if (incHe) { const he = stripHtml(hePieces[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
+    if (incEn) { const en = stripHtml(enPieces[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
+  }
+}
+
+function gatherByCategory(kept, incHe, incEn, haveSrc) {
   const ref = $("ref").value.trim();
   const blocks = [], toc = [];
   let bmId = 0; const nextId = () => "sec" + (bmId++);
@@ -691,32 +772,24 @@ function gatherByCategory(incHe, incEn, chosen, haveSrc) {
     const a = nextId();
     toc.push({ level: 1, text: "Source — " + srcLabel, anchor: a });
     blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor: a, first: true });
-    const n = Math.max(SRC.he.length, SRC.text.length);
-    for (let i = 0; i < n; i++) {
-      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
-      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
-    }
+    pushBaseText(blocks, incHe, incEn, srcLabel, SRC.he, SRC.text);
   }
 
-  for (const cat of CAT_ORDER) {
-    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-    const emit = [];
-    for (const comm of comms) {
-      if (!chosen.has(keyFor(cat, comm))) continue;
-      const items = TREE[cat][comm].filter(it => !EXCLUDED.has(it.lid));
-      if (items.length) emit.push({ comm, items });
-    }
-    if (!emit.length) continue;
-
+  const byCat = {};
+  for (const it of kept) {
+    (byCat[it.category] = byCat[it.category] || {});
+    (byCat[it.category][it.commentator] = byCat[it.category][it.commentator] || []).push(it);
+  }
+  for (const cat of CAT_ORDER.filter(c => byCat[c])) {
+    const comms = Object.keys(byCat[cat]).sort((a, b) => byCat[cat][b].length - byCat[cat][a].length);
     const ca = nextId();
     toc.push({ level: 1, text: cat, anchor: ca });
     blocks.push({ type: "h1", text: cat, anchor: ca });
-
-    for (const { comm, items } of emit) {
+    for (const comm of comms) {
       const ma = nextId();
       toc.push({ level: 2, text: comm, anchor: ma });
       blocks.push({ type: "h2", text: comm, anchor: ma });
-      for (const it of items) {
+      for (const it of byCat[cat][comm]) {
         blocks.push({ type: "ref", text: it.enRef + (it.heRef ? "  —  " + it.heRef : "") });
         if (incHe) { const he = stripHtml(it.he); if (he) blocks.push({ type: "he", text: he }); }
         if (incEn) { const en = stripHtml(it.text); if (en) blocks.push({ type: "en", text: en }); }
@@ -727,18 +800,18 @@ function gatherByCategory(incHe, incEn, chosen, haveSrc) {
   return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written };
 }
 
-function gatherBySection(incHe, incEn, chosen, haveSrc) {
+function gatherBySection(kept, incHe, incEn, haveSrc) {
   const ref = $("ref").value.trim();
   const blocks = [], toc = [];
   let bmId = 0; const nextId = () => "sec" + (bmId++);
   let written = 0;
 
-  const sections = keptSections(chosen);
+  const sections = sectionsFrom(kept);
   let first = true;
   for (const sec of sections) {
     const secLabel = sec.secRef || ref;
     const a = nextId();
-    toc.push({ level: 1, text: secLabel, anchor: a });   // section is the nav level
+    toc.push({ level: 1, text: secLabel, anchor: a });
     blocks.push({ type: "h1", text: secLabel, anchor: a, first });
     first = false;
 
@@ -750,8 +823,7 @@ function gatherBySection(incHe, incEn, chosen, haveSrc) {
 
     const g = groupByCatComm(sec.items);
     for (const cat of g.order) {
-      // category shown as a sub-heading within the section, but not in the TOC
-      blocks.push({ type: "h2", text: cat, anchor: nextId() });
+      blocks.push({ type: "h2", text: cat, anchor: nextId() });   // shown, not in TOC
       for (const comm of g[cat].commOrder) {
         for (const it of g[cat].byComm[comm]) {
           blocks.push({ type: "ref", text: it.enRef + (it.heRef ? "  —  " + it.heRef : "") });
@@ -782,7 +854,6 @@ function finishStatus(content, ext) {
   if (content.written) parts.push(content.written + " linked texts");
   setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
 }
-// Nested TOC tree (level-1 with level-2 kids) from the flat toc list.
 function tocTree(toc) {
   const tree = [];
   for (const t of toc) {
@@ -794,7 +865,7 @@ function tocTree(toc) {
 }
 
 /* ============================================================================
-   SECTION 9 — Builder: Word (.docx)
+   SECTION 10 — Builder: Word (.docx)
    A bookmark named "toc" lets Send-to-Kindle register the Contents page.
    ============================================================================ */
 async function buildDocx(content) {
@@ -862,9 +933,8 @@ async function buildDocx(content) {
 }
 
 /* ============================================================================
-   SECTION 10 — Builder: Kindle (EPUB)
-   Real EPUB3 with nav.xhtml + toc.ncx. Send-to-Kindle turns this into the
-   book's own navigation, shown in the Go To dropdown from any page.
+   SECTION 11 — Builder: Kindle (EPUB)
+   Real EPUB3 with nav.xhtml + toc.ncx → the Go To dropdown from any page.
    ============================================================================ */
 function xmlEsc(s) {
   return String(s == null ? "" : s)
@@ -1011,7 +1081,7 @@ ${epubBody(content)}</body>
 `;
 
   const zip = new JSZip();
-  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });   // must be first & stored
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
   zip.file("META-INF/container.xml", containerXml);
   const oebps = zip.folder("OEBPS");
   oebps.file("content.opf", opf);
@@ -1026,8 +1096,7 @@ ${epubBody(content)}</body>
 }
 
 /* ============================================================================
-   SECTION 11 — Builder: PDF (opens a print view; user picks "Save as PDF")
-   Print-to-PDF keeps Hebrew RTL correct and Contents links clickable.
+   SECTION 12 — Builder: PDF (opens a print view; user picks "Save as PDF")
    ============================================================================ */
 function buildPdf(content) {
   const w = window.open("", "_blank");
@@ -1093,12 +1162,13 @@ ${bodyHtml}
 }
 
 /* ============================================================================
-   SECTION 12 — Arrange-by + Format selectors, and build dispatch
+   SECTION 13 — Arrange-by + Format selectors, and build dispatch
    ============================================================================ */
 function setGrouping(g) {
   GROUPING = g;
   document.querySelectorAll("#grpSeg button").forEach(b => b.classList.toggle("on", b.dataset.grp === g));
-  if ($("previewCard").style.display !== "none") renderPreview();   // re-lay-out if open
+  if (ITEMS.length) renderTree();                                   // re-present the tree
+  if ($("previewCard").style.display !== "none") renderPreview();   // and the preview if open
 }
 function setFmt(f) {
   OUTFMT = f;
@@ -1121,9 +1191,9 @@ async function buildOutput() {
 }
 
 /* ============================================================================
-   SECTION 13 — Preview (final stage): shows every candidate text with its own
-   checkbox, in the current arrangement. Ticking/unticking updates EXCLUDED,
-   which the builders honour. Works in both Category and Section modes.
+   SECTION 14 — Preview (final stage): every candidate text with its own
+   checkbox, in the current arrangement. Ticks update EXCLUDED, which the
+   builders honour. Shows everything currently selected in the tree.
    ============================================================================ */
 function pvItem(label, he, en, isSrc, lid) {
   const check = lid ? `<input type="checkbox" class="pv-check" data-lid="${lid}" ${EXCLUDED.has(lid) ? "" : "checked"}>` : "";
@@ -1142,12 +1212,9 @@ function applyPvLang() {
 }
 
 function renderPreview() {
-  const chosen = treeChosen();
+  const shown = selectedItems();
   const haveSrc = srcIncluded() && SRC && (SRC.he.length || SRC.text.length);
-  // Preview shows every item under a ticked commentator (whether or not it's in
-  // EXCLUDED), so the user can re-tick things they'd dropped.
-  const anyShown = ITEMS.some(it => chosen.has(it.commKey));
-  if (!anyShown && !haveSrc) { setStatus("Tick at least one source in the tree, or include the Original Text.", true); return; }
+  if (!shown.length && !haveSrc) { setStatus("Tick at least one source in the tree, or include the Original Text.", true); return; }
 
   const ref = $("ref").value.trim();
   SHOWN_LIDS = [];
@@ -1155,15 +1222,7 @@ function renderPreview() {
   let html = "";
 
   if (GROUPING === "section") {
-    // build sections from all items under chosen commentators
-    const map = new Map();
-    for (const it of ITEMS) {
-      if (!chosen.has(it.commKey)) continue;
-      let s = map.get(it.secRef);
-      if (!s) { s = { secRef: it.secRef, verse: it.secVerse, items: [] }; map.set(it.secRef, s); }
-      s.items.push(it);
-    }
-    const sections = [...map.values()].sort((a, b) => (a.verse - b.verse) || String(a.secRef).localeCompare(String(b.secRef)));
+    const sections = sectionsFrom(shown);
     for (const sec of sections) {
       html += `<div class="pv-cat">${escapeHtml(sec.secRef || ref)}</div>`;
       if (haveSrc) {
@@ -1192,14 +1251,17 @@ function renderPreview() {
       }
       html += pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, null);
     }
-    for (const cat of CAT_ORDER) {
-      const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length)
-        .filter(comm => chosen.has(keyFor(cat, comm)));
-      if (!comms.length) continue;
+    const byCat = {};
+    for (const it of shown) {
+      (byCat[it.category] = byCat[it.category] || {});
+      (byCat[it.category][it.commentator] = byCat[it.category][it.commentator] || []).push(it);
+    }
+    for (const cat of CAT_ORDER.filter(c => byCat[c])) {
       html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
+      const comms = Object.keys(byCat[cat]).sort((a, b) => byCat[cat][b].length - byCat[cat][a].length);
       for (const comm of comms) {
         html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
-        for (const it of TREE[cat][comm]) {
+        for (const it of byCat[cat][comm]) {
           const label = it.enRef + (it.heRef ? "  —  " + it.heRef : "");
           html += pvItem(label, stripHtml(it.he), stripHtml(it.text), false, it.lid);
           SHOWN_LIDS.push(it.lid);
@@ -1236,7 +1298,7 @@ $("preview").addEventListener("change", e => {
   updatePreviewCount();
 });
 $("preview").addEventListener("click", e => {
-  if (e.target.closest(".pv-check")) return;       // clicking the checkbox shouldn't collapse
+  if (e.target.closest(".pv-check")) return;
   const t = e.target.closest(".pv-toggle");
   if (t) t.parentElement.classList.toggle("collapsed");
 });
@@ -1256,8 +1318,7 @@ $("pvUncheckAll").onclick = () => {
 };
 
 /* ============================================================================
-   SECTION 14 — Browse navigator (category drill-down)
-   Selecting a reference fills the box and fetches its links automatically.
+   SECTION 15 — Browse navigator (category drill-down)
    ============================================================================ */
 const TOC_API = "https://www.sefaria.org/api/index";
 const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
@@ -1490,7 +1551,7 @@ async function fetchCount(ref) {
 }
 
 /* ============================================================================
-   SECTION 15 — Wiring
+   SECTION 16 — Wiring
    ============================================================================ */
 document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
 document.querySelectorAll("#grpSeg button").forEach(b => b.onclick = () => setGrouping(b.dataset.grp));
@@ -1499,7 +1560,7 @@ document.querySelectorAll("#fmtSeg button").forEach(b => b.onclick = () => setFm
 $("clearBtn").onclick = () => {
   $("ref").value = "";
   LINKS = []; ITEMS = []; TREE = {}; CAT_ORDER = []; SRC = null;
-  EXCLUDED = new Set(); SHOWN_LIDS = []; PREVIEW_HAS_SRC = false;
+  SELECTED = new Set(); EXCLUDED = new Set(); SHOWN_LIDS = []; PREVIEW_HAS_SRC = false;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
   $("tree").innerHTML = "";
