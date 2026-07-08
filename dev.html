@@ -129,6 +129,16 @@
   .linkrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13.5px; color: var(--muted); margin: 0; }
   .linkrow input { margin: 0; flex: none; }
 
+  /* ---- section mode: category → commentator sub-group ---- */
+  .catgrp { border-bottom: 1px solid var(--line); }
+  .catgrp:last-child { border-bottom: none; }
+  .catgrp-head { cursor: pointer; }
+  .catgrp-head .catbox2 { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .catcaret { font-size: 10px; color: var(--muted); transition: transform .15s; }
+  .catgrp.collapsed .catcaret { transform: rotate(-90deg); }
+  .catgrp.collapsed .catgrp-body { display: none; }
+  .catgrp-body { padding-left: 14px; }
+
   /* ---- reference builder: mode switch + browse navigator ---- */
   .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
   .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
@@ -344,6 +354,19 @@ function segCatLinks(seg, cat) {
     return String(a.sourceRef || a.ref || "").localeCompare(String(b.sourceRef || b.ref || ""));
   });
 }
+
+// Within one section+category, bucket links by commentator (Rashi, Tosafot…),
+// preserving segCatLinks order so each commentator's pieces stay together.
+function segCatComms(seg, cat) {
+  const out = [], idx = {};
+  for (const l of segCatLinks(seg, cat)) {
+    const n = commName(l);
+    if (!(n in idx)) { idx[n] = out.length; out.push([n, []]); }
+    out[idx[n]][1].push(l);
+  }
+  return out;   // [ [commName, [links]], … ]
+}
+
 function pickedLinkSet() {
   return new Set([...document.querySelectorAll(".linkbox:checked")]
     .map(b => parseInt(b.dataset.i, 10)));
@@ -646,21 +669,32 @@ function renderSegTree() {
     const cats = segCats(seg);
     const total = cats.reduce((s, c) => s + SEG_TREE[seg][c].length, 0);
     const grps = cats.map(cat => {
-      const links = segCatLinks(seg, cat);
-      const rows = links.map(l => {
-        const label = l.sourceRef || l.ref || "(untitled)";
-        return `<label class="linkrow">
-          <input type="checkbox" class="linkbox" data-i="${l._i}" checked>
-          <span>${escapeHtml(label)}</span>
-        </label>`;
+      const commGroups = segCatComms(seg, cat);
+      const catTotal = commGroups.reduce((s, g) => s + g[1].length, 0);
+      const commsHtml = commGroups.map(([comm, links]) => {
+        const rows = links.map(l => {
+          const label = l.sourceRef || l.ref || "(untitled)";
+          return `<label class="linkrow">
+            <input type="checkbox" class="linkbox" data-i="${l._i}" checked>
+            <span>${escapeHtml(label)}</span>
+          </label>`;
+        }).join("");
+        return `<div class="commgrp collapsed">
+          <div class="comm commhead">
+            <input type="checkbox" class="commbox2" checked>
+            <span class="caret2">▾</span>
+            <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
+          </div>
+          <div class="linklist">${rows}</div>
+        </div>`;
       }).join("");
-      return `<div class="commgrp collapsed">
-        <div class="comm commhead">
-          <input type="checkbox" class="commbox2" checked>
-          <span class="caret2">▾</span>
-          <span>${escapeHtml(cat)}</span><span class="count">${links.length}</span>
+      return `<div class="catgrp collapsed">
+        <div class="comm catgrp-head">
+          <input type="checkbox" class="catbox2" checked>
+          <span class="caret2 catcaret">▾</span>
+          <span>${escapeHtml(cat)}</span><span class="count">${catTotal}</span>
         </div>
-        <div class="linklist">${rows}</div>
+        <div class="catgrp-body">${commsHtml}</div>
       </div>`;
     }).join("");
     return `<div class="cat seg collapsed">
@@ -674,11 +708,10 @@ function renderSegTree() {
   }).join("");
   $("tree").innerHTML = srcRowHtml("each section’s own text") + segsHtml;
 
-  [...$("tree").querySelectorAll(".cat.seg")].forEach(cat => {
-    const head = cat.querySelector(".cat-head");
-    const segbox = cat.querySelector(".segbox");
-    const grps = [...cat.querySelectorAll(".commgrp")];
-    const allLinks = [...cat.querySelectorAll(".linkbox")];
+  [...$("tree").querySelectorAll(".cat.seg")].forEach(section => {
+    const head = section.querySelector(".cat-head");
+    const segbox = section.querySelector(".segbox");
+    const allLinks = [...section.querySelectorAll(".linkbox")];
 
     function syncSeg() {
       const on = allLinks.filter(b => b.checked).length;
@@ -687,38 +720,64 @@ function renderSegTree() {
     }
     head.addEventListener("click", e => {
       if (e.target === segbox) return;
-      cat.classList.toggle("collapsed");
+      section.classList.toggle("collapsed");
     });
-    grps.forEach(g => {
-      const chead = g.querySelector(".commhead");
-      const cbox = g.querySelector(".commbox2");
-      const links = [...g.querySelectorAll(".linkbox")];
-      function syncComm() {
-        const on = links.filter(b => b.checked).length;
+
+    [...section.querySelectorAll(".catgrp")].forEach(cg => {
+      const chead = cg.querySelector(".catgrp-head");
+      const cbox = cg.querySelector(".catbox2");
+      const catLinks = [...cg.querySelectorAll(".linkbox")];
+      const commGroups = [...cg.querySelectorAll(".commgrp")];
+
+      function syncCat() {
+        const on = catLinks.filter(b => b.checked).length;
         cbox.checked = on > 0;
-        cbox.indeterminate = on > 0 && on < links.length;
+        cbox.indeterminate = on > 0 && on < catLinks.length;
       }
       chead.addEventListener("click", e => {
         if (e.target === cbox) return;
-        g.classList.toggle("collapsed");
+        cg.classList.toggle("collapsed");
       });
       cbox.addEventListener("change", () => {
-        links.forEach(b => b.checked = cbox.checked);
+        catLinks.forEach(b => b.checked = cbox.checked);
+        commGroups.forEach(g => {
+          const gb = g.querySelector(".commbox2");
+          gb.checked = cbox.checked; gb.indeterminate = false;
+        });
         cbox.indeterminate = false;
         syncSeg();
       });
-      links.forEach(b => b.addEventListener("change", () => { syncComm(); syncSeg(); }));
+
+      commGroups.forEach(g => {
+        const ghead = g.querySelector(".commhead");
+        const gbox = g.querySelector(".commbox2");
+        const links = [...g.querySelectorAll(".linkbox")];
+        function syncComm() {
+          const on = links.filter(b => b.checked).length;
+          gbox.checked = on > 0;
+          gbox.indeterminate = on > 0 && on < links.length;
+        }
+        ghead.addEventListener("click", e => {
+          if (e.target === gbox) return;
+          g.classList.toggle("collapsed");
+        });
+        gbox.addEventListener("change", () => {
+          links.forEach(b => b.checked = gbox.checked);
+          gbox.indeterminate = false;
+          syncCat(); syncSeg();
+        });
+        links.forEach(b => b.addEventListener("change", () => { syncComm(); syncCat(); syncSeg(); }));
+      });
     });
+
     segbox.addEventListener("change", () => {
       allLinks.forEach(b => b.checked = segbox.checked);
-      grps.forEach(g => {
-        const cb = g.querySelector(".commbox2");
+      section.querySelectorAll(".catbox2, .commbox2").forEach(cb => {
         cb.checked = segbox.checked; cb.indeterminate = false;
       });
       segbox.indeterminate = false;
     });
   });
-
   $("treeCard").style.display = "block";
 }
 
@@ -727,7 +786,7 @@ $("toggleAll").onclick = () => {
   const leaves = [...document.querySelectorAll(".commbox, .linkbox")];
   const anyOff = leaves.some(b => !b.checked) || (src && !src.disabled && !src.checked);
   leaves.forEach(b => b.checked = anyOff);
-  [...document.querySelectorAll(".catbox, .commbox2, .segbox")].forEach(cb => {
+  [...document.querySelectorAll(".catbox, .catbox2, .commbox2, .segbox")].forEach(cb => {
     cb.checked = anyOff; cb.indeterminate = false;
   });
   if (src && !src.disabled) src.checked = anyOff;
