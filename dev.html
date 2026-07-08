@@ -187,11 +187,12 @@
   .pv-ref { justify-content: space-between; }
   .pv-ref .pv-reflabel { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
   .pv-share {
-    width: auto; margin: 0; padding: 3px 9px; font-size: 12px; line-height: 1.4;
-    background: transparent; color: var(--accent); border: 1px solid var(--line); border-radius: 6px;
-    flex: none;
+    width: auto; margin: 0; padding: 4px 8px; line-height: 0;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none; display: inline-flex; align-items: center;
   }
-  .pv-share:hover { background: #f2ecdd; }
+  .pv-share:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .pv-share svg { display: block; }
 </style>
 </head>
 <body>
@@ -270,7 +271,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 14;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 15;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -725,23 +726,25 @@ function renderCatTree() {
 // / propagateSrcToggle); only the section checkbox itself is per-section.
 let PROPAGATING = false;
 
-function propagateCatToggle(catName, checked) {
+function propagateCatToggle(encCat, checked) {
   if (PROPAGATING) return;
   PROPAGATING = true;
   try {
-    document.querySelectorAll('.catgrp[data-cat="' + CSS.escape(catName) + '"] > .catgrp-head .catbox2').forEach(cb => {
-      if (cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
+    document.querySelectorAll(".catgrp").forEach(cg => {
+      if (cg.dataset.cat !== encCat) return;
+      const cb = cg.querySelector(".catbox2");
+      if (cb && cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
     });
   } finally { PROPAGATING = false; }
 }
-function propagateCommToggle(catName, commName, checked) {
+function propagateCommToggle(encCat, encComm, checked) {
   if (PROPAGATING) return;
   PROPAGATING = true;
   try {
-    document.querySelectorAll(
-      '.commgrp[data-cat="' + CSS.escape(catName) + '"][data-comm="' + CSS.escape(commName) + '"] > .commhead .commbox2'
-    ).forEach(cb => {
-      if (cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
+    document.querySelectorAll(".commgrp").forEach(g => {
+      if (g.dataset.cat !== encCat || g.dataset.comm !== encComm) return;
+      const cb = g.querySelector(".commbox2");
+      if (cb && cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
     });
   } finally { PROPAGATING = false; }
 }
@@ -834,7 +837,7 @@ function renderSegTree() {
     [...section.querySelectorAll(".catgrp")].forEach(cg => {
       const chead = cg.querySelector(".catgrp-head");
       const cbox = cg.querySelector(".catbox2");
-      const catName = decodeURIComponent(cg.dataset.cat || "");
+      const encCat = cg.dataset.cat || "";
       const catLinks = [...cg.querySelectorAll(".linkbox")];
       const commGroups = [...cg.querySelectorAll(".commgrp")];
 
@@ -855,13 +858,13 @@ function renderSegTree() {
         });
         cbox.indeterminate = false;
         syncSeg();
-        if (!PROPAGATING) propagateCatToggle(catName, cbox.checked);
+        if (!PROPAGATING) propagateCatToggle(encCat, cbox.checked);
       });
 
       commGroups.forEach(g => {
         const ghead = g.querySelector(".commhead");
         const gbox = g.querySelector(".commbox2");
-        const commName = decodeURIComponent(g.dataset.comm || "");
+        const encComm = g.dataset.comm || "";
         const links = [...g.querySelectorAll(".linkbox")];
         function syncComm() {
           const on = links.filter(b => b.checked).length;
@@ -876,7 +879,7 @@ function renderSegTree() {
           links.forEach(b => b.checked = gbox.checked);
           gbox.indeterminate = false;
           syncCat(); syncSeg();
-          if (!PROPAGATING) propagateCommToggle(catName, commName, gbox.checked);
+          if (!PROPAGATING) propagateCommToggle(encCat, encComm, gbox.checked);
         });
         links.forEach(b => b.addEventListener("change", () => { syncComm(); syncCat(); syncSeg(); }));
       });
@@ -1057,25 +1060,32 @@ function finishStatus(content, ext) {
 
 // On phones, hand the finished file straight to the system share sheet
 // (Send to Kindle appears there) instead of burying it in Downloads.
-// Browsers only allow navigator.share inside a fresh tap — and the build is
-// asynchronous, so by the time the file exists the original tap no longer
-// counts — hence a one-tap Share button appears instead of the sheet firing
-// by itself. Desktop and unsupporting browsers keep the normal download.
+// The share sheet is attempted immediately after the build: browsers keep the
+// original tap's "user activation" alive for a few seconds, so a quick build
+// usually still counts and the sheet opens by itself. If the browser refuses
+// (activation expired on a slow build), a one-tap Share button appears as a
+// fallback. Desktop and unsupporting browsers keep the normal download.
 let LASTOUT = null;
 function canShareFiles(file) {
   try { return !!(navigator.canShare && navigator.canShare({ files: [file] })); }
   catch (e) { return false; }
 }
-function deliverFile(blob, filename) {
+async function deliverFile(blob, filename) {
   let file = null;
   try { file = new File([blob], filename, { type: blob.type || "application/octet-stream" }); } catch (e) {}
-  if (file && canShareFiles(file)) {
-    LASTOUT = { blob, filename };
-    $("shareBtn").textContent = "📤 Share " + filename;
-    $("shareBar").style.display = "block";
-  } else {
-    download(blob, filename);
+  if (!(file && canShareFiles(file))) { download(blob, filename); return; }
+
+  LASTOUT = { blob, filename };
+  try {
+    await navigator.share({ files: [file], title: filename });
+    setStatus("Shared.");
+    return;
+  } catch (e) {
+    if (e && e.name === "AbortError") return;   // user closed the sheet — done
+    // activation expired (NotAllowedError) or similar → offer a one-tap button
   }
+  $("shareBtn").textContent = "📤 Share " + filename;
+  $("shareBar").style.display = "block";
 }
 function hideShareBar() { LASTOUT = null; $("shareBar").style.display = "none"; }
 $("shareBtn").onclick = async () => {
@@ -1179,7 +1189,7 @@ async function buildDocx(content) {
 
   const doc = new Document({ sections: [{ properties: {}, children }] });
   const blob = await Packer.toBlob(doc);
-  deliverFile(blob, fnameFor(content.ref) + ".docx");
+  await deliverFile(blob, fnameFor(content.ref) + ".docx");
   finishStatus(content, "docx");
 }
 
@@ -1415,7 +1425,7 @@ ${epubBody(content)}</body>
   oebps.file("text.xhtml", textXhtml);
 
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE" });
-  deliverFile(blob, fnameFor(content.ref) + ".epub");
+  await deliverFile(blob, fnameFor(content.ref) + ".epub");
   finishStatus(content, "epub");
 }
 
@@ -1547,6 +1557,14 @@ function escapeHtml(s) {
 // Texts shown in the current preview, indexed for the per-item share button.
 let PV_SHARE_TEXTS = [];
 
+// The classic three-pronged share glyph, drawn inline so it inherits the
+// button's (muted, cream-friendly) colour.
+const SHARE_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>' +
+  '<line x1="8.4" y1="10.8" x2="15.6" y2="6.2"/><line x1="8.4" y1="13.2" x2="15.6" y2="17.8"/></svg>';
+
 function pvItem(label, he, en, isSrc) {
   const idx = PV_SHARE_TEXTS.length;
   PV_SHARE_TEXTS.push({ label, he, en });
@@ -1556,7 +1574,7 @@ function pvItem(label, he, en, isSrc) {
   return `<div class="pv-item${isSrc ? " pv-item-src" : ""}">
     <div class="pv-ref">
       <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
-      <button type="button" class="pv-share" data-idx="${idx}" title="Share this text">📤 Share</button>
+      <button type="button" class="pv-share" data-idx="${idx}" title="Share this text" aria-label="Share this text">${SHARE_ICON}</button>
     </div>
     <div class="pv-body">${body}</div>
   </div>`;
