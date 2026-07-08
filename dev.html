@@ -139,6 +139,13 @@
   .catgrp.collapsed .catgrp-body { display: none; }
   .catgrp-body { padding-left: 14px; }
 
+  /* ---- section mode: per-section original text ---- */
+  .srcgrp .commhead { color: var(--accent-dark); }
+  .srcbody { padding: 6px 10px; margin: 2px 0 8px 12px; background: #fbf8f0; border: 1px solid var(--line); border-radius: 6px; }
+  .srcbody .pv-he { font-size: 17px; line-height: 1.75; margin: 2px 0; }
+  .srcbody .pv-en { font-size: 14px; line-height: 1.6; margin: 2px 0; }
+  .srcgrp.collapsed .srcbody { display: none; }
+
   /* ---- reference builder: mode switch + browse navigator ---- */
   .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
   .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
@@ -345,40 +352,40 @@ function segCats(seg) {
     return SEG_TREE[seg][b].length - SEG_TREE[seg][a].length;
   });
 }
-
 // Rashi, Tosafot, Steinsaltz always lead the commentators in a Talmud section.
 function commRank(name) {
   const lc = String(name).toLowerCase();
   if (lc.indexOf("rashi") === 0) return 0;
   if (lc.indexOf("tosafot") === 0 || lc.indexOf("tosfot") === 0) return 1;
   if (lc.indexOf("steinsaltz") === 0) return 2;
-  return 3;   // everyone else keeps alphabetical order below
+  return 3;
 }
-  
 // Links inside one section+category, ordered by work then reference so a
 // commentator's own pieces stay together (their names show in each ref).
 function segCatLinks(seg, cat) {
-return SEG_TREE[seg][cat].slice().sort((a, b) => {
+  return SEG_TREE[seg][cat].slice().sort((a, b) => {
     const na = commName(a), nb = commName(b);
     const ra = commRank(na), rb = commRank(nb);
-    if (ra !== rb) return ra - rb;                 // priority commentators first
-    if (na !== nb) return na.localeCompare(nb);    // then alphabetical
+    if (ra !== rb) return ra - rb;
+    if (na !== nb) return na.localeCompare(nb);
     return String(a.sourceRef || a.ref || "").localeCompare(String(b.sourceRef || b.ref || ""));
   });
 }
-
-// Within one section+category, bucket links by commentator (Rashi, Tosafot…),
-// preserving segCatLinks order so each commentator's pieces stay together.
-function segCatComms(seg, cat) {
+// Bucket a list of links by commentator/work (Rashi, Tosafot, Berakhot…),
+// preserving the given order so each work's pieces stay contiguous.
+function groupByComm(links) {
   const out = [], idx = {};
-  for (const l of segCatLinks(seg, cat)) {
+  for (const l of links) {
     const n = commName(l);
     if (!(n in idx)) { idx[n] = out.length; out.push([n, []]); }
     out[idx[n]][1].push(l);
   }
-  return out;   // [ [commName, [links]], … ]
+  return out;
 }
-
+// Within one section+category, bucket links by commentator, preserving order.
+function segCatComms(seg, cat) {
+  return groupByComm(segCatLinks(seg, cat));
+}
 function pickedLinkSet() {
   return new Set([...document.querySelectorAll(".linkbox:checked")]
     .map(b => parseInt(b.dataset.i, 10)));
@@ -625,6 +632,28 @@ function srcRowHtml(subtitle) {
     </div>`;
 }
 
+// The relevant slice of the base text for one section, as an expandable,
+// checkable group placed at the top of that section's menu (Section mode).
+function segSrcGroupHtml(seg) {
+  if (!SRC || !(SRC.he.length || SRC.text.length)) return "";
+  const idx = segNum(seg) - 1;
+  if (idx < 0) return "";   // the "(whole page)" bucket has no single segment
+  const he = stripHtml(SRC.he[idx] || "");
+  const en = stripHtml(SRC.text[idx] || "");
+  if (!he && !en) return "";
+  const body =
+    (he ? `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>` : "") +
+    (en ? `<p class="pv-en">${escapeHtml(en)}</p>` : "");
+  return `<div class="commgrp srcgrp">
+    <div class="comm commhead">
+      <input type="checkbox" class="segsrcbox" data-idx="${idx}" checked>
+      <span class="caret2">▾</span>
+      <span>Original text</span>
+    </div>
+    <div class="srcbody">${body}</div>
+  </div>`;
+}
+
 function renderCatTree() {
   const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
 
@@ -715,10 +744,10 @@ function renderSegTree() {
         <span class="caret">▾</span>
         <strong>${escapeHtml(seg)}</strong><span class="count">${total}</span>
       </div>
-      <div class="comm-list">${grps}</div>
+      <div class="comm-list">${segSrcGroupHtml(seg)}${grps}</div>
     </div>`;
   }).join("");
-  $("tree").innerHTML = srcRowHtml("each section’s own text") + segsHtml;
+  $("tree").innerHTML = segsHtml;
 
   [...$("tree").querySelectorAll(".cat.seg")].forEach(section => {
     const head = section.querySelector(".cat-head");
@@ -733,6 +762,16 @@ function renderSegTree() {
     head.addEventListener("click", e => {
       if (e.target === segbox) return;
       section.classList.toggle("collapsed");
+    });
+
+    // per-section original-text group (collapsible, independent checkbox)
+    [...section.querySelectorAll(".srcgrp")].forEach(sg => {
+      const shead = sg.querySelector(".commhead");
+      const sbox = sg.querySelector(".segsrcbox");
+      shead.addEventListener("click", e => {
+        if (e.target === sbox) return;
+        sg.classList.toggle("collapsed");
+      });
     });
 
     [...section.querySelectorAll(".catgrp")].forEach(cg => {
@@ -784,20 +823,25 @@ function renderSegTree() {
 
     segbox.addEventListener("change", () => {
       allLinks.forEach(b => b.checked = segbox.checked);
-      section.querySelectorAll(".catbox2, .commbox2").forEach(cb => {
+      section.querySelectorAll(".catbox2, .commbox2, .segsrcbox").forEach(cb => {
         cb.checked = segbox.checked; cb.indeterminate = false;
       });
       segbox.indeterminate = false;
     });
   });
+
   $("treeCard").style.display = "block";
 }
 
 $("toggleAll").onclick = () => {
   const src = $("srcbox");
+  const segSrc = [...document.querySelectorAll(".segsrcbox")];
   const leaves = [...document.querySelectorAll(".commbox, .linkbox")];
-  const anyOff = leaves.some(b => !b.checked) || (src && !src.disabled && !src.checked);
+  const anyOff = leaves.some(b => !b.checked)
+    || segSrc.some(b => !b.checked)
+    || (src && !src.disabled && !src.checked);
   leaves.forEach(b => b.checked = anyOff);
+  segSrc.forEach(b => b.checked = anyOff);
   [...document.querySelectorAll(".catbox, .catbox2, .commbox2, .segbox")].forEach(cb => {
     cb.checked = anyOff; cb.indeterminate = false;
   });
@@ -840,48 +884,59 @@ function gatherContent() {
   // ---------------- section mode ----------------
   if (GROUPMODE === "seg") {
     const picked = pickedLinkSet();
-    if (!picked.size && !haveSrc) return { error: "Select at least one text, or include the source text." };
-
-    if (!picked.size) {          // source only — same output as category mode
-      emitWholeSource();
-      return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
-    }
+    const srcWanted = idx => {
+      const b = document.querySelector('.segsrcbox[data-idx="' + idx + '"]');
+      return !!(b && b.checked);
+    };
+    const anySrc = !!document.querySelector(".segsrcbox:checked");
+    if (!picked.size && !anySrc) return { error: "Select at least one text, or a section's original text." };
 
     for (const seg of SEG_ORDER) {
       const cats = segCats(seg);
       const sel = cats
         .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
         .filter(p => p[1].length);
-      if (!sel.length) continue;   // no selected texts in this section — skip it
+      const idx = segNum(seg) - 1;
+      const wantSrc = idx >= 0 && srcWanted(idx) && SRC && (SRC.he.length || SRC.text.length);
+      if (!sel.length && !wantSrc) continue;   // nothing chosen in this section
 
       const anchor = nextId();
       toc.push({ level: 1, text: seg, anchor });
       blocks.push({ type: "h1", text: seg, anchor, first: blocks.length === 0 });
 
-      // the section's own text first, if Original Text is on
-      if (haveSrc) {
-        const idx = segNum(seg) - 1;
-        if (idx >= 0) {
-          if (incHe) { const he = stripHtml(SRC.he[idx] || ""); if (he) blocks.push({ type: "he", text: he }); }
-          if (incEn) { const en = stripHtml(SRC.text[idx] || ""); if (en) blocks.push({ type: "en", text: en }); }
-        }
+      // the section's own text first, if its box is ticked
+      if (wantSrc) {
+        if (incHe) { const he = stripHtml(SRC.he[idx] || ""); if (he) blocks.push({ type: "he", text: he }); }
+        if (incEn) { const en = stripHtml(SRC.text[idx] || ""); if (en) blocks.push({ type: "en", text: en }); }
       }
 
       for (const [cat, arr] of sel) {
         const a2 = nextId();
         toc.push({ level: 2, text: cat, anchor: a2 });
         blocks.push({ type: "h2", text: cat, anchor: a2 });
-        for (const l of arr) {
-          const enRef = l.sourceRef || l.ref || "";
-          const heRef = l.sourceHeRef || "";
-          blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
-          if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
-          if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
-          written++;
+        // one navigable sub-heading per work/commentator (Commentary → Rashi,
+        // Talmud → Berakhot 9b). A lone link is labelled by its own reference
+        // so a single parallel reads e.g. "Berakhot 9b:2" rather than "Berakhot".
+        for (const [comm, links] of groupByComm(arr)) {
+          const single = links.length === 1;
+          const h3text = single ? (links[0].sourceRef || links[0].ref || comm) : comm;
+          const a3 = nextId();
+          toc.push({ level: 3, text: h3text, anchor: a3 });
+          blocks.push({ type: "h3", text: h3text, anchor: a3 });
+          for (const l of links) {
+            if (!single) {   // the h3 already names a lone link, so skip its ref line
+              const enRef = l.sourceRef || l.ref || "";
+              const heRef = l.sourceHeRef || "";
+              blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
+            }
+            if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
+            if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+            written++;
+          }
         }
       }
     }
-    return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
+    return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc: anySrc, written, incHe, incEn };
   }
 
   // ---------------- category mode ----------------
@@ -939,13 +994,22 @@ function finishStatus(content, ext) {
   setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
 }
 
-// Build a nested TOC tree (level-1 with level-2 kids) from the flat list.
+// Build a nested TOC tree from the flat list. Supports three levels
+// (section → category → work), and still works for the 2-level category mode.
 function tocTree(toc) {
   const tree = [];
+  let l1 = null, l2 = null;
   for (const t of toc) {
-    if (t.level === 1) tree.push({ text: t.text, anchor: t.anchor, kids: [] });
-    else if (tree.length) tree[tree.length - 1].kids.push({ text: t.text, anchor: t.anchor });
-    else tree.push({ text: t.text, anchor: t.anchor, kids: [] });
+    const node = { text: t.text, anchor: t.anchor, kids: [] };
+    if (t.level === 1) { tree.push(node); l1 = node; l2 = null; }
+    else if (t.level === 2) {
+      if (l1) l1.kids.push(node); else tree.push(node);
+      l2 = node;
+    } else {   // level 3
+      if (l2) l2.kids.push(node);
+      else if (l1) l1.kids.push(node);
+      else tree.push(node);
+    }
   }
   return tree;
 }
@@ -984,6 +1048,10 @@ async function buildDocx(content) {
       heading: HeadingLevel.HEADING_2, spacing: { before: 220, after: 60 },
       children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
     }));
+    else if (b.type === "h3") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_3, spacing: { before: 160, after: 40 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
     else if (b.type === "ref") body.push(new Paragraph({
       spacing: { before: 120, after: 30 },
       children: [new TextRun({ text: b.text, bold: true, size: 20, color: "6f675a" })]
@@ -1002,7 +1070,7 @@ async function buildDocx(content) {
     }));
     for (const t of content.toc) {
       children.push(new Paragraph({
-        spacing: { after: 30 }, indent: t.level === 2 ? { left: 360 } : undefined,
+        spacing: { after: 30 }, indent: t.level === 3 ? { left: 720 } : t.level === 2 ? { left: 360 } : undefined,
         children: [new InternalHyperlink({
           anchor: t.anchor, children: [new TextRun({ text: t.text, color: "0563C1", underline: {} })]
         })]
@@ -1039,35 +1107,31 @@ function navOl(tree) {
   let s = "<ol>\n";
   for (const n of tree) {
     s += `  <li><a href="text.xhtml#${n.anchor}">${xmlEsc(n.text)}</a>`;
-    if (n.kids && n.kids.length) {
-      s += "\n    <ol>\n";
-      for (const k of n.kids) s += `      <li><a href="text.xhtml#${k.anchor}">${xmlEsc(k.text)}</a></li>\n`;
-      s += "    </ol>\n  ";
-    }
+    if (n.kids && n.kids.length) s += "\n    " + navOl(n.kids) + "\n  ";
     s += "</li>\n";
   }
   return s + "</ol>";
 }
 function ncxMap(tree) {
-  let po = 0, s = "";
-  for (const n of tree) {
-    po++;
-    s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(n.text)}</text></navLabel><content src="text.xhtml#${n.anchor}"/>`;
-    if (n.kids && n.kids.length) {
-      for (const k of n.kids) {
-        po++;
-        s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(k.text)}</text></navLabel><content src="text.xhtml#${k.anchor}"/></navPoint>`;
-      }
+  let po = 0;
+  const walk = (nodes) => {
+    let s = "";
+    for (const n of nodes) {
+      po++;
+      s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(n.text)}</text></navLabel><content src="text.xhtml#${n.anchor}"/>`;
+      if (n.kids && n.kids.length) s += walk(n.kids);
+      s += `</navPoint>\n`;
     }
-    s += `</navPoint>\n`;
-  }
-  return s;
+    return s;
+  };
+  return walk(tree);
 }
 function epubBody(content) {
   let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
   for (const b of content.blocks) {
     if (b.type === "h1") s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
     else if (b.type === "h2") s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
+    else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
@@ -1136,7 +1200,7 @@ ${navOl(tree)}
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en">
 <head>
 <meta name="dtb:uid" content="${xmlEsc(id)}"/>
-<meta name="dtb:depth" content="2"/>
+<meta name="dtb:depth" content="3"/>
 <meta name="dtb:totalPageCount" content="0"/>
 <meta name="dtb:maxPageNumber" content="0"/>
 </head>
@@ -1150,6 +1214,7 @@ ${ncxMap(tree)}</navMap>
 `body { font-family: serif; line-height: 1.5; margin: 1em; }
 h1 { font-size: 1.4em; margin: 1em 0 .4em; }
 h2 { font-size: 1.15em; color: #6b5329; margin: .8em 0 .3em; }
+h3 { font-size: 1.02em; color: #8a6d3b; margin: .6em 0 .2em; }
 h1.doctitle { text-align: center; font-size: 1.6em; }
 p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
 p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
@@ -1195,22 +1260,22 @@ function buildPdf(content) {
   if (!w) { setStatus("Pop-up blocked — allow pop-ups for this site, then try PDF again.", true); return; }
 
   const tree = tocTree(content.toc);
-  let tocHtml = "<ol class='toc'>";
-  for (const n of tree) {
-    tocHtml += `<li><a href="#${n.anchor}">${escapeHtml(n.text)}</a>`;
-    if (n.kids && n.kids.length) {
-      tocHtml += "<ol>";
-      for (const k of n.kids) tocHtml += `<li><a href="#${k.anchor}">${escapeHtml(k.text)}</a></li>`;
-      tocHtml += "</ol>";
+  const tocOl = (nodes, top) => {
+    let s = top ? "<ol class='toc'>" : "<ol>";
+    for (const n of nodes) {
+      s += `<li><a href="#${n.anchor}">${escapeHtml(n.text)}</a>`;
+      if (n.kids && n.kids.length) s += tocOl(n.kids, false);
+      s += "</li>";
     }
-    tocHtml += "</li>";
-  }
-  tocHtml += "</ol>";
+    return s + "</ol>";
+  };
+  const tocHtml = tocOl(tree, true);
 
   let bodyHtml = "";
   for (const b of content.blocks) {
     if (b.type === "h1") bodyHtml += `<h1 id="${b.anchor}">${escapeHtml(b.text)}</h1>`;
     else if (b.type === "h2") bodyHtml += `<h2 id="${b.anchor}">${escapeHtml(b.text)}</h2>`;
+    else if (b.type === "h3") bodyHtml += `<h3 id="${b.anchor}">${escapeHtml(b.text)}</h3>`;
     else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
     else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
     else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
@@ -1224,6 +1289,7 @@ function buildPdf(content) {
   body { font-family: Georgia,'Times New Roman',serif; line-height: 1.5; color: #2b2620; margin: 40px; }
   h1 { font-size: 20px; margin: 22px 0 8px; }
   h2 { font-size: 16px; color: #6b5329; margin: 16px 0 4px; }
+  h3 { font-size: 14px; color: #8a6d3b; margin: 12px 0 2px; }
   h1.title { font-size: 24px; text-align: center; margin: 0 0 6px; }
   p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
   p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
@@ -1338,36 +1404,34 @@ function renderPreview() {
   if (GROUPMODE === "seg") {
     // ---------------- section mode ----------------
     const picked = pickedLinkSet();
-    if (!picked.size && !haveSrc) { setStatus("Select at least one text, or include the Original Text.", true); return; }
+    const srcWanted = idx => {
+      const b = document.querySelector('.segsrcbox[data-idx="' + idx + '"]');
+      return !!(b && b.checked);
+    };
+    const anySrc = !!document.querySelector(".segsrcbox:checked");
+    if (!picked.size && !anySrc) { setStatus("Select at least one text, or a section's original text.", true); return; }
 
-    if (!picked.size) {
-      html += wholeSrcPvItem(ref);
-    } else {
-      for (const seg of SEG_ORDER) {
-        const cats = segCats(seg);
-        const sel = cats
-          .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
-          .filter(p => p[1].length);
-        if (!sel.length) continue;
-        sections++;
-        html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
-        if (haveSrc) {
-          const idx = segNum(seg) - 1;
-          if (idx >= 0) {
-            const he = stripHtml(SRC.he[idx] || "");
-            const en = stripHtml(SRC.text[idx] || "");
-            if (he || en) html += pvItem("Source — " + seg, he, en, true);
-          }
-        }
-        for (const [cat, arr] of sel) {
-          html += `<div class="pv-comm">${escapeHtml(cat)}</div>`;
-          for (const l of arr) {
-            const enRef = l.sourceRef || l.ref || "";
-            const heRef = l.sourceHeRef || "";
-            const label = enRef + (heRef ? "  —  " + heRef : "");
-            html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
-            count++;
-          }
+    for (const seg of SEG_ORDER) {
+      const cats = segCats(seg);
+      const sel = cats
+        .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
+        .filter(p => p[1].length);
+      const idx = segNum(seg) - 1;
+      const he = (idx >= 0 && SRC) ? stripHtml(SRC.he[idx] || "") : "";
+      const en = (idx >= 0 && SRC) ? stripHtml(SRC.text[idx] || "") : "";
+      const wantSrc = idx >= 0 && srcWanted(idx) && (he || en);
+      if (!sel.length && !wantSrc) continue;
+      sections++;
+      html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
+      if (wantSrc) html += pvItem("Source — " + seg, he, en, true);
+      for (const [cat, arr] of sel) {
+        html += `<div class="pv-comm">${escapeHtml(cat)}</div>`;
+        for (const l of arr) {
+          const enRef = l.sourceRef || l.ref || "";
+          const heRef = l.sourceHeRef || "";
+          const label = enRef + (heRef ? "  —  " + heRef : "");
+          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
+          count++;
         }
       }
     }
@@ -1408,7 +1472,7 @@ function renderPreview() {
   if (GROUPMODE === "seg") {
     if (sections) bits.push(sections + " section" + (sections === 1 ? "" : "s"));
     if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
-    if (!count && haveSrc) bits.push("Original Text");
+    if (!count && sections) bits.push("original text only");
   } else {
     if (haveSrc) bits.push("Original Text");
     if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
