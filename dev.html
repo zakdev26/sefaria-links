@@ -345,12 +345,24 @@ function segCats(seg) {
     return SEG_TREE[seg][b].length - SEG_TREE[seg][a].length;
   });
 }
+
+// Rashi, Tosafot, Steinsaltz always lead the commentators in a Talmud section.
+function commRank(name) {
+  const lc = String(name).toLowerCase();
+  if (lc.indexOf("rashi") === 0) return 0;
+  if (lc.indexOf("tosafot") === 0 || lc.indexOf("tosfot") === 0) return 1;
+  if (lc.indexOf("steinsaltz") === 0) return 2;
+  return 3;   // everyone else keeps alphabetical order below
+}
+  
 // Links inside one section+category, ordered by work then reference so a
 // commentator's own pieces stay together (their names show in each ref).
 function segCatLinks(seg, cat) {
-  return SEG_TREE[seg][cat].slice().sort((a, b) => {
+return SEG_TREE[seg][cat].slice().sort((a, b) => {
     const na = commName(a), nb = commName(b);
-    if (na !== nb) return na.localeCompare(nb);
+    const ra = commRank(na), rb = commRank(nb);
+    if (ra !== rb) return ra - rb;                 // priority commentators first
+    if (na !== nb) return na.localeCompare(nb);    // then alphabetical
     return String(a.sourceRef || a.ref || "").localeCompare(String(b.sourceRef || b.ref || ""));
   });
 }
