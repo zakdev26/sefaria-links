@@ -1270,9 +1270,12 @@ async function buildEpub(content) {
     <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>
   </manifest>
   <spine toc="ncx">
-    <itemref idref="nav"/>
     <itemref idref="text"/>
   </spine>
+  <guide>
+    <reference type="toc" title="Contents" href="text.xhtml#bookcontents"/>
+    <reference type="text" title="Start" href="text.xhtml#bookcontents"/>
+  </guide>
 </package>
 `;
 
@@ -1285,6 +1288,12 @@ async function buildEpub(content) {
 <nav epub:type="toc" id="toc">
 <h1>Contents</h1>
 ${navOl(tree)}
+</nav>
+<nav epub:type="landmarks" hidden="hidden">
+<ol>
+<li><a epub:type="toc" href="text.xhtml#bookcontents">Table of Contents</a></li>
+<li><a epub:type="bodymatter" href="text.xhtml#bookcontents">Start</a></li>
+</ol>
 </nav>
 </body>
 </html>
