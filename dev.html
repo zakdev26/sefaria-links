@@ -1181,13 +1181,35 @@ function epubBody(content) {
 
   let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
   if (tree.length) {
+    // "Collapsed" view: section titles only. Tapping one jumps to that
+    // section's expanded block below — the closest a Kindle book can get
+    // to expand/collapse, since Kindle strips all scripting from books.
+    // Sections with nothing beneath them link straight into the text.
     s += `<div class="contents" id="bookcontents">\n<h2>Contents</h2>\n<ol>\n`;
     for (const sec of tree) {
-      s += `<li><a href="#${sec.anchor}">${xmlEsc(sec.text)}</a>`;
-      if (sec.kids && sec.kids.length) s += `<br/><span class="subnav">${menu(sec.kids)}</span>`;
-      s += `</li>\n`;
+      const kids = sec.kids && sec.kids.length;
+      const target = kids ? "ctoc-" + sec.anchor : sec.anchor;
+      s += `<li><a href="#${target}">${xmlEsc(sec.text)}${kids ? " ›" : ""}</a></li>\n`;
     }
     s += `</ol>\n</div>\n`;
+    // "Expanded" view, one block per section: its categories with their
+    // works, a link into the text, and ⌂ to fold back to the section list.
+    for (const sec of tree) {
+      if (!(sec.kids && sec.kids.length)) continue;
+      s += `<div class="ctoc" id="ctoc-${sec.anchor}">\n`;
+      s += `<h3 class="ctoc-h"><a href="#${sec.anchor}">${xmlEsc(sec.text)} — read</a></h3>\n`;
+      s += `<ol class="ctoc-cats">\n`;
+      for (const k of sec.kids) {
+        s += `<li><a href="#${k.anchor}">${xmlEsc(k.text)}</a>`;
+        if (k.kids && k.kids.length) {
+          s += `<ol class="ctoc-works">` +
+               k.kids.map(g => `<li><a href="#${g.anchor}">${xmlEsc(g.text)}</a></li>`).join("") +
+               `</ol>`;
+        }
+        s += `</li>\n`;
+      }
+      s += `</ol>\n<p class="secnav"><a href="#bookcontents">⌂ contents</a></p>\n</div>\n`;
+    }
   }
 
   let curH1 = null;
@@ -1294,9 +1316,16 @@ p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
 p.en { line-height: 1.6; }
 div.contents ol { list-style: none; padding-left: 0; }
 div.contents li { margin: .5em 0; }
-div.contents .subnav { font-size: .85em; }
+div.ctoc { margin: 1.1em 0 1.4em; }
+div.ctoc h3.ctoc-h { margin: .2em 0 .3em; font-size: 1.05em; }
+ol.ctoc-cats { list-style: none; padding-left: 1em; margin: .2em 0; }
+ol.ctoc-cats li { margin: .3em 0; }
+ol.ctoc-works { list-style: none; padding-left: 1.2em; font-size: .9em; margin: .15em 0; }
+ol.ctoc-works li { margin: .2em 0; }
+div.ctoc a { text-decoration: none; color: inherit; }
+ol.ctoc-works a { color: #6b5329; }
 p.secnav { font-size: .8em; color: #6f675a; margin: 0 0 .6em; }
-p.secnav a, div.contents .subnav a { color: #6b5329; text-decoration: none; }
+p.secnav a { color: #6b5329; text-decoration: none; }
 nav ol { list-style: none; }
 `;
 
