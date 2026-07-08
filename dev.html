@@ -174,6 +174,7 @@
 
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
+  .sharehint { text-align: center; margin-top: 6px; font-size: 13px; }
 
   /* ---- output-format selector (also reused for the Group-by selector) ---- */
   .fmtlabel { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
@@ -236,6 +237,10 @@
       <button type="button" data-fmt="pdf">PDF</button>
     </div>
     <button id="genBtn" class="secondary">Build &amp; download</button>
+    <div id="shareBar" style="display:none">
+      <button id="shareBtn">📤 Share file…</button>
+      <div class="sharehint"><span class="globaltoggle" id="saveInstead">save to downloads instead</span></div>
+    </div>
   </div>
 
   <div class="card" id="previewCard" style="display:none">
@@ -539,6 +544,7 @@ async function fetchLinks() {
   $("fetchBtn").disabled = true;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
+  hideShareBar();
   setStatus("Fetching…");
 
   try {
@@ -994,6 +1000,42 @@ function finishStatus(content, ext) {
   setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
 }
 
+// On phones, hand the finished file straight to the system share sheet
+// (Send to Kindle appears there) instead of burying it in Downloads.
+// Browsers only allow navigator.share inside a fresh tap — and the build is
+// asynchronous, so by the time the file exists the original tap no longer
+// counts — hence a one-tap Share button appears instead of the sheet firing
+// by itself. Desktop and unsupporting browsers keep the normal download.
+let LASTOUT = null;
+function canShareFiles(file) {
+  try { return !!(navigator.canShare && navigator.canShare({ files: [file] })); }
+  catch (e) { return false; }
+}
+function deliverFile(blob, filename) {
+  let file = null;
+  try { file = new File([blob], filename, { type: blob.type || "application/octet-stream" }); } catch (e) {}
+  if (file && canShareFiles(file)) {
+    LASTOUT = { blob, filename };
+    $("shareBtn").textContent = "📤 Share " + filename;
+    $("shareBar").style.display = "block";
+  } else {
+    download(blob, filename);
+  }
+}
+function hideShareBar() { LASTOUT = null; $("shareBar").style.display = "none"; }
+$("shareBtn").onclick = async () => {
+  if (!LASTOUT) return;
+  const f = new File([LASTOUT.blob], LASTOUT.filename, { type: LASTOUT.blob.type || "application/octet-stream" });
+  try {
+    await navigator.share({ files: [f], title: LASTOUT.filename });
+    setStatus("Shared.");
+  } catch (e) {
+    // user closed the sheet → do nothing; real failure → fall back to download
+    if (!e || e.name !== "AbortError") download(LASTOUT.blob, LASTOUT.filename);
+  }
+};
+$("saveInstead").onclick = () => { if (LASTOUT) download(LASTOUT.blob, LASTOUT.filename); };
+
 // Build a nested TOC tree from the flat list. Supports three levels
 // (section → category → work), and still works for the 2-level category mode.
 function tocTree(toc) {
@@ -1082,7 +1124,7 @@ async function buildDocx(content) {
 
   const doc = new Document({ sections: [{ properties: {}, children }] });
   const blob = await Packer.toBlob(doc);
-  download(blob, fnameFor(content.ref) + ".docx");
+  deliverFile(blob, fnameFor(content.ref) + ".docx");
   finishStatus(content, "docx");
 }
 
@@ -1126,11 +1168,42 @@ function ncxMap(tree) {
   };
   return walk(tree);
 }
+// Kindle strips scripts from books, so true expand/collapse is impossible
+// there. Instead the book itself carries tappable drill-down navigation:
+// a master Contents of sections, a menu line under every section heading
+// (its categories), a menu line under every category (its works), and
+// ⌂ / ↑ links to jump back up — open and close, by link.
 function epubBody(content) {
+  const tree = tocTree(content.toc);
+  const node = {};
+  (function walk(ns) { ns.forEach(n => { node[n.anchor] = n; if (n.kids) walk(n.kids); }); })(tree);
+  const menu = kids => kids.map(k => `<a href="#${k.anchor}">${xmlEsc(k.text)}</a>`).join(" · ");
+
   let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
+  if (tree.length) {
+    s += `<div class="contents" id="bookcontents">\n<h2>Contents</h2>\n<ol>\n`;
+    for (const sec of tree) {
+      s += `<li><a href="#${sec.anchor}">${xmlEsc(sec.text)}</a>`;
+      if (sec.kids && sec.kids.length) s += `<br/><span class="subnav">${menu(sec.kids)}</span>`;
+      s += `</li>\n`;
+    }
+    s += `</ol>\n</div>\n`;
+  }
+
+  let curH1 = null;
   for (const b of content.blocks) {
-    if (b.type === "h1") s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
-    else if (b.type === "h2") s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
+    if (b.type === "h1") {
+      curH1 = b.anchor;
+      s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
+      const kids = (node[b.anchor] && node[b.anchor].kids) || [];
+      s += `<p class="secnav"><a href="#bookcontents">⌂ contents</a>${kids.length ? " · " + menu(kids) : ""}</p>\n`;
+    }
+    else if (b.type === "h2") {
+      s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
+      const kids = (node[b.anchor] && node[b.anchor].kids) || [];
+      const up = curH1 ? `<a href="#${curH1}">↑ section</a>` : `<a href="#bookcontents">⌂ contents</a>`;
+      if (kids.length || curH1) s += `<p class="secnav">${up}${kids.length ? " · " + menu(kids) : ""}</p>\n`;
+    }
     else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
@@ -1219,6 +1292,11 @@ h1.doctitle { text-align: center; font-size: 1.6em; }
 p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
 p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
 p.en { line-height: 1.6; }
+div.contents ol { list-style: none; padding-left: 0; }
+div.contents li { margin: .5em 0; }
+div.contents .subnav { font-size: .85em; }
+p.secnav { font-size: .8em; color: #6f675a; margin: 0 0 .6em; }
+p.secnav a, div.contents .subnav a { color: #6b5329; text-decoration: none; }
 nav ol { list-style: none; }
 `;
 
@@ -1244,7 +1322,7 @@ ${epubBody(content)}</body>
   oebps.file("text.xhtml", textXhtml);
 
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE" });
-  download(blob, fnameFor(content.ref) + ".epub");
+  deliverFile(blob, fnameFor(content.ref) + ".epub");
   finishStatus(content, "epub");
 }
 
@@ -1341,6 +1419,7 @@ function setGrp(g) {
   if (LINKS.length) {
     renderTree();
     $("previewCard").style.display = "none";
+    hideShareBar();
   }
 }
 
@@ -1349,6 +1428,7 @@ async function buildOutput() {
   if (content.error) { setStatus(content.error, true); return; }
 
   $("genBtn").disabled = true;
+  hideShareBar();
   try {
     if (OUTFMT === "word") await buildDocx(content);
     else if (OUTFMT === "pdf") buildPdf(content);
@@ -1745,6 +1825,7 @@ $("clearBtn").onclick = () => {
   LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
+  hideShareBar();
   $("tree").innerHTML = "";
   $("preview").innerHTML = "";
   setStatus("");
