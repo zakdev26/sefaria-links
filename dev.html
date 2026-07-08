@@ -182,6 +182,16 @@
   .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
   .fmtseg button:hover { background: #ece3d0; }
   .fmtseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ---- per-text share button (preview) ---- */
+  .pv-ref { justify-content: space-between; }
+  .pv-ref .pv-reflabel { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+  .pv-share {
+    width: auto; margin: 0; padding: 3px 9px; font-size: 12px; line-height: 1.4;
+    background: transparent; color: var(--accent); border: 1px solid var(--line); border-radius: 6px;
+    flex: none;
+  }
+  .pv-share:hover { background: #f2ecdd; }
 </style>
 </head>
 <body>
@@ -236,7 +246,6 @@
       <button type="button" data-fmt="word">Word</button>
       <button type="button" data-fmt="pdf">PDF</button>
     </div>
-    <button id="genBtn" class="secondary">Build &amp; download</button>
     <div id="shareBar" style="display:none">
       <button id="shareBtn">📤 Share file…</button>
       <div class="sharehint"><span class="globaltoggle" id="saveInstead">save to downloads instead</span></div>
@@ -711,7 +720,41 @@ function renderCatTree() {
 }
 
 // Section mode: section (segment of the page) → source → individual texts,
-// with a checkbox at every level.
+// with a checkbox at every level. Category/commentator-level toggles apply
+// globally across every section (see propagateCatToggle / propagateCommToggle
+// / propagateSrcToggle); only the section checkbox itself is per-section.
+let PROPAGATING = false;
+
+function propagateCatToggle(catName, checked) {
+  if (PROPAGATING) return;
+  PROPAGATING = true;
+  try {
+    document.querySelectorAll('.catgrp[data-cat="' + CSS.escape(catName) + '"] > .catgrp-head .catbox2').forEach(cb => {
+      if (cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
+    });
+  } finally { PROPAGATING = false; }
+}
+function propagateCommToggle(catName, commName, checked) {
+  if (PROPAGATING) return;
+  PROPAGATING = true;
+  try {
+    document.querySelectorAll(
+      '.commgrp[data-cat="' + CSS.escape(catName) + '"][data-comm="' + CSS.escape(commName) + '"] > .commhead .commbox2'
+    ).forEach(cb => {
+      if (cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
+    });
+  } finally { PROPAGATING = false; }
+}
+function propagateSrcToggle(checked) {
+  if (PROPAGATING) return;
+  PROPAGATING = true;
+  try {
+    document.querySelectorAll(".segsrcbox").forEach(cb => {
+      if (cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
+    });
+  } finally { PROPAGATING = false; }
+}
+
 function renderSegTree() {
   const segsHtml = SEG_ORDER.map(seg => {
     const cats = segCats(seg);
@@ -727,7 +770,7 @@ function renderSegTree() {
             <span>${escapeHtml(label)}</span>
           </label>`;
         }).join("");
-        return `<div class="commgrp collapsed">
+        return `<div class="commgrp collapsed" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
           <div class="comm commhead">
             <input type="checkbox" class="commbox2" checked>
             <span class="caret2">▾</span>
@@ -736,7 +779,7 @@ function renderSegTree() {
           <div class="linklist">${rows}</div>
         </div>`;
       }).join("");
-      return `<div class="catgrp collapsed">
+      return `<div class="catgrp collapsed" data-cat="${encodeURIComponent(cat)}">
         <div class="comm catgrp-head">
           <input type="checkbox" class="catbox2" checked>
           <span class="caret2 catcaret">▾</span>
@@ -762,16 +805,19 @@ function renderSegTree() {
     const allLinks = [...section.querySelectorAll(".linkbox")];
 
     function syncSeg() {
-      const on = allLinks.filter(b => b.checked).length;
+      const segSrc = [...section.querySelectorAll(".segsrcbox")];
+      const boxes = allLinks.concat(segSrc);
+      const on = boxes.filter(b => b.checked).length;
       segbox.checked = on > 0;
-      segbox.indeterminate = on > 0 && on < allLinks.length;
+      segbox.indeterminate = on > 0 && on < boxes.length;
     }
     head.addEventListener("click", e => {
       if (e.target === segbox) return;
       section.classList.toggle("collapsed");
     });
 
-    // per-section original-text group (collapsible, independent checkbox)
+    // per-section original-text group (collapsible, independent checkbox,
+    // but its on/off state mirrors across all sections)
     [...section.querySelectorAll(".srcgrp")].forEach(sg => {
       const shead = sg.querySelector(".commhead");
       const sbox = sg.querySelector(".segsrcbox");
@@ -779,11 +825,16 @@ function renderSegTree() {
         if (e.target === sbox) return;
         sg.classList.toggle("collapsed");
       });
+      sbox.addEventListener("change", () => {
+        syncSeg();
+        if (!PROPAGATING) propagateSrcToggle(sbox.checked);
+      });
     });
 
     [...section.querySelectorAll(".catgrp")].forEach(cg => {
       const chead = cg.querySelector(".catgrp-head");
       const cbox = cg.querySelector(".catbox2");
+      const catName = decodeURIComponent(cg.dataset.cat || "");
       const catLinks = [...cg.querySelectorAll(".linkbox")];
       const commGroups = [...cg.querySelectorAll(".commgrp")];
 
@@ -804,11 +855,13 @@ function renderSegTree() {
         });
         cbox.indeterminate = false;
         syncSeg();
+        if (!PROPAGATING) propagateCatToggle(catName, cbox.checked);
       });
 
       commGroups.forEach(g => {
         const ghead = g.querySelector(".commhead");
         const gbox = g.querySelector(".commbox2");
+        const commName = decodeURIComponent(g.dataset.comm || "");
         const links = [...g.querySelectorAll(".linkbox")];
         function syncComm() {
           const on = links.filter(b => b.checked).length;
@@ -823,6 +876,7 @@ function renderSegTree() {
           links.forEach(b => b.checked = gbox.checked);
           gbox.indeterminate = false;
           syncCat(); syncSeg();
+          if (!PROPAGATING) propagateCommToggle(catName, commName, gbox.checked);
         });
         links.forEach(b => b.addEventListener("change", () => { syncComm(); syncCat(); syncSeg(); }));
       });
@@ -1440,7 +1494,8 @@ ${bodyHtml}
 }
 
 // ===========================================================================
-// Format selector + dispatch
+// Format selector + dispatch — choosing a format now triggers the full
+// build → deliver (download or share) flow directly.
 // ===========================================================================
 let OUTFMT = "kindle";
 function setFmt(f) {
@@ -1466,7 +1521,8 @@ async function buildOutput() {
   const content = gatherContent();
   if (content.error) { setStatus(content.error, true); return; }
 
-  $("genBtn").disabled = true;
+  const fmtBtns = [...document.querySelectorAll(".fmtseg:not(.grpseg) button")];
+  fmtBtns.forEach(b => b.disabled = true);
   hideShareBar();
   try {
     if (OUTFMT === "word") await buildDocx(content);
@@ -1475,7 +1531,7 @@ async function buildOutput() {
   } catch (e) {
     setStatus("Failed to build: " + e.message, true);
   } finally {
-    $("genBtn").disabled = false;
+    fmtBtns.forEach(b => b.disabled = false);
   }
 }
 
@@ -1488,12 +1544,20 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+// Texts shown in the current preview, indexed for the per-item share button.
+let PV_SHARE_TEXTS = [];
+
 function pvItem(label, he, en, isSrc) {
+  const idx = PV_SHARE_TEXTS.length;
+  PV_SHARE_TEXTS.push({ label, he, en });
   let body = "";
   if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
   if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
   return `<div class="pv-item${isSrc ? " pv-item-src" : ""}">
-    <div class="pv-ref pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</div>
+    <div class="pv-ref">
+      <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
+      <button type="button" class="pv-share" data-idx="${idx}" title="Share this text">📤 Share</button>
+    </div>
     <div class="pv-body">${body}</div>
   </div>`;
 }
@@ -1514,7 +1578,32 @@ function wholeSrcPvItem(ref) {
   return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true);
 }
 
+// Share (or, as a fallback, copy) a single preview item's text — respects the
+// Hebrew / English toggles currently shown in the preview.
+async function sharePvItem(idx) {
+  const item = PV_SHARE_TEXTS[idx];
+  if (!item) return;
+  const showHe = $("pvHe").checked, showEn = $("pvEn").checked;
+  let text = item.label;
+  if (showHe && item.he) text += "\n\n" + item.he;
+  if (showEn && item.en) text += "\n\n" + item.en;
+  text = text.trim();
+  if (!text) return;
+
+  if (navigator.share) {
+    try { await navigator.share({ text, title: item.label }); return; }
+    catch (e) { if (e && e.name === "AbortError") return; /* else fall through to copy */ }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    setStatus("Copied to clipboard.");
+  } catch (e) {
+    setStatus("Couldn't share or copy — select the text manually.", true);
+  }
+}
+
 function renderPreview() {
+  PV_SHARE_TEXTS = [];
   const srcOn = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
   const haveSrc = srcOn && SRC && (SRC.he.length || SRC.text.length);
   const ref = $("ref").value.trim();
@@ -1602,10 +1691,16 @@ function renderPreview() {
   $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// per-item collapse (event delegation), language toggles, expand/collapse all
+// per-item collapse (event delegation), share button, language toggles, expand/collapse all
 $("preview").addEventListener("click", e => {
+  const shareBtn = e.target.closest(".pv-share");
+  if (shareBtn) {
+    e.stopPropagation();
+    sharePvItem(parseInt(shareBtn.dataset.idx, 10));
+    return;
+  }
   const t = e.target.closest(".pv-toggle");
-  if (t) t.parentElement.classList.toggle("collapsed");
+  if (t) t.parentElement.parentElement.classList.toggle("collapsed");
 });
 $("pvHe").onchange = applyPvLang;
 $("pvEn").onchange = applyPvLang;
@@ -1856,7 +1951,7 @@ async function fetchCount(ref) {
 // Wiring
 // ===========================================================================
 document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
+document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
 
 $("clearBtn").onclick = () => {
@@ -1875,7 +1970,6 @@ $("clearBtn").onclick = () => {
 
 $("previewBtn").onclick = renderPreview;
 $("fetchBtn").onclick = fetchLinks;
-$("genBtn").onclick = buildOutput;
 
 $("verHint").textContent += " \u00b7 app v" + APP_VERSION;
 setFmt("kindle");
