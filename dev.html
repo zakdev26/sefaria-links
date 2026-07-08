@@ -245,7 +245,7 @@ const TEXTS_API = "https://www.sefaria.org/api/texts/";
 let LINKS = [];      // link objects with text (each gets a stable index l._i)
 let TREE = {};       // category -> { commentator -> [links] }
 let CAT_ORDER = [];  // categories, most links first
-let SEG_TREE = {};   // segment ref -> { commentator -> [links] }
+let SEG_TREE = {};   // segment ref -> { category -> [links] }
 let SEG_ORDER = [];  // segment refs, in textual order
 let GROUPMODE = "cat"; // "cat" | "seg"
 let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
@@ -327,13 +327,21 @@ function segNum(ref) {
   const m = String(ref).match(/:(\d+)$/);
   return m ? parseInt(m[1], 10) : 0;   // whole-page anchors sort first
 }
-// Commentators within a segment: fixed category rank, then frequency.
-function segComms(seg) {
+// Categories present within a segment: fixed category rank, then frequency.
+function segCats(seg) {
   return Object.keys(SEG_TREE[seg]).sort((a, b) => {
-    const ra = catRank(SEG_TREE[seg][a][0].category || "");
-    const rb = catRank(SEG_TREE[seg][b][0].category || "");
+    const ra = catRank(a), rb = catRank(b);
     if (ra !== rb) return ra - rb;
     return SEG_TREE[seg][b].length - SEG_TREE[seg][a].length;
+  });
+}
+// Links inside one section+category, ordered by work then reference so a
+// commentator's own pieces stay together (their names show in each ref).
+function segCatLinks(seg, cat) {
+  return SEG_TREE[seg][cat].slice().sort((a, b) => {
+    const na = commName(a), nb = commName(b);
+    if (na !== nb) return na.localeCompare(nb);
+    return String(a.sourceRef || a.ref || "").localeCompare(String(b.sourceRef || b.ref || ""));
   });
 }
 function pickedLinkSet() {
@@ -532,13 +540,13 @@ async function fetchLinks() {
       return catCount(b) - catCount(a);         // else frequency, descending
     });
 
-    // group: section (anchor segment) -> commentator -> links
+    // group: section (anchor segment) -> category -> links
     SEG_TREE = {};
     for (const l of LINKS) {
       const s = segRefOf(l) || "(whole page)";
-      const n = commName(l);
+      const c = catName(l);
       (SEG_TREE[s] = SEG_TREE[s] || {});
-      (SEG_TREE[s][n] = SEG_TREE[s][n] || []).push(l);
+      (SEG_TREE[s][c] = SEG_TREE[s][c] || []).push(l);
     }
     SEG_ORDER = Object.keys(SEG_TREE).sort((a, b) =>
       segNum(a) - segNum(b) || a.localeCompare(b));
@@ -635,10 +643,10 @@ function renderCatTree() {
 // with a checkbox at every level.
 function renderSegTree() {
   const segsHtml = SEG_ORDER.map(seg => {
-    const comms = segComms(seg);
-    const total = comms.reduce((s, c) => s + SEG_TREE[seg][c].length, 0);
-    const grps = comms.map(comm => {
-      const links = SEG_TREE[seg][comm];
+    const cats = segCats(seg);
+    const total = cats.reduce((s, c) => s + SEG_TREE[seg][c].length, 0);
+    const grps = cats.map(cat => {
+      const links = segCatLinks(seg, cat);
       const rows = links.map(l => {
         const label = l.sourceRef || l.ref || "(untitled)";
         return `<label class="linkrow">
@@ -650,7 +658,7 @@ function renderSegTree() {
         <div class="comm commhead">
           <input type="checkbox" class="commbox2" checked>
           <span class="caret2">▾</span>
-          <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
+          <span>${escapeHtml(cat)}</span><span class="count">${links.length}</span>
         </div>
         <div class="linklist">${rows}</div>
       </div>`;
@@ -769,9 +777,9 @@ function gatherContent() {
     }
 
     for (const seg of SEG_ORDER) {
-      const comms = segComms(seg);
-      const sel = comms
-        .map(c => [c, SEG_TREE[seg][c].filter(l => picked.has(l._i))])
+      const cats = segCats(seg);
+      const sel = cats
+        .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
         .filter(p => p[1].length);
       if (!sel.length) continue;   // no selected texts in this section — skip it
 
@@ -788,10 +796,10 @@ function gatherContent() {
         }
       }
 
-      for (const [comm, arr] of sel) {
+      for (const [cat, arr] of sel) {
         const a2 = nextId();
-        toc.push({ level: 2, text: comm, anchor: a2 });
-        blocks.push({ type: "h2", text: comm, anchor: a2 });
+        toc.push({ level: 2, text: cat, anchor: a2 });
+        blocks.push({ type: "h2", text: cat, anchor: a2 });
         for (const l of arr) {
           const enRef = l.sourceRef || l.ref || "";
           const heRef = l.sourceHeRef || "";
@@ -1265,9 +1273,9 @@ function renderPreview() {
       html += wholeSrcPvItem(ref);
     } else {
       for (const seg of SEG_ORDER) {
-        const comms = segComms(seg);
-        const sel = comms
-          .map(c => [c, SEG_TREE[seg][c].filter(l => picked.has(l._i))])
+        const cats = segCats(seg);
+        const sel = cats
+          .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
           .filter(p => p[1].length);
         if (!sel.length) continue;
         sections++;
@@ -1280,8 +1288,8 @@ function renderPreview() {
             if (he || en) html += pvItem("Source — " + seg, he, en, true);
           }
         }
-        for (const [comm, arr] of sel) {
-          html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+        for (const [cat, arr] of sel) {
+          html += `<div class="pv-comm">${escapeHtml(cat)}</div>`;
           for (const l of arr) {
             const enRef = l.sourceRef || l.ref || "";
             const heRef = l.sourceHeRef || "";
