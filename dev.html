@@ -254,13 +254,14 @@
   </div>
 
   <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the file, then use the share sheet → <em>Send to Kindle</em> (EPUB and Word both work; EPUB gives the richer Go&nbsp;To menu).</p>
-  <p class="hint">Texts and links from Sefaria's open library.</p>
+  <p class="hint" id="verHint">Texts and links from Sefaria's open library.</p>
 </div>
 
 <div class="donate-bar"><a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">♥ Donate to Sefaria</a></div>
 
 <script>
 const $ = id => document.getElementById(id);
+const APP_VERSION = 14;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -1876,6 +1877,7 @@ $("previewBtn").onclick = renderPreview;
 $("fetchBtn").onclick = fetchLinks;
 $("genBtn").onclick = buildOutput;
 
+$("verHint").textContent += " \u00b7 app v" + APP_VERSION;
 setFmt("kindle");
 </script>
 </body>
