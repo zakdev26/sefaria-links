@@ -163,6 +163,28 @@
   #tree.hide-he .srcbody .pv-he { display: none; }
   #tree.hide-en .srcbody .pv-en { display: none; }
 
+  /* ---- user notes: a small button on every source row, an inline editor ---- */
+  .notebtn {
+    width: auto; margin: 0 0 0 auto; padding: 2px 8px; font-size: 12px; line-height: 1.5;
+    background: transparent; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 6px; flex: none;
+  }
+  .count + .notebtn { margin-left: 8px; }
+  .notebtn:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .notebtn.has-note { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .notebtn.has-note:hover { background: var(--accent-dark); }
+  .notebox { display: none; padding: 4px 2px 8px 24px; }
+  .notebox textarea {
+    width: 100%; min-height: 54px; box-sizing: border-box; resize: vertical;
+    font-family: inherit; font-size: 14px; padding: 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+  .pv-note {
+    font-size: 13.5px; font-style: italic; color: var(--accent-dark);
+    background: #fbf8f0; border-left: 3px solid var(--accent);
+    padding: 6px 10px; margin: 4px 0 8px; border-radius: 0 6px 6px 0;
+  }
+
   /* ---- reference builder: mode switch + browse navigator ---- */
   .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
   .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
@@ -215,12 +237,12 @@
 <body>
 <div class="wrap">
   <h1>Sefaria Links → Kindle / Word / PDF</h1>
-  <p class="sub">Enter a reference (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
+  <p class="sub">Enter a reference and press Enter (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
 
   <div class="card">
     <label for="ref">Reference</label>
     <div class="refwrap">
-      <input type="text" id="ref" placeholder="Start typing… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input type="text" id="ref" placeholder="Type and press Enter… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
       <div class="ac" id="ac"></div>
     </div>
 
@@ -239,7 +261,6 @@
       <label><input type="checkbox" id="incEn" checked> English</label>
     </div>
 
-    <button id="fetchBtn">Fetch links</button>
     <div class="clearrow"><span class="globaltoggle" id="clearBtn">clear</span></div>
     <div class="status" id="status"></div>
   </div>
@@ -288,7 +309,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 16;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 17;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -311,7 +332,51 @@ let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base sour
 let SEL = new Set();
 let SRC_ON = false;
 
+// User notes, keyed by keyFor(category, commentator) — or "__src__" for the
+// Original Text. A note written in one grouping mode follows into the other,
+// shows in the preview, and is printed into every built file. Notes are
+// cleared when a new reference is fetched (they belong to the old one).
+let NOTES = {};
+
 function srcAvailable() { return !!(SRC && (SRC.he.length || SRC.text.length)); }
+
+function noteOf(key) { return (NOTES[key] || "").trim(); }
+function noteBtnHtml(key) {
+  const k = encodeURIComponent(key);
+  return `<button type="button" class="notebtn${noteOf(key) ? " has-note" : ""}" data-key="${k}" title="Add a note">✎ note</button>`;
+}
+function noteBoxHtml(key) {
+  const k = encodeURIComponent(key);
+  return `<div class="notebox" data-key="${k}"><textarea class="notetext" data-key="${k}" placeholder="Your note — shown in the preview and printed in the built file.">${escapeHtml(NOTES[key] || "")}</textarea></div>`;
+}
+// Wire every note button / editor inside a freshly rendered tree. The editor
+// always sits immediately after the row that carries its button; typing in
+// one editor live-syncs any duplicates of the same note elsewhere on screen.
+function wireNotes(root) {
+  [...root.querySelectorAll(".notebtn")].forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.preventDefault(); e.stopPropagation();
+      const row = btn.closest(".comm, .cat-head");
+      const nxt = row && row.nextElementSibling;
+      const box = (nxt && nxt.classList.contains("notebox")) ? nxt : null;
+      if (!box) return;
+      const open = box.style.display === "block";
+      box.style.display = open ? "none" : "block";
+      if (!open) box.querySelector("textarea").focus();
+    });
+  });
+  [...root.querySelectorAll(".notebox")].forEach(bx =>
+    bx.addEventListener("click", e => e.stopPropagation()));
+  [...root.querySelectorAll(".notetext")].forEach(ta => {
+    ta.addEventListener("input", () => {
+      const k = ta.dataset.key, key = decodeURIComponent(k);
+      NOTES[key] = ta.value;
+      document.querySelectorAll(`.notetext[data-key="${k}"]`).forEach(o => { if (o !== ta) o.value = ta.value; });
+      const has = !!ta.value.trim();
+      document.querySelectorAll(`.notebtn[data-key="${k}"]`).forEach(b => b.classList.toggle("has-note", has));
+    });
+  });
+}
 
 function setLinkSel(i, on) {
   if (on) SEL.add(i); else SEL.delete(i);
@@ -457,9 +522,10 @@ function catName(l) { return l.category || "Other"; }
 function keyFor(cat, comm) { return cat + "||" + comm; }
 
 // Which segment of the source a link hangs off. Prefer the segment the link
-// was actually fetched for (set during the segment-by-segment walk); fall back
-// to anchorRef only for refs that couldn't be expanded. A link spanning several
-// segments is filed under the first segment it was seen for, so it appears once.
+// was actually fetched for (set during the segment-by-segment walk, and for
+// single-segment fetches); fall back to anchorRef only for refs that couldn't
+// be expanded. A link spanning several segments is filed under the first
+// segment it was seen for, so it appears once.
 function segRefOf(l) {
   if (l._seg) return l._seg;
   if (Array.isArray(l.anchorRefExpanded) && l.anchorRefExpanded.length) return l.anchorRefExpanded[0];
@@ -468,6 +534,14 @@ function segRefOf(l) {
 function segNum(ref) {
   const m = String(ref).match(/:(\d+)$/);
   return m ? parseInt(m[1], 10) : 0;   // whole-page anchors sort first
+}
+// Which slice of the base text belongs to a section. When the whole fetch was
+// a single segment (one verse, one mishnah), the source text has exactly one
+// slice — use it — otherwise index by the segment number.
+function srcIdxFor(seg) {
+  if (!srcAvailable()) return -1;
+  if (SEG_ORDER.length === 1 && Math.max(SRC.he.length, SRC.text.length) === 1) return 0;
+  return segNum(seg) - 1;
 }
 // Categories present within a segment: fixed category rank, then frequency.
 function segCats(seg) {
@@ -551,11 +625,20 @@ function renderAC(list) {
     });
   });
 }
+// Picking a suggestion that ends in a number / daf is a usable reference —
+// fetch it right away (this is what replaces the old Fetch button). A bare
+// book name means the user is still narrowing down, so keep them typing.
 function pickAC(i) {
   if (i < 0 || i >= acItems.length) return;
-  $("ref").value = acItems[i];
+  const v = acItems[i];
   hideAC();
-  $("ref").focus();
+  if (/\d+[ab]?(?::\d+)?$/.test(v.trim())) {
+    $("ref").value = v;
+    fetchLinks();
+  } else {
+    $("ref").value = v + " ";
+    $("ref").focus();
+  }
 }
 async function queryNames(q) {
   try {
@@ -653,11 +736,13 @@ async function fetchLinksBySegments(ref) {
   return [].concat.apply([], chunks);
 }
 
+let FETCHING = false;
 async function fetchLinks() {
+  if (FETCHING) return;
   const ref = $("ref").value.trim();
-  if (!ref) { setStatus("Enter a reference, or switch to Browse.", true); return; }
+  if (!ref) { setStatus("Enter a reference and press Enter, or switch to Browse.", true); return; }
 
-  $("fetchBtn").disabled = true;
+  FETCHING = true;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
   hideShareBar();
@@ -672,6 +757,12 @@ async function fetchLinks() {
       if (!res.ok) throw new Error("HTTP " + res.status);
       data = await res.json();
       if (data && data.error) throw new Error(data.error);
+      // A single specific segment (one verse, one mishnah, one line of a daf):
+      // everything the API returns belongs to that segment, so file it all
+      // there. Without this, links anchored to ranges (a commentary on
+      // 9:1-10:29, or on 2:1-3) would surface under the range's first segment,
+      // making e.g. "I Kings 9:10" show sections for 9:1, 9:9 and even 1:1.
+      if (Array.isArray(data) && /:\d+$/.test(ref)) data.forEach(l => { l._seg = ref; });
     }
     if (!Array.isArray(data) || data.length === 0) {
       setStatus("No links found for that reference.", true);
@@ -725,16 +816,17 @@ async function fetchLinks() {
       }
     } catch (e) { /* silent: source text just won't be available */ }
 
-    // fresh selection: everything on
+    // fresh selection: everything on; notes belonged to the previous reference
     SEL = new Set(LINKS.map(l => l._i));
     SRC_ON = srcAvailable();
+    NOTES = {};
 
     renderTree();
     setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
   } finally {
-    $("fetchBtn").disabled = false;
+    FETCHING = false;
   }
 }
 
@@ -746,6 +838,7 @@ async function fetchLinks() {
 function renderTree() {
   if (GROUPMODE === "seg") renderSegTree();
   else renderCatTree();
+  wireNotes($("tree"));
   syncTreeUI();
   applyTreeLang();
 }
@@ -758,16 +851,17 @@ function srcRowHtml(subtitle) {
         <span class="caret" style="visibility:hidden">▾</span>
         <strong>Original Text</strong>
         <span class="count">${avail ? subtitle : "not available"}</span>
+        ${avail ? noteBtnHtml("__src__") : ""}
       </div>
+      ${avail ? noteBoxHtml("__src__") : ""}
     </div>`;
 }
 
 // The relevant slice of the base text for one section, as an expandable,
 // checkable group placed at the top of that section's menu (Section mode).
 function segSrcGroupHtml(seg) {
-  if (!srcAvailable()) return "";
-  const idx = segNum(seg) - 1;
-  if (idx < 0) return "";   // the "(whole page)" bucket has no single segment
+  const idx = srcIdxFor(seg);
+  if (idx < 0) return "";   // no source, or the "(whole page)" bucket
   const he = stripHtml(SRC.he[idx] || "");
   const en = stripHtml(SRC.text[idx] || "");
   if (!he && !en) return "";
@@ -778,8 +872,9 @@ function segSrcGroupHtml(seg) {
     <div class="comm commhead">
       <input type="checkbox" class="segsrcbox" data-idx="${idx}">
       <span class="caret2">▾</span>
-      <span>Original text</span>
+      <span>Original text</span>${noteBtnHtml("__src__")}
     </div>
+    ${noteBoxHtml("__src__")}
     <div class="srcbody">${body}</div>
   </div>`;
 }
@@ -791,10 +886,11 @@ function renderCatTree() {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
     const rows = comms.map(comm => {
       const n = TREE[cat][comm].length;
+      const nk = keyFor(cat, comm);
       return `<label class="comm">
         <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
-        <span>${comm}</span><span class="count">${n}</span>
-      </label>`;
+        <span>${comm}</span><span class="count">${n}</span>${noteBtnHtml(nk)}
+      </label>${noteBoxHtml(nk)}`;
     }).join("");
     return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
       <div class="cat-head">
@@ -853,12 +949,14 @@ function renderSegTree() {
             <span>${escapeHtml(label)}</span>
           </label>`;
         }).join("");
+        const nk = keyFor(cat, comm);
         return `<div class="commgrp collapsed" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
           <div class="comm commhead">
             <input type="checkbox" class="commbox2">
             <span class="caret2">▾</span>
-            <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
+            <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>${noteBtnHtml(nk)}
           </div>
+          ${noteBoxHtml(nk)}
           <div class="linklist">${rows}</div>
         </div>`;
       }).join("");
@@ -957,8 +1055,10 @@ $("toggleAll").onclick = () => {
 // Every builder (Word / EPUB / PDF) consumes this same shape, and both
 // grouping modes read from the same SEL / SRC_ON selection, so the built
 // document contains exactly what's ticked — nothing more.
-//   blocks: ordered [{type:"h1"|"h2"|"h3"|"ref"|"he"|"en", text, anchor?, first?}]
+//   blocks: ordered [{type:"h1"|"h2"|"h3"|"ref"|"note"|"he"|"en", text, anchor?, first?}]
 //   toc:    [{level:1|2|3, text, anchor}]
+// A note is printed once, at the first place its commentator (or the
+// original text) appears in the document.
 // ===========================================================================
 function gatherContent() {
   const incHe = $("incHe").checked;
@@ -973,12 +1073,18 @@ function gatherContent() {
   let bmId = 0;
   const nextId = () => "sec" + (bmId++);
   let written = 0;
+  const notedone = new Set();
+  const emitNote = (key) => {
+    const nt = noteOf(key);
+    if (nt && !notedone.has(key)) { notedone.add(key); blocks.push({ type: "note", text: nt }); }
+  };
 
   const emitWholeSource = () => {
     const srcLabel = SRC.heRef || SRC.ref || ref;
     const anchor = nextId();
     toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
     blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true });
+    emitNote("__src__");
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
@@ -995,7 +1101,7 @@ function gatherContent() {
       const sel = cats
         .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
         .filter(p => p[1].length);
-      const idx = segNum(seg) - 1;
+      const idx = haveSrc ? srcIdxFor(seg) : -1;
       const segHe = (haveSrc && idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
       const segEn = (haveSrc && idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
       const wantSrc = haveSrc && idx >= 0 && (segHe || segEn);
@@ -1009,6 +1115,7 @@ function gatherContent() {
       if (wantSrc) {
         if (incHe && segHe) blocks.push({ type: "he", text: segHe });
         if (incEn && segEn) blocks.push({ type: "en", text: segEn });
+        emitNote("__src__");
       }
 
       for (const [cat, arr] of sel) {
@@ -1024,6 +1131,7 @@ function gatherContent() {
           const a3 = nextId();
           toc.push({ level: 3, text: h3text, anchor: a3 });
           blocks.push({ type: "h3", text: h3text, anchor: a3 });
+          emitNote(keyFor(cat, comm));
           for (const l of links) {
             if (!single) {   // the h3 already names a lone link, so skip its ref line
               const enRef = l.sourceRef || l.ref || "";
@@ -1062,6 +1170,7 @@ function gatherContent() {
       const commAnchor = nextId();
       toc.push({ level: 2, text: comm, anchor: commAnchor });
       blocks.push({ type: "h2", text: comm, anchor: commAnchor });
+      emitNote(keyFor(cat, comm));
 
       for (const l of links) {
         const enRef = l.sourceRef || l.ref || "";
@@ -1200,6 +1309,10 @@ async function buildDocx(content) {
       spacing: { before: 120, after: 30 },
       children: [new TextRun({ text: b.text, bold: true, size: 20, color: "6f675a" })]
     }));
+    else if (b.type === "note") body.push(new Paragraph({
+      spacing: { before: 60, after: 100 },
+      children: [new TextRun({ text: "Note: " + b.text, italics: true, size: 22, color: "6b5329" })]
+    }));
     else if (b.type === "he") body.push(heParagraph(b.text));
     else if (b.type === "en") body.push(enParagraph(b.text));
   }
@@ -1330,6 +1443,7 @@ function epubBody(content) {
     }
     else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "note") s += `<p class="usernote">Note: ${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
   }
@@ -1423,6 +1537,7 @@ h2 { font-size: 1.15em; color: #6b5329; margin: .8em 0 .3em; }
 h3 { font-size: 1.02em; color: #8a6d3b; margin: .6em 0 .2em; }
 h1.doctitle { text-align: center; font-size: 1.6em; }
 p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
+p.usernote { font-style: italic; color: #6b5329; border-left: 2px solid #8a6d3b; padding-left: .6em; margin: .4em 0 .6em; }
 p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
 p.en { line-height: 1.6; }
 div.contents ol { list-style: none; padding-left: 0; }
@@ -1495,6 +1610,7 @@ function buildPdf(content) {
     else if (b.type === "h2") bodyHtml += `<h2 id="${b.anchor}">${escapeHtml(b.text)}</h2>`;
     else if (b.type === "h3") bodyHtml += `<h3 id="${b.anchor}">${escapeHtml(b.text)}</h3>`;
     else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "note") bodyHtml += `<p class="usernote">Note: ${escapeHtml(b.text)}</p>`;
     else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
     else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
   }
@@ -1510,6 +1626,7 @@ function buildPdf(content) {
   h3 { font-size: 14px; color: #8a6d3b; margin: 12px 0 2px; }
   h1.title { font-size: 24px; text-align: center; margin: 0 0 6px; }
   p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
+  p.usernote { font-style: italic; color: #6b5329; border-left: 3px solid #8a6d3b; padding-left: 8px; font-size: 13px; margin: 4px 0 8px; }
   p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
   p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
   .contents-h { font-size: 18px; margin: 18px 0 8px; }
@@ -1626,6 +1743,11 @@ function pvGrp(title, n, body, sub) {
   </div>`;
 }
 
+function pvNoteHtml(key) {
+  const nt = noteOf(key);
+  return nt ? `<p class="pv-note">Note: ${escapeHtml(nt)}</p>` : "";
+}
+
 function applyPvLang() {
   const pv = $("preview");
   pv.classList.toggle("hide-he", !$("pvHe").checked);
@@ -1678,23 +1800,27 @@ function renderPreview() {
     // commentator groups: e.g. Commentary ▸ Rashi ▸ each Rashi comment.
     if (!SEL.size && !haveSrc) { setStatus("Select at least one text, or the original text.", true); return; }
 
+    let srcNoteShown = false;
     for (const seg of SEG_ORDER) {
       const cats = segCats(seg);
       const sel = cats
         .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
         .filter(p => p[1].length);
-      const idx = segNum(seg) - 1;
-      const he = (haveSrc && idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
-      const en = (haveSrc && idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
+      const idx = haveSrc ? srcIdxFor(seg) : -1;
+      const he = (idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
+      const en = (idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
       const wantSrc = haveSrc && idx >= 0 && (he || en);
       if (!sel.length && !wantSrc) continue;
       sections++;
       html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
-      if (wantSrc) html += pvItem("Source — " + seg, he, en, true, true);
+      if (wantSrc) {
+        html += pvItem("Source — " + seg, he, en, true, true);
+        if (!srcNoteShown) { const n = pvNoteHtml("__src__"); if (n) { srcNoteShown = true; html += n; } }
+      }
       for (const [cat, arr] of sel) {
         let catBody = "";
         for (const [comm, links] of groupByComm(arr)) {
-          let items = "";
+          let items = pvNoteHtml(keyFor(cat, comm));
           for (const l of links) {
             const enRef = l.sourceRef || l.ref || "";
             const heRef = l.sourceHeRef || "";
@@ -1711,7 +1837,10 @@ function renderPreview() {
     // ---------------- category mode ----------------
     if (!SEL.size && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
 
-    if (haveSrc) html += wholeSrcPvItem(ref);
+    if (haveSrc) {
+      html += wholeSrcPvItem(ref);
+      html += pvNoteHtml("__src__");
+    }
 
     for (const cat of CAT_ORDER) {
       const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
@@ -1722,6 +1851,7 @@ function renderPreview() {
       html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
       for (const [comm, links] of groups) {
         html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+        html += pvNoteHtml(keyFor(cat, comm));
         for (const l of links) {
           const enRef = l.sourceRef || l.ref || "";
           const heRef = l.sourceHeRef || "";
@@ -1790,6 +1920,7 @@ const CORPORA = [
   { label: "Mishnah",  he: "משנה",   match: ["mishnah"] },
   { label: "Talmud",   he: "תלמוד",  match: ["talmud"] },
   { label: "Halakhah", he: "הלכה",   match: ["halakhah", "halacha"] },
+  { label: "Midrash",  he: "מדרש",   match: ["midrash"] },
   { label: "Kabbalah", he: "קבלה",   match: ["kabbalah", "kabbala"] },
   { label: "Chasidut", he: "חסידות", match: ["chasidut", "chassidut", "hasidut"] }
 ];
@@ -2030,7 +2161,7 @@ $("incEn").addEventListener("change", applyTreeLang);
 $("clearBtn").onclick = () => {
   $("ref").value = "";
   LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
-  SEL = new Set(); SRC_ON = false;
+  SEL = new Set(); SRC_ON = false; NOTES = {};
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
   hideShareBar();
@@ -2043,7 +2174,6 @@ $("clearBtn").onclick = () => {
 };
 
 $("previewBtn").onclick = renderPreview;
-$("fetchBtn").onclick = fetchLinks;
 
 $("verHint").textContent += " \u00b7 app v" + APP_VERSION;
 setFmt("kindle");
