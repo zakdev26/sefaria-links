@@ -163,26 +163,21 @@
   #tree.hide-he .srcbody .pv-he { display: none; }
   #tree.hide-en .srcbody .pv-en { display: none; }
 
-  /* ---- user notes: a small button on every source row, an inline editor ---- */
-  .notebtn {
-    width: auto; margin: 0 0 0 auto; padding: 2px 8px; font-size: 12px; line-height: 1.5;
-    background: transparent; color: var(--muted); border: 1px solid var(--line);
-    border-radius: 6px; flex: none;
+  /* ---- user notes: a pencil button beside each preview text's share button,
+         an inline editor beneath that text ---- */
+  .pv-notebtn {
+    width: auto; margin: 0; padding: 3px 9px; line-height: 1.2; font-size: 14px;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none;
   }
-  .count + .notebtn { margin-left: 8px; }
-  .notebtn:hover { background: #f2ecdd; color: var(--accent-dark); }
-  .notebtn.has-note { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .notebtn.has-note:hover { background: var(--accent-dark); }
-  .notebox { display: none; padding: 4px 2px 8px 24px; }
+  .pv-notebtn:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .pv-notebtn.has-note { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pv-notebtn.has-note:hover { background: var(--accent-dark); }
+  .notebox { display: none; padding: 6px 0 2px; }
   .notebox textarea {
     width: 100%; min-height: 54px; box-sizing: border-box; resize: vertical;
     font-family: inherit; font-size: 14px; padding: 8px;
     border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
-  }
-  .pv-note {
-    font-size: 13.5px; font-style: italic; color: var(--accent-dark);
-    background: #fbf8f0; border-left: 3px solid var(--accent);
-    padding: 6px 10px; margin: 4px 0 8px; border-radius: 0 6px 6px 0;
   }
 
   /* ---- reference builder: mode switch + browse navigator ---- */
@@ -332,50 +327,26 @@ let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base sour
 let SEL = new Set();
 let SRC_ON = false;
 
-// User notes, keyed by keyFor(category, commentator) — or "__src__" for the
-// Original Text. A note written in one grouping mode follows into the other,
-// shows in the preview, and is printed into every built file. Notes are
-// cleared when a new reference is fetched (they belong to the old one).
+// User notes, written in the preview on individual texts (the most granular
+// level). Keys: "L" + link index for a linked text (stable across grouping
+// modes, so a note follows its text between Category and Section views);
+// "S:" + segment for one section's slice of the original text; "__src__" for
+// the whole original text in Category mode. Each note is printed in the
+// built file directly beneath its own text. Notes are cleared when a new
+// reference is fetched (they belong to the old one).
 let NOTES = {};
 
 function srcAvailable() { return !!(SRC && (SRC.he.length || SRC.text.length)); }
 
 function noteOf(key) { return (NOTES[key] || "").trim(); }
-function noteBtnHtml(key) {
+function pvNoteBtnHtml(key) {
   const k = encodeURIComponent(key);
-  return `<button type="button" class="notebtn${noteOf(key) ? " has-note" : ""}" data-key="${k}" title="Add a note">✎ note</button>`;
+  return `<button type="button" class="pv-notebtn${noteOf(key) ? " has-note" : ""}" data-key="${k}" title="Add a note to this text" aria-label="Add a note to this text">✎</button>`;
 }
 function noteBoxHtml(key) {
   const k = encodeURIComponent(key);
-  return `<div class="notebox" data-key="${k}"><textarea class="notetext" data-key="${k}" placeholder="Your note — shown in the preview and printed in the built file.">${escapeHtml(NOTES[key] || "")}</textarea></div>`;
-}
-// Wire every note button / editor inside a freshly rendered tree. The editor
-// always sits immediately after the row that carries its button; typing in
-// one editor live-syncs any duplicates of the same note elsewhere on screen.
-function wireNotes(root) {
-  [...root.querySelectorAll(".notebtn")].forEach(btn => {
-    btn.addEventListener("click", e => {
-      e.preventDefault(); e.stopPropagation();
-      const row = btn.closest(".comm, .cat-head");
-      const nxt = row && row.nextElementSibling;
-      const box = (nxt && nxt.classList.contains("notebox")) ? nxt : null;
-      if (!box) return;
-      const open = box.style.display === "block";
-      box.style.display = open ? "none" : "block";
-      if (!open) box.querySelector("textarea").focus();
-    });
-  });
-  [...root.querySelectorAll(".notebox")].forEach(bx =>
-    bx.addEventListener("click", e => e.stopPropagation()));
-  [...root.querySelectorAll(".notetext")].forEach(ta => {
-    ta.addEventListener("input", () => {
-      const k = ta.dataset.key, key = decodeURIComponent(k);
-      NOTES[key] = ta.value;
-      document.querySelectorAll(`.notetext[data-key="${k}"]`).forEach(o => { if (o !== ta) o.value = ta.value; });
-      const has = !!ta.value.trim();
-      document.querySelectorAll(`.notebtn[data-key="${k}"]`).forEach(b => b.classList.toggle("has-note", has));
-    });
-  });
+  const has = !!noteOf(key);
+  return `<div class="notebox" data-key="${k}"${has ? ' style="display:block"' : ""}><textarea class="notetext" data-key="${k}" placeholder="Your note — printed beneath this text in the built file.">${escapeHtml(NOTES[key] || "")}</textarea></div>`;
 }
 
 function setLinkSel(i, on) {
@@ -838,7 +809,6 @@ async function fetchLinks() {
 function renderTree() {
   if (GROUPMODE === "seg") renderSegTree();
   else renderCatTree();
-  wireNotes($("tree"));
   syncTreeUI();
   applyTreeLang();
 }
@@ -851,9 +821,7 @@ function srcRowHtml(subtitle) {
         <span class="caret" style="visibility:hidden">▾</span>
         <strong>Original Text</strong>
         <span class="count">${avail ? subtitle : "not available"}</span>
-        ${avail ? noteBtnHtml("__src__") : ""}
       </div>
-      ${avail ? noteBoxHtml("__src__") : ""}
     </div>`;
 }
 
@@ -872,9 +840,8 @@ function segSrcGroupHtml(seg) {
     <div class="comm commhead">
       <input type="checkbox" class="segsrcbox" data-idx="${idx}">
       <span class="caret2">▾</span>
-      <span>Original text</span>${noteBtnHtml("__src__")}
+      <span>Original text</span>
     </div>
-    ${noteBoxHtml("__src__")}
     <div class="srcbody">${body}</div>
   </div>`;
 }
@@ -886,11 +853,10 @@ function renderCatTree() {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
     const rows = comms.map(comm => {
       const n = TREE[cat][comm].length;
-      const nk = keyFor(cat, comm);
       return `<label class="comm">
         <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
-        <span>${comm}</span><span class="count">${n}</span>${noteBtnHtml(nk)}
-      </label>${noteBoxHtml(nk)}`;
+        <span>${comm}</span><span class="count">${n}</span>
+      </label>`;
     }).join("");
     return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
       <div class="cat-head">
@@ -949,14 +915,12 @@ function renderSegTree() {
             <span>${escapeHtml(label)}</span>
           </label>`;
         }).join("");
-        const nk = keyFor(cat, comm);
         return `<div class="commgrp collapsed" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
           <div class="comm commhead">
             <input type="checkbox" class="commbox2">
             <span class="caret2">▾</span>
-            <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>${noteBtnHtml(nk)}
+            <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
           </div>
-          ${noteBoxHtml(nk)}
           <div class="linklist">${rows}</div>
         </div>`;
       }).join("");
@@ -1719,15 +1683,18 @@ const SHARE_ICON =
   '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>' +
   '<line x1="8.4" y1="10.8" x2="15.6" y2="6.2"/><line x1="8.4" y1="13.2" x2="15.6" y2="17.8"/></svg>';
 
-function pvItem(label, he, en, isSrc, startCollapsed) {
+function pvItem(label, he, en, isSrc, startCollapsed, noteKey) {
   const idx = PV_SHARE_TEXTS.length;
   PV_SHARE_TEXTS.push({ label, he, en });
   let body = "";
   if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
   if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
-  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${startCollapsed ? " collapsed" : ""}">
+  if (noteKey) body += noteBoxHtml(noteKey);   // the note lives beneath its text
+  const collapsed = startCollapsed && !(noteKey && noteOf(noteKey));
+  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${collapsed ? " collapsed" : ""}">
     <div class="pv-ref">
       <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
+      ${noteKey ? pvNoteBtnHtml(noteKey) : ""}
       <button type="button" class="pv-share" data-idx="${idx}" title="Share this text" aria-label="Share this text">${SHARE_ICON}</button>
     </div>
     <div class="pv-body">${body}</div>
