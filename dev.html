@@ -304,7 +304,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 17;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 18;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -314,7 +314,8 @@ let CAT_ORDER = [];  // categories, most links first
 let SEG_TREE = {};   // segment ref -> { category -> [links] }
 let SEG_ORDER = [];  // segment refs, in textual order
 let GROUPMODE = "cat"; // "cat" | "seg"
-let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
+let SRC = null;      // { ref, heRef, he:[segments], text:[segments], segMap? } base source text
+                     // segMap (ranged refs only): segment ref -> index into he/text
 
 // ---------------------------------------------------------------------------
 // Selection state — the single source of truth for BOTH grouping modes.
@@ -506,11 +507,14 @@ function segNum(ref) {
   const m = String(ref).match(/:(\d+)$/);
   return m ? parseInt(m[1], 10) : 0;   // whole-page anchors sort first
 }
-// Which slice of the base text belongs to a section. When the whole fetch was
-// a single segment (one verse, one mishnah), the source text has exactly one
-// slice — use it — otherwise index by the segment number.
+// Which slice of the base text belongs to a section. Ranged fetches (a parsha,
+// an aliyah) carry an explicit segment→index map, since their slices don't
+// start at :1 and can cross chapters. When the whole fetch was a single
+// segment (one verse, one mishnah), the source text has exactly one slice —
+// use it — otherwise index by the segment number.
 function srcIdxFor(seg) {
   if (!srcAvailable()) return -1;
+  if (SRC.segMap) return (seg in SRC.segMap) ? SRC.segMap[seg] : -1;
   if (SEG_ORDER.length === 1 && Math.max(SRC.he.length, SRC.text.length) === 1) return 0;
   return segNum(seg) - 1;
 }
@@ -652,6 +656,11 @@ function isMultiSegmentSection(ref) {
   if (/\d+[ab]$/.test(ref)) return true;      // Talmud daf (e.g. 100a) — walk its segments
   return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
 }
+// A ranged reference (an aliyah, a whole parsha, "Shabbat 100a:1-5"…):
+// verse:verse with a dash somewhere after it.
+function isRangedRef(ref) {
+  return /:\d+\s*[-–]\s*\d/.test(String(ref));
+}
 
 async function mapPool(items, worker, poolSize, onProgress) {
   const results = new Array(items.length);
@@ -667,6 +676,25 @@ async function mapPool(items, worker, poolSize, onProgress) {
   for (let k = 0; k < Math.min(poolSize, items.length); k++) runners.push(run());
   await Promise.all(runners);
   return results;
+}
+
+// Fetch links for an explicit list of segment refs, tagging each link with
+// the segment it was fetched for. This is the ground truth for section
+// grouping — per-segment calls return every category (Tanakh, Talmud,
+// Halakhah…), exactly matching Sefaria's own sidebar, whereas anchorRef on a
+// whole-page call is unreliable outside Commentary.
+async function linksForSegs(segs) {
+  const chunks = await mapPool(segs, async (sref) => {
+    try {
+      const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
+      if (!r.ok) return [];
+      const d = await r.json();
+      if (!Array.isArray(d)) return [];
+      d.forEach(l => { l._seg = sref; });
+      return d;
+    } catch (e) { return []; }
+  }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
+  return [].concat.apply([], chunks);
 }
 
 // A whole chapter/section: Sefaria's links API doesn't reliably return the
@@ -690,21 +718,71 @@ async function fetchLinksBySegments(ref) {
   }
   const segs = [];
   for (let i = 1; i <= n; i++) segs.push(ref + ":" + i);
-  const chunks = await mapPool(segs, async (sref) => {
-    try {
-      const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
-      if (!r.ok) return [];
-      const d = await r.json();
-      if (!Array.isArray(d)) return [];
-      // Tag each link with the segment it was fetched for. This is the ground
-      // truth for section grouping — per-segment calls return every category
-      // (Tanakh, Talmud, Halakhah…), exactly matching Sefaria's own sidebar,
-      // whereas anchorRef on a whole-page call is unreliable outside Commentary.
-      d.forEach(l => { l._seg = sref; });
-      return d;
-    } catch (e) { return []; }
-  }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
-  return [].concat.apply([], chunks);
+  return await linksForSegs(segs);
+}
+
+// Expand a ranged ref (an aliyah, a whole parsha) into its individual segment
+// refs, together with each segment's own Hebrew / English text — one texts
+// call gives both. Handles a range within one section ("Shabbat 100a:1-5",
+// "Genesis 24:10-26") and a numeric range across chapters ("Genesis 2:4-3:21",
+// a whole parsha). Anything odder returns null and the caller falls back.
+async function expandRangedRef(ref) {
+  const t = String(ref).trim();
+  let base = null, start = 0, span = null;
+  let m = t.match(/^(.+?):(\d+)\s*[-–]\s*(\d+)$/);
+  if (m && +m[3] >= +m[2]) { base = m[1]; start = +m[2]; }
+  if (!base) {
+    m = t.match(/^(.+?)\s(\d+):(\d+)\s*[-–]\s*(\d+):(\d+)$/);
+    if (m) span = { book: m[1], c1: +m[2], v1: +m[3], c2: +m[4], v2: +m[5] };
+  }
+  if (!base && !span) return null;
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(t) + "?context=0&commentary=0");
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (j.error) return null;
+    const heArr = Array.isArray(j.he) ? j.he : [];
+    const enArr = Array.isArray(j.text) ? j.text : [];
+    const out = [];
+    if (base) {
+      // one section: flat arrays, verses start..start+n-1
+      const n = Math.max(heArr.length, enArr.length);
+      for (let i = 0; i < n; i++)
+        out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
+    } else {
+      // spanning chapters: nested arrays, one inner array per chapter; the
+      // first chapter starts at the range's opening verse, the rest at 1
+      const outer = Math.max(heArr.length, enArr.length);
+      for (let c = 0; c < outer; c++) {
+        const hc = heArr[c] == null ? [] : (Array.isArray(heArr[c]) ? heArr[c] : [heArr[c]]);
+        const ec = enArr[c] == null ? [] : (Array.isArray(enArr[c]) ? enArr[c] : [enArr[c]]);
+        const n = Math.max(hc.length, ec.length);
+        const sv = c === 0 ? span.v1 : 1;
+        for (let i = 0; i < n; i++)
+          out.push({ ref: span.book + " " + (span.c1 + c) + ":" + (sv + i), he: asText(hc[i]), en: asText(ec[i]) });
+      }
+    }
+    if (!out.length) return null;
+    return { ref: j.ref || t, heRef: j.heRef || "", segs: out };
+  } catch (e) { return null; }
+}
+
+// Ranged ref → links (segment by segment, so section grouping works) plus a
+// ready-made source-text object whose segMap aligns each section with its own
+// slice of the text — even across chapter boundaries.
+async function fetchRangeData(ref) {
+  setStatus("Reading " + ref + "…");
+  const exp = await expandRangedRef(ref);
+  if (!exp) return null;
+  const links = await linksForSegs(exp.segs.map(s => s.ref));
+  const segMap = {};
+  exp.segs.forEach((s, i) => { segMap[s.ref] = i; });
+  const src = {
+    ref: exp.ref, heRef: exp.heRef,
+    he: exp.segs.map(s => s.he), text: exp.segs.map(s => s.en),
+    segMap
+  };
+  return { links, src };
 }
 
 let FETCHING = false;
@@ -721,7 +799,18 @@ async function fetchLinks() {
 
   try {
     let data;
-    if (isMultiSegmentSection(ref)) {
+    let preSrc = null;   // source text prepared by the range walk, if any
+    if (isRangedRef(ref)) {
+      const rd = await fetchRangeData(ref);
+      if (rd) { data = rd.links; preSrc = rd.src; }
+      else {
+        // range we couldn't parse (e.g. cross-daf) — single call, best effort
+        const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        data = await res.json();
+        if (data && data.error) throw new Error(data.error);
+      }
+    } else if (isMultiSegmentSection(ref)) {
       data = await fetchLinksBySegments(ref);
     } else {
       const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
@@ -774,18 +863,33 @@ async function fetchLinks() {
       (SEG_TREE[s] = SEG_TREE[s] || {});
       (SEG_TREE[s][c] = SEG_TREE[s][c] || []).push(l);
     }
-    SEG_ORDER = Object.keys(SEG_TREE).sort((a, b) =>
-      segNum(a) - segNum(b) || a.localeCompare(b));
-
-    // fetch the reference's own text first, so "Original Text" can head the list (non-fatal)
-    SRC = null;
-    try {
-      const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
-      if (r.ok) {
-        const t = await r.json();
-        if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
+    // Ranged fetches order sections by their place in the range (segment
+    // numbers restart in each chapter, so numeric sorting would shuffle a
+    // parsha); everything else sorts by segment number as before.
+    SEG_ORDER = Object.keys(SEG_TREE).sort((a, b) => {
+      if (preSrc && preSrc.segMap) {
+        const ia = (a in preSrc.segMap) ? preSrc.segMap[a] : Infinity;
+        const ib = (b in preSrc.segMap) ? preSrc.segMap[b] : Infinity;
+        if (ia !== ib) return ia - ib;
       }
-    } catch (e) { /* silent: source text just won't be available */ }
+      return segNum(a) - segNum(b) || a.localeCompare(b);
+    });
+
+    // the reference's own text, so "Original Text" can head the list. A range
+    // walk already built it (with per-section alignment); otherwise fetch it
+    // now (non-fatal).
+    SRC = null;
+    if (preSrc) {
+      SRC = preSrc;
+    } else {
+      try {
+        const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+        if (r.ok) {
+          const t = await r.json();
+          if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
+        }
+      } catch (e) { /* silent: source text just won't be available */ }
+    }
 
     // fresh selection: everything on; notes belonged to the previous reference
     SEL = new Set(LINKS.map(l => l._i));
@@ -1021,8 +1125,10 @@ $("toggleAll").onclick = () => {
 // document contains exactly what's ticked — nothing more.
 //   blocks: ordered [{type:"h1"|"h2"|"h3"|"ref"|"note"|"he"|"en", text, anchor?, first?}]
 //   toc:    [{level:1|2|3, text, anchor}]
-// A note is printed once, at the first place its commentator (or the
-// original text) appears in the document.
+// Notes are per-text: each one is printed directly beneath its own text
+// (a "L"+index note under its linked text, a "S:"+segment note under that
+// section's slice of the source, "__src__" under the whole source). The
+// notedone set guarantees a note is never printed twice.
 // ===========================================================================
 function gatherContent() {
   const incHe = $("incHe").checked;
@@ -1048,12 +1154,15 @@ function gatherContent() {
     const anchor = nextId();
     toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
     blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true });
-    emitNote("__src__");
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
       if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
     }
+    emitNote("__src__");
+    // notes written on individual sections of the source (in Section mode)
+    // shouldn't vanish just because the build happens in Category mode
+    for (const s of SEG_ORDER) emitNote("S:" + s);
   };
 
   // ---------------- section mode ----------------
@@ -1079,7 +1188,8 @@ function gatherContent() {
       if (wantSrc) {
         if (incHe && segHe) blocks.push({ type: "he", text: segHe });
         if (incEn && segEn) blocks.push({ type: "en", text: segEn });
-        emitNote("__src__");
+        emitNote("S:" + seg);
+        emitNote("__src__");   // a whole-source note (from Category mode) prints once, here
       }
 
       for (const [cat, arr] of sel) {
@@ -1095,7 +1205,6 @@ function gatherContent() {
           const a3 = nextId();
           toc.push({ level: 3, text: h3text, anchor: a3 });
           blocks.push({ type: "h3", text: h3text, anchor: a3 });
-          emitNote(keyFor(cat, comm));
           for (const l of links) {
             if (!single) {   // the h3 already names a lone link, so skip its ref line
               const enRef = l.sourceRef || l.ref || "";
@@ -1104,6 +1213,7 @@ function gatherContent() {
             }
             if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
             if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+            emitNote("L" + l._i);   // this text's own note, right beneath it
             written++;
           }
         }
@@ -1134,7 +1244,6 @@ function gatherContent() {
       const commAnchor = nextId();
       toc.push({ level: 2, text: comm, anchor: commAnchor });
       blocks.push({ type: "h2", text: comm, anchor: commAnchor });
-      emitNote(keyFor(cat, comm));
 
       for (const l of links) {
         const enRef = l.sourceRef || l.ref || "";
@@ -1142,6 +1251,7 @@ function gatherContent() {
         blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
         if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
         if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+        emitNote("L" + l._i);   // this text's own note, right beneath it
         written++;
       }
     }
@@ -1710,11 +1820,6 @@ function pvGrp(title, n, body, sub) {
   </div>`;
 }
 
-function pvNoteHtml(key) {
-  const nt = noteOf(key);
-  return nt ? `<p class="pv-note">Note: ${escapeHtml(nt)}</p>` : "";
-}
-
 function applyPvLang() {
   const pv = $("preview");
   pv.classList.toggle("hide-he", !$("pvHe").checked);
@@ -1728,7 +1833,7 @@ function wholeSrcPvItem(ref) {
     const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
     const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
   }
-  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false);
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__");
 }
 
 // Share (or, as a fallback, copy) a single preview item's text — respects the
@@ -1767,7 +1872,6 @@ function renderPreview() {
     // commentator groups: e.g. Commentary ▸ Rashi ▸ each Rashi comment.
     if (!SEL.size && !haveSrc) { setStatus("Select at least one text, or the original text.", true); return; }
 
-    let srcNoteShown = false;
     for (const seg of SEG_ORDER) {
       const cats = segCats(seg);
       const sel = cats
@@ -1781,18 +1885,17 @@ function renderPreview() {
       sections++;
       html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
       if (wantSrc) {
-        html += pvItem("Source — " + seg, he, en, true, true);
-        if (!srcNoteShown) { const n = pvNoteHtml("__src__"); if (n) { srcNoteShown = true; html += n; } }
+        html += pvItem("Source — " + seg, he, en, true, true, "S:" + seg);
       }
       for (const [cat, arr] of sel) {
         let catBody = "";
         for (const [comm, links] of groupByComm(arr)) {
-          let items = pvNoteHtml(keyFor(cat, comm));
+          let items = "";
           for (const l of links) {
             const enRef = l.sourceRef || l.ref || "";
             const heRef = l.sourceHeRef || "";
             const label = enRef + (heRef ? "  —  " + heRef : "");
-            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true);
+            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i);
             count++;
           }
           catBody += pvGrp(comm, links.length, items, true);
@@ -1806,7 +1909,6 @@ function renderPreview() {
 
     if (haveSrc) {
       html += wholeSrcPvItem(ref);
-      html += pvNoteHtml("__src__");
     }
 
     for (const cat of CAT_ORDER) {
@@ -1818,12 +1920,11 @@ function renderPreview() {
       html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
       for (const [comm, links] of groups) {
         html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
-        html += pvNoteHtml(keyFor(cat, comm));
         for (const l of links) {
           const enRef = l.sourceRef || l.ref || "";
           const heRef = l.sourceHeRef || "";
           const label = enRef + (heRef ? "  —  " + heRef : "");
-          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false);
+          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i);
           count++;
         }
       }
@@ -1854,7 +1955,7 @@ function renderPreview() {
 }
 
 // per-item collapse + group drill-down (event delegation), share button,
-// language toggles, expand/collapse all
+// note (pencil) button, language toggles, expand/collapse all
 $("preview").addEventListener("click", e => {
   const shareBtn = e.target.closest(".pv-share");
   if (shareBtn) {
@@ -1862,10 +1963,37 @@ $("preview").addEventListener("click", e => {
     sharePvItem(parseInt(shareBtn.dataset.idx, 10));
     return;
   }
+  const noteBtn = e.target.closest(".pv-notebtn");
+  if (noteBtn) {
+    e.stopPropagation();
+    const item = noteBtn.closest(".pv-item");
+    const box = item && item.querySelector(".notebox");
+    if (box) {
+      const show = box.style.display !== "block";
+      box.style.display = show ? "block" : "none";
+      if (show) {
+        item.classList.remove("collapsed");   // the editor lives in the body
+        const ta = box.querySelector("textarea");
+        if (ta) ta.focus();
+      }
+    }
+    return;
+  }
+  if (e.target.closest(".notebox")) return;   // typing in the note — nothing to toggle
   const gh = e.target.closest(".pv-grp-head");
   if (gh) { gh.parentElement.classList.toggle("collapsed"); return; }
   const t = e.target.closest(".pv-toggle");
   if (t) t.parentElement.parentElement.classList.toggle("collapsed");
+});
+// save notes as they're typed; the pencil lights up when its text has a note
+$("preview").addEventListener("input", e => {
+  const ta = e.target.closest(".notetext");
+  if (!ta) return;
+  const key = decodeURIComponent(ta.dataset.key);
+  if (ta.value.trim()) NOTES[key] = ta.value; else delete NOTES[key];
+  const item = ta.closest(".pv-item");
+  const btn = item && item.querySelector(".pv-notebtn");
+  if (btn) btn.classList.toggle("has-note", !!ta.value.trim());
 });
 $("pvHe").onchange = applyPvLang;
 $("pvEn").onchange = applyPvLang;
@@ -1880,6 +2008,7 @@ $("pvCollapseAll").onclick = () =>
 // ===========================================================================
 const TOC_API = "https://www.sefaria.org/api/index";
 const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
+const RAW_INDEX_API = "https://www.sefaria.org/api/v2/raw/index/";
 const SHAPE_API = "https://www.sefaria.org/api/shape/";
 
 const CORPORA = [
@@ -1982,6 +2111,15 @@ function renderToc(node) {
     return null;
   }).filter(Boolean);
   if (!items.length) { navError("Nothing to browse here."); return; }
+  // Inside Midrash, the aggadic subcategory reads above the halakhic one.
+  if (String(node.category || "").toLowerCase() === "midrash") {
+    const ai = items.findIndex(it => /aggad/i.test(it.label));
+    const hi = items.findIndex(it => /hala[ck]h/i.test(it.label));
+    if (ai > -1 && hi > -1 && hi < ai) {
+      const moved = items.splice(ai, 1)[0];
+      items.splice(hi, 0, moved);
+    }
+  }
   navBody().innerHTML = "";
   navBody().appendChild(rowList(items, it => {
     if (it.type === "cat") pushView(it.label, () => renderToc(it.node));
@@ -2001,10 +2139,93 @@ async function openBook(title) {
     setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
     return;
   }
+  // Torah books also carry Sefaria's Parasha structure (each parsha with its
+  // seven aliyot) — offer it alongside the plain chapter grid.
+  const parshiot = await parshaStructOf(title, rec);
+  if (parshiot) { renderBookWithParshiot(title, rec, parshiot); return; }
+
   const schema = rec.schema;
   if (!schema) { commitRef(title); return; }
   if (schema.nodes) renderSchemaNodes(title, schema, title);
   else renderJagged(title, schema);
+}
+
+// ---- Parasha browsing (Torah books) ---------------------------------------
+// Sefaria's index records for the Chumash carry an alternate "Parasha"
+// structure: one node per parsha, with wholeRef (the full range) and refs
+// (the seven aliyah ranges). Some API variants expose it as alt_structs,
+// others as alts; the v2 raw index always has it, so that's the fallback.
+function parshaNodesFrom(rec) {
+  const alts = rec && (rec.alt_structs || rec.alts);
+  const p = alts && (alts.Parasha || alts.Parsha || alts.parasha);
+  return (p && Array.isArray(p.nodes) && p.nodes.length) ? p.nodes : null;
+}
+async function parshaStructOf(title, rec) {
+  let nodes = parshaNodesFrom(rec);
+  if (nodes) return nodes;
+  const isTorah = Array.isArray(rec && rec.categories) && rec.categories.indexOf("Torah") >= 0;
+  if (!isTorah) return null;   // don't waste a request on non-Torah books
+  try {
+    const r = await fetch(RAW_INDEX_API + encodeURIComponent(title));
+    if (!r.ok) return null;
+    const j = await r.json();
+    return parshaNodesFrom(j);
+  } catch (e) { return null; }
+}
+
+const ALIYOT = ["Rishon", "Sheni", "Shlishi", "Revi'i", "Chamishi", "Shishi", "Shevi'i"];
+const HE_ALIYOT = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שביעי"];
+
+function renderBookWithParshiot(title, rec, parshiot) {
+  const items = [
+    { label: "By chapter", he: "לפי פרק", kind: "chap" },
+    { label: "By parasha", he: "לפי פרשה", kind: "par" }
+  ];
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    if (it.kind === "chap") {
+      pushView("chapters", () => {
+        const schema = rec.schema;
+        if (schema && schema.nodes) renderSchemaNodes(title, schema, title);
+        else if (schema) renderJagged(title, schema);
+        else commitRef(title);
+      });
+    } else {
+      pushView("parasha", () => renderParshiot(parshiot));
+    }
+  }));
+}
+
+function renderParshiot(parshiot) {
+  const items = parshiot.map(n => ({ label: nodeEn(n), he: nodeHe(n), node: n }));
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => pushView(it.label, () => renderAliyot(it.node))));
+}
+
+function renderAliyot(node) {
+  navBody().innerHTML = "";
+  const whole = node.wholeRef || "";
+  if (whole) {
+    const w = document.createElement("div"); w.className = "navwhole";
+    const b = document.createElement("button"); b.className = "secondary";
+    b.textContent = "Whole parasha — " + whole;
+    b.onclick = () => commitRef(whole);
+    w.appendChild(b); navBody().appendChild(w);
+    navBody().appendChild(mk('<div class="navnote">A whole parasha fetches every verse’s links — it can take a while.</div>'));
+  }
+  const refs = Array.isArray(node.refs) ? node.refs : [];
+  if (!refs.length) {
+    if (!whole) navError("This parasha has no reference data.");
+    else navBody().appendChild(mk('<div class="navnote">No aliyah breakdown is available for this parasha.</div>'));
+    return;
+  }
+  navBody().appendChild(mk('<div class="navnote">…or a single aliyah:</div>'));
+  const items = refs.map((r, i) => ({
+    label: (ALIYOT[i] || ("Aliyah " + (i + 1))) + " · " + r,
+    he: HE_ALIYOT[i] || "",
+    ref: r
+  }));
+  navBody().appendChild(rowList(items, it => commitRef(it.ref)));
 }
 
 function renderSchemaNodes(title, node, prefix) {
