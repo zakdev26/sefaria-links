@@ -78,6 +78,20 @@
   .preview.hide-he .pv-he { display: none; }
   .preview.hide-en .pv-en { display: none; }
   .pv-count { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+
+  /* ---- preview: collapsible category / commentator groups (Section mode) ---- */
+  .pv-grp { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; overflow: hidden; }
+  .pv-grp-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: #f2ecdd; cursor: pointer; font-size: 15px; user-select: none;
+  }
+  .pv-grp-head.sub { background: #fbf8f0; font-size: 14px; color: var(--accent-dark); }
+  .pv-grp-head .pv-caret { transition: transform .15s; }
+  .pv-grp.collapsed > .pv-grp-head .pv-caret { transform: rotate(-90deg); }
+  .pv-grp-count { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .pv-grp-body { padding: 4px 10px 8px; }
+  .pv-grp.collapsed > .pv-grp-body { display: none; }
+
   .status { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 10px; }
   .status.err { color: #a23b2c; }
   .toggles { display: flex; gap: 18px; margin: 14px 0 0; }
@@ -145,6 +159,9 @@
   .srcbody .pv-he { font-size: 17px; line-height: 1.75; margin: 2px 0; }
   .srcbody .pv-en { font-size: 14px; line-height: 1.6; margin: 2px 0; }
   .srcgrp.collapsed .srcbody { display: none; }
+  /* the Hebrew / English toggles also govern the source snippets in the tree */
+  #tree.hide-he .srcbody .pv-he { display: none; }
+  #tree.hide-en .srcbody .pv-en { display: none; }
 
   /* ---- reference builder: mode switch + browse navigator ---- */
   .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
@@ -271,7 +288,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 15;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 16;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -282,6 +299,98 @@ let SEG_TREE = {};   // segment ref -> { category -> [links] }
 let SEG_ORDER = [];  // segment refs, in textual order
 let GROUPMODE = "cat"; // "cat" | "seg"
 let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
+
+// ---------------------------------------------------------------------------
+// Selection state — the single source of truth for BOTH grouping modes.
+// SEL holds the _i indices of the individual texts currently selected;
+// SRC_ON is one global flag for the original text. Every checkbox in either
+// tree is just a view onto this state, so a toggle made anywhere (a category
+// in one section, a commentator in Category mode, the source text…) is
+// automatically mirrored everywhere else, and survives switching Group by.
+// ---------------------------------------------------------------------------
+let SEL = new Set();
+let SRC_ON = false;
+
+function srcAvailable() { return !!(SRC && (SRC.he.length || SRC.text.length)); }
+
+function setLinkSel(i, on) {
+  if (on) SEL.add(i); else SEL.delete(i);
+  syncTreeUI();
+}
+// Toggle every text of one (category, commentator) pair — across all sections.
+function setKeySel(cat, comm, on) {
+  const links = (TREE[cat] && TREE[cat][comm]) || [];
+  for (const l of links) { if (on) SEL.add(l._i); else SEL.delete(l._i); }
+  syncTreeUI();
+}
+// Toggle every text of one category — across all sections.
+function setCatSel(cat, on) {
+  for (const arr of Object.values(TREE[cat] || {})) {
+    for (const l of arr) { if (on) SEL.add(l._i); else SEL.delete(l._i); }
+  }
+  syncTreeUI();
+}
+function setSrcSel(on) {
+  SRC_ON = on && srcAvailable();
+  syncTreeUI();
+}
+
+// Repaint every checkbox in the current tree from SEL / SRC_ON.
+function syncTreeUI() {
+  // leaf link checkboxes (Section mode)
+  document.querySelectorAll("#tree .linkbox").forEach(b => {
+    b.checked = SEL.has(parseInt(b.dataset.i, 10));
+  });
+  // commentator groups (Section mode)
+  document.querySelectorAll("#tree .commgrp").forEach(g => {
+    const cb = g.querySelector(".commbox2"); if (!cb) return;
+    const boxes = [...g.querySelectorAll(".linkbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  // category groups (Section mode)
+  document.querySelectorAll("#tree .catgrp").forEach(cg => {
+    const cb = cg.querySelector(".catbox2"); if (!cb) return;
+    const boxes = [...cg.querySelectorAll(".linkbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  // per-section source slices + section checkboxes (Section mode)
+  document.querySelectorAll("#tree .segsrcbox").forEach(b => { b.checked = SRC_ON; });
+  document.querySelectorAll("#tree .cat.seg").forEach(sec => {
+    const sb = sec.querySelector(".segbox"); if (!sb) return;
+    const boxes = [...sec.querySelectorAll(".linkbox")];
+    let on = boxes.filter(b => b.checked).length, total = boxes.length;
+    if (sec.querySelector(".segsrcbox")) { total++; if (SRC_ON) on++; }
+    sb.checked = on > 0; sb.indeterminate = on > 0 && on < total;
+  });
+  // commentator rows (Category mode)
+  document.querySelectorAll("#tree .commbox").forEach(b => {
+    const cat = decodeURIComponent(b.dataset.cat), comm = decodeURIComponent(b.dataset.comm);
+    const links = (TREE[cat] && TREE[cat][comm]) || [];
+    const on = links.filter(l => SEL.has(l._i)).length;
+    b.checked = on > 0; b.indeterminate = on > 0 && on < links.length;
+  });
+  // category headers (Category mode)
+  document.querySelectorAll("#tree .cat[data-cat]").forEach(catEl => {
+    const cb = catEl.querySelector(".catbox"); if (!cb) return;
+    const boxes = [...catEl.querySelectorAll(".commbox")];
+    if (!boxes.length) return;
+    const fullyOn = boxes.filter(b => b.checked && !b.indeterminate).length;
+    const any = boxes.some(b => b.checked);
+    cb.checked = any; cb.indeterminate = any && fullyOn < boxes.length;
+  });
+  // global Original Text row (Category mode)
+  const src = $("srcbox");
+  if (src && !src.disabled) src.checked = SRC_ON;
+}
+
+// The Hebrew / English toggles also govern the source snippets shown
+// inside the Section-mode tree (not just the output and the preview).
+function applyTreeLang() {
+  $("tree").classList.toggle("hide-he", !$("incHe").checked);
+  $("tree").classList.toggle("hide-en", !$("incEn").checked);
+}
 
 function toArr(v) {
   if (!v) return [];
@@ -401,10 +510,6 @@ function groupByComm(links) {
 // Within one section+category, bucket links by commentator, preserving order.
 function segCatComms(seg, cat) {
   return groupByComm(segCatLinks(seg, cat));
-}
-function pickedLinkSet() {
-  return new Set([...document.querySelectorAll(".linkbox:checked")]
-    .map(b => parseInt(b.dataset.i, 10)));
 }
 
 // Fixed section order: Source Text is emitted first separately; then these
@@ -620,6 +725,10 @@ async function fetchLinks() {
       }
     } catch (e) { /* silent: source text just won't be available */ }
 
+    // fresh selection: everything on
+    SEL = new Set(LINKS.map(l => l._i));
+    SRC_ON = srcAvailable();
+
     renderTree();
     setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
   } catch (e) {
@@ -630,21 +739,25 @@ async function fetchLinks() {
 }
 
 // ===========================================================================
-// Tree rendering — dispatches on the grouping mode
+// Tree rendering — dispatches on the grouping mode. Checkboxes carry no state
+// of their own: after rendering, syncTreeUI() paints them from SEL / SRC_ON,
+// so the same selection carries across Category ↔ Section switches.
 // ===========================================================================
 function renderTree() {
   if (GROUPMODE === "seg") renderSegTree();
   else renderCatTree();
+  syncTreeUI();
+  applyTreeLang();
 }
 
 function srcRowHtml(subtitle) {
-  const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
+  const avail = srcAvailable();
   return `<div class="cat srcrow">
       <div class="cat-head">
-        <input type="checkbox" class="srcbox" id="srcbox" ${srcAvailable ? "checked" : "disabled"}>
+        <input type="checkbox" class="srcbox" id="srcbox" ${avail ? "" : "disabled"}>
         <span class="caret" style="visibility:hidden">▾</span>
         <strong>Original Text</strong>
-        <span class="count">${srcAvailable ? subtitle : "not available"}</span>
+        <span class="count">${avail ? subtitle : "not available"}</span>
       </div>
     </div>`;
 }
@@ -652,7 +765,7 @@ function srcRowHtml(subtitle) {
 // The relevant slice of the base text for one section, as an expandable,
 // checkable group placed at the top of that section's menu (Section mode).
 function segSrcGroupHtml(seg) {
-  if (!SRC || !(SRC.he.length || SRC.text.length)) return "";
+  if (!srcAvailable()) return "";
   const idx = segNum(seg) - 1;
   if (idx < 0) return "";   // the "(whole page)" bucket has no single segment
   const he = stripHtml(SRC.he[idx] || "");
@@ -663,7 +776,7 @@ function segSrcGroupHtml(seg) {
     (en ? `<p class="pv-en">${escapeHtml(en)}</p>` : "");
   return `<div class="commgrp srcgrp">
     <div class="comm commhead">
-      <input type="checkbox" class="segsrcbox" data-idx="${idx}" checked>
+      <input type="checkbox" class="segsrcbox" data-idx="${idx}">
       <span class="caret2">▾</span>
       <span>Original text</span>
     </div>
@@ -678,15 +791,14 @@ function renderCatTree() {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
     const rows = comms.map(comm => {
       const n = TREE[cat][comm].length;
-      const k = keyFor(cat, comm);
       return `<label class="comm">
-        <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" value="${encodeURIComponent(k)}" checked>
+        <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
         <span>${comm}</span><span class="count">${n}</span>
       </label>`;
     }).join("");
     return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
       <div class="cat-head">
-        <input type="checkbox" class="catbox" checked>
+        <input type="checkbox" class="catbox">
         <span class="caret">▾</span>
         <strong>${cat}</strong><span class="count">${catCount(cat)}</span>
       </div>
@@ -695,69 +807,37 @@ function renderCatTree() {
   }).join("");
   $("tree").innerHTML = srcRowHtml("the passage itself") + catsHtml;
 
-  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(cat => {
-    const head = cat.querySelector(".cat-head");
-    const catbox = cat.querySelector(".catbox");
-    const commboxes = [...cat.querySelectorAll(".commbox")];
+  const srcbox = $("srcbox");
+  if (srcbox && !srcbox.disabled) {
+    srcbox.addEventListener("change", () => setSrcSel(srcbox.checked));
+  }
+
+  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(catEl => {
+    const head = catEl.querySelector(".cat-head");
+    const catbox = catEl.querySelector(".catbox");
+    const cat = decodeURIComponent(catEl.dataset.cat);
 
     // click the header to drill in / collapse (but not when hitting the checkbox)
     head.addEventListener("click", e => {
       if (e.target === catbox) return;
-      cat.classList.toggle("collapsed");
+      catEl.classList.toggle("collapsed");
     });
-    // the section checkbox selects / clears the whole section
-    catbox.addEventListener("change", () => {
-      commboxes.forEach(b => b.checked = catbox.checked);
-    });
-    // individual commentators feed back into the section checkbox
-    commboxes.forEach(b => b.addEventListener("change", () => {
-      const on = commboxes.filter(x => x.checked).length;
-      catbox.checked = on > 0;
-      catbox.indeterminate = on > 0 && on < commboxes.length;
-    }));
+    // the category checkbox selects / clears every text in the category
+    catbox.addEventListener("change", () => setCatSel(cat, catbox.checked));
+    // commentator rows toggle every text of that commentator
+    [...catEl.querySelectorAll(".commbox")].forEach(b =>
+      b.addEventListener("change", () =>
+        setKeySel(decodeURIComponent(b.dataset.cat), decodeURIComponent(b.dataset.comm), b.checked)));
   });
 
   $("treeCard").style.display = "block";
 }
 
-// Section mode: section (segment of the page) → source → individual texts,
-// with a checkbox at every level. Category/commentator-level toggles apply
-// globally across every section (see propagateCatToggle / propagateCommToggle
-// / propagateSrcToggle); only the section checkbox itself is per-section.
-let PROPAGATING = false;
-
-function propagateCatToggle(encCat, checked) {
-  if (PROPAGATING) return;
-  PROPAGATING = true;
-  try {
-    document.querySelectorAll(".catgrp").forEach(cg => {
-      if (cg.dataset.cat !== encCat) return;
-      const cb = cg.querySelector(".catbox2");
-      if (cb && cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
-    });
-  } finally { PROPAGATING = false; }
-}
-function propagateCommToggle(encCat, encComm, checked) {
-  if (PROPAGATING) return;
-  PROPAGATING = true;
-  try {
-    document.querySelectorAll(".commgrp").forEach(g => {
-      if (g.dataset.cat !== encCat || g.dataset.comm !== encComm) return;
-      const cb = g.querySelector(".commbox2");
-      if (cb && cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
-    });
-  } finally { PROPAGATING = false; }
-}
-function propagateSrcToggle(checked) {
-  if (PROPAGATING) return;
-  PROPAGATING = true;
-  try {
-    document.querySelectorAll(".segsrcbox").forEach(cb => {
-      if (cb.checked !== checked) { cb.checked = checked; cb.dispatchEvent(new Event("change")); }
-    });
-  } finally { PROPAGATING = false; }
-}
-
+// Section mode: section (segment of the page) → category → commentator →
+// individual texts, with a checkbox at every level. Category, commentator,
+// and original-text toggles operate on the shared selection, so ticking or
+// unticking one is instantly mirrored in every other section. Only the
+// section header's own checkbox is limited to that section's texts.
 function renderSegTree() {
   const segsHtml = SEG_ORDER.map(seg => {
     const cats = segCats(seg);
@@ -769,13 +849,13 @@ function renderSegTree() {
         const rows = links.map(l => {
           const label = l.sourceRef || l.ref || "(untitled)";
           return `<label class="linkrow">
-            <input type="checkbox" class="linkbox" data-i="${l._i}" checked>
+            <input type="checkbox" class="linkbox" data-i="${l._i}">
             <span>${escapeHtml(label)}</span>
           </label>`;
         }).join("");
         return `<div class="commgrp collapsed" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
           <div class="comm commhead">
-            <input type="checkbox" class="commbox2" checked>
+            <input type="checkbox" class="commbox2">
             <span class="caret2">▾</span>
             <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
           </div>
@@ -784,7 +864,7 @@ function renderSegTree() {
       }).join("");
       return `<div class="catgrp collapsed" data-cat="${encodeURIComponent(cat)}">
         <div class="comm catgrp-head">
-          <input type="checkbox" class="catbox2" checked>
+          <input type="checkbox" class="catbox2">
           <span class="caret2 catcaret">▾</span>
           <span>${escapeHtml(cat)}</span><span class="count">${catTotal}</span>
         </div>
@@ -793,7 +873,7 @@ function renderSegTree() {
     }).join("");
     return `<div class="cat seg collapsed">
       <div class="cat-head">
-        <input type="checkbox" class="segbox" checked>
+        <input type="checkbox" class="segbox">
         <span class="caret">▾</span>
         <strong>${escapeHtml(seg)}</strong><span class="count">${total}</span>
       </div>
@@ -805,22 +885,13 @@ function renderSegTree() {
   [...$("tree").querySelectorAll(".cat.seg")].forEach(section => {
     const head = section.querySelector(".cat-head");
     const segbox = section.querySelector(".segbox");
-    const allLinks = [...section.querySelectorAll(".linkbox")];
 
-    function syncSeg() {
-      const segSrc = [...section.querySelectorAll(".segsrcbox")];
-      const boxes = allLinks.concat(segSrc);
-      const on = boxes.filter(b => b.checked).length;
-      segbox.checked = on > 0;
-      segbox.indeterminate = on > 0 && on < boxes.length;
-    }
     head.addEventListener("click", e => {
       if (e.target === segbox) return;
       section.classList.toggle("collapsed");
     });
 
-    // per-section original-text group (collapsible, independent checkbox,
-    // but its on/off state mirrors across all sections)
+    // per-section original-text group: one global on/off, mirrored everywhere
     [...section.querySelectorAll(".srcgrp")].forEach(sg => {
       const shead = sg.querySelector(".commhead");
       const sbox = sg.querySelector(".segsrcbox");
@@ -828,69 +899,46 @@ function renderSegTree() {
         if (e.target === sbox) return;
         sg.classList.toggle("collapsed");
       });
-      sbox.addEventListener("change", () => {
-        syncSeg();
-        if (!PROPAGATING) propagateSrcToggle(sbox.checked);
-      });
+      sbox.addEventListener("change", () => setSrcSel(sbox.checked));
     });
 
     [...section.querySelectorAll(".catgrp")].forEach(cg => {
       const chead = cg.querySelector(".catgrp-head");
       const cbox = cg.querySelector(".catbox2");
-      const encCat = cg.dataset.cat || "";
-      const catLinks = [...cg.querySelectorAll(".linkbox")];
-      const commGroups = [...cg.querySelectorAll(".commgrp")];
+      const cat = decodeURIComponent(cg.dataset.cat || "");
 
-      function syncCat() {
-        const on = catLinks.filter(b => b.checked).length;
-        cbox.checked = on > 0;
-        cbox.indeterminate = on > 0 && on < catLinks.length;
-      }
       chead.addEventListener("click", e => {
         if (e.target === cbox) return;
         cg.classList.toggle("collapsed");
       });
-      cbox.addEventListener("change", () => {
-        catLinks.forEach(b => b.checked = cbox.checked);
-        commGroups.forEach(g => {
-          const gb = g.querySelector(".commbox2");
-          gb.checked = cbox.checked; gb.indeterminate = false;
-        });
-        cbox.indeterminate = false;
-        syncSeg();
-        if (!PROPAGATING) propagateCatToggle(encCat, cbox.checked);
-      });
+      // toggles the whole category — in every section
+      cbox.addEventListener("change", () => setCatSel(cat, cbox.checked));
 
-      commGroups.forEach(g => {
+      [...cg.querySelectorAll(".commgrp")].forEach(g => {
         const ghead = g.querySelector(".commhead");
         const gbox = g.querySelector(".commbox2");
-        const encComm = g.dataset.comm || "";
-        const links = [...g.querySelectorAll(".linkbox")];
-        function syncComm() {
-          const on = links.filter(b => b.checked).length;
-          gbox.checked = on > 0;
-          gbox.indeterminate = on > 0 && on < links.length;
-        }
+        const comm = decodeURIComponent(g.dataset.comm || "");
         ghead.addEventListener("click", e => {
           if (e.target === gbox) return;
           g.classList.toggle("collapsed");
         });
-        gbox.addEventListener("change", () => {
-          links.forEach(b => b.checked = gbox.checked);
-          gbox.indeterminate = false;
-          syncCat(); syncSeg();
-          if (!PROPAGATING) propagateCommToggle(encCat, encComm, gbox.checked);
-        });
-        links.forEach(b => b.addEventListener("change", () => { syncComm(); syncCat(); syncSeg(); }));
+        // toggles this commentator — in every section
+        gbox.addEventListener("change", () => setKeySel(cat, comm, gbox.checked));
+        [...g.querySelectorAll(".linkbox")].forEach(b =>
+          b.addEventListener("change", () => setLinkSel(parseInt(b.dataset.i, 10), b.checked)));
       });
     });
 
+    // the section checkbox selects / clears just this section's texts
+    // (plus the original text, whose state is global and so mirrors)
     segbox.addEventListener("change", () => {
-      allLinks.forEach(b => b.checked = segbox.checked);
-      section.querySelectorAll(".catbox2, .commbox2, .segsrcbox").forEach(cb => {
-        cb.checked = segbox.checked; cb.indeterminate = false;
+      const on = segbox.checked;
+      [...section.querySelectorAll(".linkbox")].forEach(b => {
+        const i = parseInt(b.dataset.i, 10);
+        if (on) SEL.add(i); else SEL.delete(i);
       });
-      segbox.indeterminate = false;
+      if (section.querySelector(".segsrcbox")) SRC_ON = on && srcAvailable();
+      syncTreeUI();
     });
   });
 
@@ -898,31 +946,24 @@ function renderSegTree() {
 }
 
 $("toggleAll").onclick = () => {
-  const src = $("srcbox");
-  const segSrc = [...document.querySelectorAll(".segsrcbox")];
-  const leaves = [...document.querySelectorAll(".commbox, .linkbox")];
-  const anyOff = leaves.some(b => !b.checked)
-    || segSrc.some(b => !b.checked)
-    || (src && !src.disabled && !src.checked);
-  leaves.forEach(b => b.checked = anyOff);
-  segSrc.forEach(b => b.checked = anyOff);
-  [...document.querySelectorAll(".catbox, .catbox2, .commbox2, .segbox")].forEach(cb => {
-    cb.checked = anyOff; cb.indeterminate = false;
-  });
-  if (src && !src.disabled) src.checked = anyOff;
+  const allOn = LINKS.length && SEL.size === LINKS.length && (!srcAvailable() || SRC_ON);
+  if (allOn) { SEL = new Set(); SRC_ON = false; }
+  else { SEL = new Set(LINKS.map(l => l._i)); SRC_ON = srcAvailable(); }
+  syncTreeUI();
 };
 
 // ===========================================================================
 // Gather the selected texts into a format-neutral structure.
-// Every builder (Word / EPUB / PDF) consumes this same shape.
-//   blocks: ordered [{type:"h1"|"h2"|"ref"|"he"|"en", text, anchor?, first?}]
-//   toc:    [{level:1|2, text, anchor}]
+// Every builder (Word / EPUB / PDF) consumes this same shape, and both
+// grouping modes read from the same SEL / SRC_ON selection, so the built
+// document contains exactly what's ticked — nothing more.
+//   blocks: ordered [{type:"h1"|"h2"|"h3"|"ref"|"he"|"en", text, anchor?, first?}]
+//   toc:    [{level:1|2|3, text, anchor}]
 // ===========================================================================
 function gatherContent() {
   const incHe = $("incHe").checked;
   const incEn = $("incEn").checked;
-  const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
-  const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
+  const haveSrc = SRC_ON && srcAvailable();
 
   if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
 
@@ -947,31 +988,27 @@ function gatherContent() {
 
   // ---------------- section mode ----------------
   if (GROUPMODE === "seg") {
-    const picked = pickedLinkSet();
-    const srcWanted = idx => {
-      const b = document.querySelector('.segsrcbox[data-idx="' + idx + '"]');
-      return !!(b && b.checked);
-    };
-    const anySrc = !!document.querySelector(".segsrcbox:checked");
-    if (!picked.size && !anySrc) return { error: "Select at least one text, or a section's original text." };
+    if (!SEL.size && !haveSrc) return { error: "Select at least one text, or the original text." };
 
     for (const seg of SEG_ORDER) {
       const cats = segCats(seg);
       const sel = cats
-        .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
+        .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
         .filter(p => p[1].length);
       const idx = segNum(seg) - 1;
-      const wantSrc = idx >= 0 && srcWanted(idx) && SRC && (SRC.he.length || SRC.text.length);
+      const segHe = (haveSrc && idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
+      const segEn = (haveSrc && idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
+      const wantSrc = haveSrc && idx >= 0 && (segHe || segEn);
       if (!sel.length && !wantSrc) continue;   // nothing chosen in this section
 
       const anchor = nextId();
       toc.push({ level: 1, text: seg, anchor });
       blocks.push({ type: "h1", text: seg, anchor, first: blocks.length === 0 });
 
-      // the section's own text first, if its box is ticked
+      // the section's own text first, if the original text is on
       if (wantSrc) {
-        if (incHe) { const he = stripHtml(SRC.he[idx] || ""); if (he) blocks.push({ type: "he", text: he }); }
-        if (incEn) { const en = stripHtml(SRC.text[idx] || ""); if (en) blocks.push({ type: "en", text: en }); }
+        if (incHe && segHe) blocks.push({ type: "he", text: segHe });
+        if (incEn && segEn) blocks.push({ type: "en", text: segEn });
       }
 
       for (const [cat, arr] of sel) {
@@ -1000,33 +1037,33 @@ function gatherContent() {
         }
       }
     }
-    return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc: anySrc, written, incHe, incEn };
+    return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
   }
 
   // ---------------- category mode ----------------
-  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-    .map(b => decodeURIComponent(b.value)));
-  if (chosen.size === 0 && !haveSrc) return { error: "Select at least one source, or include the source text." };
+  if (!SEL.size && !haveSrc) return { error: "Select at least one source, or include the source text." };
 
   // ---- source text first, for context ----
   if (haveSrc) emitWholeSource();
 
-  // ---- selected categories / commentators ----
+  // ---- selected categories / commentators / texts ----
   for (const cat of CAT_ORDER) {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
-    if (!active.length) continue;
+    const groups = comms
+      .map(comm => [comm, TREE[cat][comm].filter(l => SEL.has(l._i))])
+      .filter(p => p[1].length);
+    if (!groups.length) continue;
 
     const catAnchor = nextId();
     toc.push({ level: 1, text: cat, anchor: catAnchor });
     blocks.push({ type: "h1", text: cat, anchor: catAnchor });
 
-    for (const comm of active) {
+    for (const [comm, links] of groups) {
       const commAnchor = nextId();
       toc.push({ level: 2, text: comm, anchor: commAnchor });
       blocks.push({ type: "h2", text: comm, anchor: commAnchor });
 
-      for (const l of TREE[cat][comm]) {
+      for (const l of links) {
         const enRef = l.sourceRef || l.ref || "";
         const heRef = l.sourceHeRef || "";
         blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
@@ -1513,9 +1550,9 @@ function setFmt(f) {
   document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
 }
 
-// Group-by selector: re-renders the tree in the chosen grouping.
-// Note: switching resets the checkbox selection (the two views select
-// by different units — commentator keys vs individual texts).
+// Group-by selector: re-renders the tree in the chosen grouping. The selection
+// itself lives in SEL / SRC_ON, so it carries across unchanged — anything
+// ticked in Category mode is still ticked in Section mode, and vice versa.
 function setGrp(g) {
   if (g === GROUPMODE) return;
   GROUPMODE = g;
@@ -1565,18 +1602,27 @@ const SHARE_ICON =
   '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>' +
   '<line x1="8.4" y1="10.8" x2="15.6" y2="6.2"/><line x1="8.4" y1="13.2" x2="15.6" y2="17.8"/></svg>';
 
-function pvItem(label, he, en, isSrc) {
+function pvItem(label, he, en, isSrc, startCollapsed) {
   const idx = PV_SHARE_TEXTS.length;
   PV_SHARE_TEXTS.push({ label, he, en });
   let body = "";
   if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
   if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
-  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}">
+  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${startCollapsed ? " collapsed" : ""}">
     <div class="pv-ref">
       <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
       <button type="button" class="pv-share" data-idx="${idx}" title="Share this text" aria-label="Share this text">${SHARE_ICON}</button>
     </div>
     <div class="pv-body">${body}</div>
+  </div>`;
+}
+
+// A collapsible group wrapper for the preview (Section mode): a category or
+// a commentator, closed until the reader opens it and drills down.
+function pvGrp(title, n, body, sub) {
+  return `<div class="pv-grp collapsed">
+    <div class="pv-grp-head${sub ? " sub" : ""}"><span class="pv-caret">▾</span><span>${escapeHtml(title)}</span><span class="pv-grp-count">${n}</span></div>
+    <div class="pv-grp-body">${body}</div>
   </div>`;
 }
 
@@ -1593,7 +1639,7 @@ function wholeSrcPvItem(ref) {
     const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
     const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
   }
-  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true);
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false);
 }
 
 // Share (or, as a fallback, copy) a single preview item's text — respects the
@@ -1622,65 +1668,65 @@ async function sharePvItem(idx) {
 
 function renderPreview() {
   PV_SHARE_TEXTS = [];
-  const srcOn = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
-  const haveSrc = srcOn && SRC && (SRC.he.length || SRC.text.length);
+  const haveSrc = SRC_ON && srcAvailable();
   const ref = $("ref").value.trim();
   let html = "", count = 0, sections = 0;
 
   if (GROUPMODE === "seg") {
     // ---------------- section mode ----------------
-    const picked = pickedLinkSet();
-    const srcWanted = idx => {
-      const b = document.querySelector('.segsrcbox[data-idx="' + idx + '"]');
-      return !!(b && b.checked);
-    };
-    const anySrc = !!document.querySelector(".segsrcbox:checked");
-    if (!picked.size && !anySrc) { setStatus("Select at least one text, or a section's original text.", true); return; }
+    // Only the selected texts appear, nested under collapsed category →
+    // commentator groups: e.g. Commentary ▸ Rashi ▸ each Rashi comment.
+    if (!SEL.size && !haveSrc) { setStatus("Select at least one text, or the original text.", true); return; }
 
     for (const seg of SEG_ORDER) {
       const cats = segCats(seg);
       const sel = cats
-        .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
+        .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
         .filter(p => p[1].length);
       const idx = segNum(seg) - 1;
-      const he = (idx >= 0 && SRC) ? stripHtml(SRC.he[idx] || "") : "";
-      const en = (idx >= 0 && SRC) ? stripHtml(SRC.text[idx] || "") : "";
-      const wantSrc = idx >= 0 && srcWanted(idx) && (he || en);
+      const he = (haveSrc && idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
+      const en = (haveSrc && idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
+      const wantSrc = haveSrc && idx >= 0 && (he || en);
       if (!sel.length && !wantSrc) continue;
       sections++;
       html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
-      if (wantSrc) html += pvItem("Source — " + seg, he, en, true);
+      if (wantSrc) html += pvItem("Source — " + seg, he, en, true, true);
       for (const [cat, arr] of sel) {
-        html += `<div class="pv-comm">${escapeHtml(cat)}</div>`;
-        for (const l of arr) {
-          const enRef = l.sourceRef || l.ref || "";
-          const heRef = l.sourceHeRef || "";
-          const label = enRef + (heRef ? "  —  " + heRef : "");
-          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
-          count++;
+        let catBody = "";
+        for (const [comm, links] of groupByComm(arr)) {
+          let items = "";
+          for (const l of links) {
+            const enRef = l.sourceRef || l.ref || "";
+            const heRef = l.sourceHeRef || "";
+            const label = enRef + (heRef ? "  —  " + heRef : "");
+            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true);
+            count++;
+          }
+          catBody += pvGrp(comm, links.length, items, true);
         }
+        html += pvGrp(cat, arr.length, catBody, false);
       }
     }
   } else {
     // ---------------- category mode ----------------
-    const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-      .map(b => decodeURIComponent(b.value)));
-    if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
+    if (!SEL.size && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
 
     if (haveSrc) html += wholeSrcPvItem(ref);
 
     for (const cat of CAT_ORDER) {
       const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-      const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
-      if (!active.length) continue;
+      const groups = comms
+        .map(comm => [comm, TREE[cat][comm].filter(l => SEL.has(l._i))])
+        .filter(p => p[1].length);
+      if (!groups.length) continue;
       html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
-      for (const comm of active) {
+      for (const [comm, links] of groups) {
         html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
-        for (const l of TREE[cat][comm]) {
+        for (const l of links) {
           const enRef = l.sourceRef || l.ref || "";
           const heRef = l.sourceHeRef || "";
           const label = enRef + (heRef ? "  —  " + heRef : "");
-          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
+          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false);
           count++;
         }
       }
@@ -1703,13 +1749,15 @@ function renderPreview() {
     if (haveSrc) bits.push("Original Text");
     if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
   }
-  $("previewCount").textContent = "Showing " + (bits.join(" · ") || "nothing") + " — tap a heading to collapse it";
+  $("previewCount").textContent = "Showing " + (bits.join(" · ") || "nothing") +
+    (GROUPMODE === "seg" ? " — tap a group to open it" : " — tap a heading to collapse it");
   $("previewCard").style.display = "block";
   setStatus("");
   $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// per-item collapse (event delegation), share button, language toggles, expand/collapse all
+// per-item collapse + group drill-down (event delegation), share button,
+// language toggles, expand/collapse all
 $("preview").addEventListener("click", e => {
   const shareBtn = e.target.closest(".pv-share");
   if (shareBtn) {
@@ -1717,13 +1765,17 @@ $("preview").addEventListener("click", e => {
     sharePvItem(parseInt(shareBtn.dataset.idx, 10));
     return;
   }
+  const gh = e.target.closest(".pv-grp-head");
+  if (gh) { gh.parentElement.classList.toggle("collapsed"); return; }
   const t = e.target.closest(".pv-toggle");
   if (t) t.parentElement.parentElement.classList.toggle("collapsed");
 });
 $("pvHe").onchange = applyPvLang;
 $("pvEn").onchange = applyPvLang;
-$("pvExpandAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.remove("collapsed"));
-$("pvCollapseAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.add("collapsed"));
+$("pvExpandAll").onclick = () =>
+  [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.remove("collapsed"));
+$("pvCollapseAll").onclick = () =>
+  [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.add("collapsed"));
 
 // ===========================================================================
 // Reference builder — Browse (category drill-down)
@@ -1972,9 +2024,13 @@ document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setM
 document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
 
+$("incHe").addEventListener("change", applyTreeLang);
+$("incEn").addEventListener("change", applyTreeLang);
+
 $("clearBtn").onclick = () => {
   $("ref").value = "";
   LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
+  SEL = new Set(); SRC_ON = false;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
   hideShareBar();
