@@ -78,6 +78,21 @@
   .preview.hide-he .pv-he { display: none; }
   .preview.hide-en .pv-en { display: none; }
   .pv-count { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+
+  /* ---- preview: collapsible category / commentator groups (Section mode) ---- */
+  .pv-grp { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; overflow: hidden; }
+  .pv-grp-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: #f2ecdd; cursor: pointer; font-size: 15px; user-select: none;
+  }
+  .pv-grp-head.top { background: #ece3d0; font-size: 16px; font-weight: bold; }
+  .pv-grp-head.sub { background: #fbf8f0; font-size: 14px; color: var(--accent-dark); }
+  .pv-grp-head .pv-caret { transition: transform .15s; }
+  .pv-grp.collapsed > .pv-grp-head .pv-caret { transform: rotate(-90deg); }
+  .pv-grp-count { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .pv-grp-body { padding: 4px 10px 8px; }
+  .pv-grp.collapsed > .pv-grp-body { display: none; }
+
   .status { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 10px; }
   .status.err { color: #a23b2c; }
   .toggles { display: flex; gap: 18px; margin: 14px 0 0; }
@@ -129,7 +144,7 @@
   .linkrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13.5px; color: var(--muted); margin: 0; }
   .linkrow input { margin: 0; flex: none; }
 
-  /* ---- section mode: category → commentator sub-group ---- */
+  /* ---- section mode: category → commentator sub-group ----- */
   .catgrp { border-bottom: 1px solid var(--line); }
   .catgrp:last-child { border-bottom: none; }
   .catgrp-head { cursor: pointer; }
@@ -139,7 +154,34 @@
   .catgrp.collapsed .catgrp-body { display: none; }
   .catgrp-body { padding-left: 14px; }
 
-  /* ---- reference builder: mode switch + browse navigator ---- */
+  /* ---- section mode: per-section original text ---- */
+  .srcgrp .commhead { color: var(--accent-dark); }
+  .srcbody { padding: 6px 10px; margin: 2px 0 8px 12px; background: #fbf8f0; border: 1px solid var(--line); border-radius: 6px; }
+  .srcbody .pv-he { font-size: 17px; line-height: 1.75; margin: 2px 0; }
+  .srcbody .pv-en { font-size: 14px; line-height: 1.6; margin: 2px 0; }
+  .srcgrp.collapsed .srcbody { display: none; }
+  /* the Hebrew / English toggles also govern the source snippets in the tree */
+  #tree.hide-he .srcbody .pv-he { display: none; }
+  #tree.hide-en .srcbody .pv-en { display: none; }
+
+  /* ---- user notes: a pencil button beside each preview text's share button,
+         an inline editor beneath that text ---- */
+  .pv-notebtn {
+    width: auto; margin: 0; padding: 3px 9px; line-height: 1.2; font-size: 14px;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none;
+  }
+  .pv-notebtn:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .pv-notebtn.has-note { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pv-notebtn.has-note:hover { background: var(--accent-dark); }
+  .notebox { display: none; padding: 6px 0 2px; }
+  .notebox textarea {
+    width: 100%; min-height: 54px; box-sizing: border-box; resize: vertical;
+    font-family: inherit; font-size: 14px; padding: 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+
+  /* ---- reference builder: mode switch + browse navigator ----- */
   .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
   .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
   .modeseg button:hover { background: #ece3d0; }
@@ -167,6 +209,7 @@
 
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
+  .sharehint { text-align: center; margin-top: 6px; font-size: 13px; }
 
   /* ---- output-format selector (also reused for the Group-by selector) ---- */
   .fmtlabel { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
@@ -174,17 +217,32 @@
   .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
   .fmtseg button:hover { background: #ece3d0; }
   .fmtseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ---- per-text copy button (preview) ---- */
+  .pv-ref { justify-content: space-between; }
+  .pv-ref .pv-reflabel { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+  .pv-copy {
+    width: auto; margin: 0; padding: 4px 8px; line-height: 0;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none; display: inline-flex; align-items: center;
+  }
+  .pv-copy:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .pv-copy svg { display: block; }
+  /* copy + note buttons belong to the open text only — a collapsed
+     text shows just its reference line */
+  .pv-item.collapsed .pv-copy,
+  .pv-item.collapsed .pv-notebtn { display: none; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Sefaria Links → Kindle / Word / PDF</h1>
-  <p class="sub">Enter a reference (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
+  <p class="sub">Enter a reference and press Enter (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
 
   <div class="card">
     <label for="ref">Reference</label>
     <div class="refwrap">
-      <input type="text" id="ref" placeholder="Start typing… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <input type="text" id="ref" placeholder="Type and press Enter… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
       <div class="ac" id="ac"></div>
     </div>
 
@@ -203,7 +261,6 @@
       <label><input type="checkbox" id="incEn" checked> English</label>
     </div>
 
-    <button id="fetchBtn">Fetch links</button>
     <div class="clearrow"><span class="globaltoggle" id="clearBtn">clear</span></div>
     <div class="status" id="status"></div>
   </div>
@@ -228,7 +285,10 @@
       <button type="button" data-fmt="word">Word</button>
       <button type="button" data-fmt="pdf">PDF</button>
     </div>
-    <button id="genBtn" class="secondary">Build &amp; download</button>
+    <div id="shareBar" style="display:none">
+      <button id="shareBtn">📤 Share file…</button>
+      <div class="sharehint"><span class="globaltoggle" id="saveInstead">save to downloads instead</span></div>
+    </div>
   </div>
 
   <div class="card" id="previewCard" style="display:none">
@@ -242,13 +302,14 @@
   </div>
 
   <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the file, then use the share sheet → <em>Send to Kindle</em> (EPUB and Word both work; EPUB gives the richer Go&nbsp;To menu).</p>
-  <p class="hint">Texts and links from Sefaria's open library.</p>
+  <p class="hint" id="verHint">Texts and links from Sefaria's open library.</p>
 </div>
 
 <div class="donate-bar"><a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">♥ Donate to Sefaria</a></div>
 
 <script>
 const $ = id => document.getElementById(id);
+const APP_VERSION = 20;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -258,7 +319,120 @@ let CAT_ORDER = [];  // categories, most links first
 let SEG_TREE = {};   // segment ref -> { category -> [links] }
 let SEG_ORDER = [];  // segment refs, in textual order
 let GROUPMODE = "cat"; // "cat" | "seg"
-let SRC = null;      // { ref, heRef, he:[segments], text:[segments] } base source text
+let SRC = null;      // { ref, heRef, he:[segments], text:[segments], segMap? } base source text
+                     // segMap (ranged refs only): segment ref -> index into he/text
+
+// ---------------------------------------------------------------------------
+// Selection state — the single source of truth for BOTH grouping modes.
+// SEL holds the _i indices of the individual texts currently selected;
+// SRC_ON is one global flag for the original text. Every checkbox in either
+// tree is just a view onto this state, so a toggle made anywhere (a category
+// in one section, a commentator in Category mode, the source text…) is
+// automatically mirrored everywhere else, and survives switching Group by.
+// ---------------------------------------------------------------------------
+let SEL = new Set();
+let SRC_ON = false;
+
+// User notes, written in the preview on individual texts (the most granular
+// level). Keys: "L" + link index for a linked text (stable across grouping
+// modes, so a note follows its text between Category and Section views);
+// "S:" + segment for one section's slice of the original text; "__src__" for
+// the whole original text in Category mode. Each note is printed in the
+// built file directly beneath its own text. Notes are cleared when a new
+// reference is fetched (they belong to the old one).
+let NOTES = {};
+
+function srcAvailable() { return !!(SRC && (SRC.he.length || SRC.text.length)); }
+
+function noteOf(key) { return (NOTES[key] || "").trim(); }
+function pvNoteBtnHtml(key) {
+  const k = encodeURIComponent(key);
+  return `<button type="button" class="pv-notebtn${noteOf(key) ? " has-note" : ""}" data-key="${k}" title="Add a note to this text" aria-label="Add a note to this text">✎</button>`;
+}
+function noteBoxHtml(key) {
+  const k = encodeURIComponent(key);
+  const has = !!noteOf(key);
+  return `<div class="notebox" data-key="${k}"${has ? ' style="display:block"' : ""}><textarea class="notetext" data-key="${k}" placeholder="Your note — printed beneath this text in the built file.">${escapeHtml(NOTES[key] || "")}</textarea></div>`;
+}
+
+function setLinkSel(i, on) {
+  if (on) SEL.add(i); else SEL.delete(i);
+  syncTreeUI();
+}
+// Toggle every text of one (category, commentator) pair — across all sections.
+function setKeySel(cat, comm, on) {
+  const links = (TREE[cat] && TREE[cat][comm]) || [];
+  for (const l of links) { if (on) SEL.add(l._i); else SEL.delete(l._i); }
+  syncTreeUI();
+}
+// Toggle every text of one category — across all sections.
+function setCatSel(cat, on) {
+  for (const arr of Object.values(TREE[cat] || {})) {
+    for (const l of arr) { if (on) SEL.add(l._i); else SEL.delete(l._i); }
+  }
+  syncTreeUI();
+}
+function setSrcSel(on) {
+  SRC_ON = on && srcAvailable();
+  syncTreeUI();
+}
+
+// Repaint every checkbox in the current tree from SEL / SRC_ON.
+function syncTreeUI() {
+  // leaf link checkboxes (Section mode)
+  document.querySelectorAll("#tree .linkbox").forEach(b => {
+    b.checked = SEL.has(parseInt(b.dataset.i, 10));
+  });
+  // commentator groups (Section mode)
+  document.querySelectorAll("#tree .commgrp").forEach(g => {
+    const cb = g.querySelector(".commbox2"); if (!cb) return;
+    const boxes = [...g.querySelectorAll(".linkbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  // category groups (Section mode)
+  document.querySelectorAll("#tree .catgrp").forEach(cg => {
+    const cb = cg.querySelector(".catbox2"); if (!cb) return;
+    const boxes = [...cg.querySelectorAll(".linkbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  // per-section source slices + section checkboxes (Section mode)
+  document.querySelectorAll("#tree .segsrcbox").forEach(b => { b.checked = SRC_ON; });
+  document.querySelectorAll("#tree .cat.seg").forEach(sec => {
+    const sb = sec.querySelector(".segbox"); if (!sb) return;
+    const boxes = [...sec.querySelectorAll(".linkbox")];
+    let on = boxes.filter(b => b.checked).length, total = boxes.length;
+    if (sec.querySelector(".segsrcbox")) { total++; if (SRC_ON) on++; }
+    sb.checked = on > 0; sb.indeterminate = on > 0 && on < total;
+  });
+  // commentator rows (Category mode)
+  document.querySelectorAll("#tree .commbox").forEach(b => {
+    const cat = decodeURIComponent(b.dataset.cat), comm = decodeURIComponent(b.dataset.comm);
+    const links = (TREE[cat] && TREE[cat][comm]) || [];
+    const on = links.filter(l => SEL.has(l._i)).length;
+    b.checked = on > 0; b.indeterminate = on > 0 && on < links.length;
+  });
+  // category headers (Category mode)
+  document.querySelectorAll("#tree .cat[data-cat]").forEach(catEl => {
+    const cb = catEl.querySelector(".catbox"); if (!cb) return;
+    const boxes = [...catEl.querySelectorAll(".commbox")];
+    if (!boxes.length) return;
+    const fullyOn = boxes.filter(b => b.checked && !b.indeterminate).length;
+    const any = boxes.some(b => b.checked);
+    cb.checked = any; cb.indeterminate = any && fullyOn < boxes.length;
+  });
+  // global Original Text row (Category mode)
+  const src = $("srcbox");
+  if (src && !src.disabled) src.checked = SRC_ON;
+}
+
+// The Hebrew / English toggles also govern the source snippets shown
+// inside the Section-mode tree (not just the output and the preview).
+function applyTreeLang() {
+  $("tree").classList.toggle("hide-he", !$("incHe").checked);
+  $("tree").classList.toggle("hide-en", !$("incEn").checked);
+}
 
 function toArr(v) {
   if (!v) return [];
@@ -325,9 +499,10 @@ function catName(l) { return l.category || "Other"; }
 function keyFor(cat, comm) { return cat + "||" + comm; }
 
 // Which segment of the source a link hangs off. Prefer the segment the link
-// was actually fetched for (set during the segment-by-segment walk); fall back
-// to anchorRef only for refs that couldn't be expanded. A link spanning several
-// segments is filed under the first segment it was seen for, so it appears once.
+// was actually fetched for (set during the segment-by-segment walk, and for
+// single-segment fetches); fall back to anchorRef only for refs that couldn't
+// be expanded. A link spanning several segments is filed under the first
+// segment it was seen for, so it appears once.
 function segRefOf(l) {
   if (l._seg) return l._seg;
   if (Array.isArray(l.anchorRefExpanded) && l.anchorRefExpanded.length) return l.anchorRefExpanded[0];
@@ -337,6 +512,17 @@ function segNum(ref) {
   const m = String(ref).match(/:(\d+)$/);
   return m ? parseInt(m[1], 10) : 0;   // whole-page anchors sort first
 }
+// Which slice of the base text belongs to a section. Ranged fetches (a parsha,
+// an aliyah) carry an explicit segment→index map, since their slices don't
+// start at :1 and can cross chapters. When the whole fetch was a single
+// segment (one verse, one mishnah), the source text has exactly one slice —
+// use it — otherwise index by the segment number.
+function srcIdxFor(seg) {
+  if (!srcAvailable()) return -1;
+  if (SRC.segMap) return (seg in SRC.segMap) ? SRC.segMap[seg] : -1;
+  if (SEG_ORDER.length === 1 && Math.max(SRC.he.length, SRC.text.length) === 1) return 0;
+  return segNum(seg) - 1;
+}
 // Categories present within a segment: fixed category rank, then frequency.
 function segCats(seg) {
   return Object.keys(SEG_TREE[seg]).sort((a, b) => {
@@ -345,43 +531,39 @@ function segCats(seg) {
     return SEG_TREE[seg][b].length - SEG_TREE[seg][a].length;
   });
 }
-
 // Rashi, Tosafot, Steinsaltz always lead the commentators in a Talmud section.
 function commRank(name) {
   const lc = String(name).toLowerCase();
   if (lc.indexOf("rashi") === 0) return 0;
   if (lc.indexOf("tosafot") === 0 || lc.indexOf("tosfot") === 0) return 1;
   if (lc.indexOf("steinsaltz") === 0) return 2;
-  return 3;   // everyone else keeps alphabetical order below
+  return 3;
 }
-  
 // Links inside one section+category, ordered by work then reference so a
 // commentator's own pieces stay together (their names show in each ref).
 function segCatLinks(seg, cat) {
-return SEG_TREE[seg][cat].slice().sort((a, b) => {
+  return SEG_TREE[seg][cat].slice().sort((a, b) => {
     const na = commName(a), nb = commName(b);
     const ra = commRank(na), rb = commRank(nb);
-    if (ra !== rb) return ra - rb;                 // priority commentators first
-    if (na !== nb) return na.localeCompare(nb);    // then alphabetical
+    if (ra !== rb) return ra - rb;
+    if (na !== nb) return na.localeCompare(nb);
     return String(a.sourceRef || a.ref || "").localeCompare(String(b.sourceRef || b.ref || ""));
   });
 }
-
-// Within one section+category, bucket links by commentator (Rashi, Tosafot…),
-// preserving segCatLinks order so each commentator's pieces stay together.
-function segCatComms(seg, cat) {
+// Bucket a list of links by commentator/work (Rashi, Tosafot, Berakhot…),
+// preserving the given order so each work's pieces stay contiguous.
+function groupByComm(links) {
   const out = [], idx = {};
-  for (const l of segCatLinks(seg, cat)) {
+  for (const l of links) {
     const n = commName(l);
     if (!(n in idx)) { idx[n] = out.length; out.push([n, []]); }
     out[idx[n]][1].push(l);
   }
-  return out;   // [ [commName, [links]], … ]
+  return out;
 }
-
-function pickedLinkSet() {
-  return new Set([...document.querySelectorAll(".linkbox:checked")]
-    .map(b => parseInt(b.dataset.i, 10)));
+// Within one section+category, bucket links by commentator, preserving order.
+function segCatComms(seg, cat) {
+  return groupByComm(segCatLinks(seg, cat));
 }
 
 // Fixed section order: Source Text is emitted first separately; then these
@@ -423,11 +605,20 @@ function renderAC(list) {
     });
   });
 }
+// Picking a suggestion that ends in a number / daf is a usable reference —
+// fetch it right away (this is what replaces the old Fetch button). A bare
+// book name means the user is still narrowing down, so keep them typing.
 function pickAC(i) {
   if (i < 0 || i >= acItems.length) return;
-  $("ref").value = acItems[i];
+  const v = acItems[i];
   hideAC();
-  $("ref").focus();
+  if (/\d+[ab]?(?::\d+)?$/.test(v.trim())) {
+    $("ref").value = v;
+    fetchLinks();
+  } else {
+    $("ref").value = v + " ";
+    $("ref").focus();
+  }
 }
 async function queryNames(q) {
   try {
@@ -470,6 +661,11 @@ function isMultiSegmentSection(ref) {
   if (/\d+[ab]$/.test(ref)) return true;      // Talmud daf (e.g. 100a) — walk its segments
   return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
 }
+// A ranged reference (an aliyah, a whole parsha, "Shabbat 100a:1-5"…):
+// verse:verse with a dash somewhere after it.
+function isRangedRef(ref) {
+  return /:\d+\s*[-–]\s*\d/.test(String(ref));
+}
 
 async function mapPool(items, worker, poolSize, onProgress) {
   const results = new Array(items.length);
@@ -485,6 +681,25 @@ async function mapPool(items, worker, poolSize, onProgress) {
   for (let k = 0; k < Math.min(poolSize, items.length); k++) runners.push(run());
   await Promise.all(runners);
   return results;
+}
+
+// Fetch links for an explicit list of segment refs, tagging each link with
+// the segment it was fetched for. This is the ground truth for section
+// grouping — per-segment calls return every category (Tanakh, Talmud,
+// Halakhah…), exactly matching Sefaria's own sidebar, whereas anchorRef on a
+// whole-page call is unreliable outside Commentary.
+async function linksForSegs(segs) {
+  const chunks = await mapPool(segs, async (sref) => {
+    try {
+      const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
+      if (!r.ok) return [];
+      const d = await r.json();
+      if (!Array.isArray(d)) return [];
+      d.forEach(l => { l._seg = sref; });
+      return d;
+    } catch (e) { return []; }
+  }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
+  return [].concat.apply([], chunks);
 }
 
 // A whole chapter/section: Sefaria's links API doesn't reliably return the
@@ -508,41 +723,132 @@ async function fetchLinksBySegments(ref) {
   }
   const segs = [];
   for (let i = 1; i <= n; i++) segs.push(ref + ":" + i);
-  const chunks = await mapPool(segs, async (sref) => {
-    try {
-      const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
-      if (!r.ok) return [];
-      const d = await r.json();
-      if (!Array.isArray(d)) return [];
-      // Tag each link with the segment it was fetched for. This is the ground
-      // truth for section grouping — per-segment calls return every category
-      // (Tanakh, Talmud, Halakhah…), exactly matching Sefaria's own sidebar,
-      // whereas anchorRef on a whole-page call is unreliable outside Commentary.
-      d.forEach(l => { l._seg = sref; });
-      return d;
-    } catch (e) { return []; }
-  }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
-  return [].concat.apply([], chunks);
+  return await linksForSegs(segs);
 }
 
-async function fetchLinks() {
-  const ref = $("ref").value.trim();
-  if (!ref) { setStatus("Enter a reference, or switch to Browse.", true); return; }
+// Expand a ranged reference (an aliyah, a whole parsha) into its individual
+// segment refs, together with each segment's own Hebrew / English text.
+// A range within one section ("Shabbat 100a:1-5", "Genesis 24:10-26") is a
+// single fetch — those responses are dependably flat. A numeric range across
+// chapters ("Genesis 2:4-3:21", a whole parsha) is expanded by fetching each
+// chapter WHOLE and slicing it: whole-chapter responses are flat, parallel
+// he/text arrays, whereas the shape of Sefaria's spanning-ref response varies
+// (nested per chapter, sometimes differently per language), and rebuilding
+// verse numbers from that shape produced phantom sections like "Genesis 4:1"
+// for an aliyah. Anything odder (a cross-daf range…) returns null and the
+// caller falls back.
+async function expandRangedRef(ref) {
+  const t = String(ref).trim();
+  const fetchJson = async (r) => {
+    try {
+      const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0");
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.error ? null : j;
+    } catch (e) { return null; }
+  };
 
-  $("fetchBtn").disabled = true;
+  // -- a range within one section: "Book 2:4-19", "Shabbat 100a:1-5" --------
+  let m = t.match(/^(.+?):(\d+)\s*[-\u2013]\s*(\d+)$/);
+  if (m && +m[3] >= +m[2]) {
+    const base = m[1], start = +m[2];
+    const j = await fetchJson(t);
+    if (!j) return null;
+    const heArr = Array.isArray(j.he) ? j.he : [];
+    const enArr = Array.isArray(j.text) ? j.text : [];
+    const n = Math.max(heArr.length, enArr.length);
+    if (!n) return null;
+    const out = [];
+    for (let i = 0; i < n; i++)
+      out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
+    return { ref: j.ref || t, heRef: j.heRef || "", segs: out };
+  }
+
+  // -- a numeric range across chapters: "Genesis 2:4-3:21", a parsha --------
+  m = t.match(/^(.+?)\s(\d+):(\d+)\s*[-\u2013]\s*(\d+):(\d+)$/);
+  if (!m) return null;
+  const book = m[1], c1 = +m[2], v1 = +m[3], c2 = +m[4], v2 = +m[5];
+  if (c2 < c1 || (c2 === c1 && v2 < v1)) return null;
+
+  // canonical English + Hebrew names of the range, for the source heading
+  let refName = t, heRef = "";
+  const meta = await fetchJson(t);
+  if (meta) { refName = meta.ref || t; heRef = meta.heRef || ""; }
+
+  const out = [];
+  for (let c = c1; c <= c2; c++) {
+    const j = await fetchJson(book + " " + c);
+    if (!j) return null;
+    const heArr = Array.isArray(j.he) ? j.he : [];
+    const enArr = Array.isArray(j.text) ? j.text : [];
+    const n = Math.max(heArr.length, enArr.length);
+    if (!n) return null;
+    const from = (c === c1) ? v1 : 1;
+    const to = (c === c2) ? Math.min(v2, n) : n;
+    if (from > to) return null;
+    for (let v = from; v <= to; v++)
+      out.push({ ref: book + " " + c + ":" + v, he: asText(heArr[v - 1]), en: asText(enArr[v - 1]) });
+  }
+  if (!out.length) return null;
+  return { ref: refName, heRef: heRef, segs: out };
+}
+
+// Ranged ref → links (segment by segment, so section grouping works) plus a
+// ready-made source-text object whose segMap aligns each section with its own
+// slice of the text — even across chapter boundaries.
+async function fetchRangeData(ref) {
+  setStatus("Reading " + ref + "…");
+  const exp = await expandRangedRef(ref);
+  if (!exp) return null;
+  const links = await linksForSegs(exp.segs.map(s => s.ref));
+  const segMap = {};
+  exp.segs.forEach((s, i) => { segMap[s.ref] = i; });
+  const src = {
+    ref: exp.ref, heRef: exp.heRef,
+    he: exp.segs.map(s => s.he), text: exp.segs.map(s => s.en),
+    segMap
+  };
+  return { links, src };
+}
+
+let FETCHING = false;
+async function fetchLinks() {
+  if (FETCHING) return;
+  const ref = $("ref").value.trim();
+  if (!ref) { setStatus("Enter a reference and press Enter, or switch to Browse.", true); return; }
+
+  FETCHING = true;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
+  hideShareBar();
   setStatus("Fetching…");
 
   try {
     let data;
-    if (isMultiSegmentSection(ref)) {
+    let preSrc = null;   // source text prepared by the range walk, if any
+    if (isRangedRef(ref)) {
+      const rd = await fetchRangeData(ref);
+      if (rd) { data = rd.links; preSrc = rd.src; }
+      else {
+        // range we couldn't parse (e.g. cross-daf) — single call, best effort
+        const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        data = await res.json();
+        if (data && data.error) throw new Error(data.error);
+      }
+    } else if (isMultiSegmentSection(ref)) {
       data = await fetchLinksBySegments(ref);
     } else {
       const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
       if (!res.ok) throw new Error("HTTP " + res.status);
       data = await res.json();
       if (data && data.error) throw new Error(data.error);
+      // A single specific segment (one verse, one mishnah, one line of a daf):
+      // everything the API returns belongs to that segment, so file it all
+      // there. Without this, links anchored to ranges (a commentary on
+      // 9:1-10:29, or on 2:1-3) would surface under the range's first segment,
+      // making e.g. "I Kings 9:10" show sections for 9:1, 9:9 and even 1:1.
+      if (Array.isArray(data) && /:\d+$/.test(ref)) data.forEach(l => { l._seg = ref; });
     }
     if (!Array.isArray(data) || data.length === 0) {
       setStatus("No links found for that reference.", true);
@@ -583,46 +889,91 @@ async function fetchLinks() {
       (SEG_TREE[s] = SEG_TREE[s] || {});
       (SEG_TREE[s][c] = SEG_TREE[s][c] || []).push(l);
     }
-    SEG_ORDER = Object.keys(SEG_TREE).sort((a, b) =>
-      segNum(a) - segNum(b) || a.localeCompare(b));
-
-    // fetch the reference's own text first, so "Original Text" can head the list (non-fatal)
-    SRC = null;
-    try {
-      const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
-      if (r.ok) {
-        const t = await r.json();
-        if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
+    // Ranged fetches order sections by their place in the range (segment
+    // numbers restart in each chapter, so numeric sorting would shuffle a
+    // parsha); everything else sorts by segment number as before.
+    SEG_ORDER = Object.keys(SEG_TREE).sort((a, b) => {
+      if (preSrc && preSrc.segMap) {
+        const ia = (a in preSrc.segMap) ? preSrc.segMap[a] : Infinity;
+        const ib = (b in preSrc.segMap) ? preSrc.segMap[b] : Infinity;
+        if (ia !== ib) return ia - ib;
       }
-    } catch (e) { /* silent: source text just won't be available */ }
+      return segNum(a) - segNum(b) || a.localeCompare(b);
+    });
+
+    // the reference's own text, so "Original Text" can head the list. A range
+    // walk already built it (with per-section alignment); otherwise fetch it
+    // now (non-fatal).
+    SRC = null;
+    if (preSrc) {
+      SRC = preSrc;
+    } else {
+      try {
+        const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+        if (r.ok) {
+          const t = await r.json();
+          if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
+        }
+      } catch (e) { /* silent: source text just won't be available */ }
+    }
+
+    // fresh selection: everything on; notes belonged to the previous reference
+    SEL = new Set(LINKS.map(l => l._i));
+    SRC_ON = srcAvailable();
+    NOTES = {};
 
     renderTree();
     setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
   } finally {
-    $("fetchBtn").disabled = false;
+    FETCHING = false;
   }
 }
 
 // ===========================================================================
-// Tree rendering — dispatches on the grouping mode
+// Tree rendering — dispatches on the grouping mode. Checkboxes carry no state
+// of their own: after rendering, syncTreeUI() paints them from SEL / SRC_ON,
+// so the same selection carries across Category ↔ Section switches.
 // ===========================================================================
 function renderTree() {
   if (GROUPMODE === "seg") renderSegTree();
   else renderCatTree();
+  syncTreeUI();
+  applyTreeLang();
 }
 
 function srcRowHtml(subtitle) {
-  const srcAvailable = SRC && (SRC.he.length || SRC.text.length);
+  const avail = srcAvailable();
   return `<div class="cat srcrow">
       <div class="cat-head">
-        <input type="checkbox" class="srcbox" id="srcbox" ${srcAvailable ? "checked" : "disabled"}>
+        <input type="checkbox" class="srcbox" id="srcbox" ${avail ? "" : "disabled"}>
         <span class="caret" style="visibility:hidden">▾</span>
         <strong>Original Text</strong>
-        <span class="count">${srcAvailable ? subtitle : "not available"}</span>
+        <span class="count">${avail ? subtitle : "not available"}</span>
       </div>
     </div>`;
+}
+
+// The relevant slice of the base text for one section, as an expandable,
+// checkable group placed at the top of that section's menu (Section mode).
+function segSrcGroupHtml(seg) {
+  const idx = srcIdxFor(seg);
+  if (idx < 0) return "";   // no source, or the "(whole page)" bucket
+  const he = stripHtml(SRC.he[idx] || "");
+  const en = stripHtml(SRC.text[idx] || "");
+  if (!he && !en) return "";
+  const body =
+    (he ? `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>` : "") +
+    (en ? `<p class="pv-en">${escapeHtml(en)}</p>` : "");
+  return `<div class="commgrp srcgrp">
+    <div class="comm commhead">
+      <input type="checkbox" class="segsrcbox" data-idx="${idx}">
+      <span class="caret2">▾</span>
+      <span>Original text</span>
+    </div>
+    <div class="srcbody">${body}</div>
+  </div>`;
 }
 
 function renderCatTree() {
@@ -632,15 +983,14 @@ function renderCatTree() {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
     const rows = comms.map(comm => {
       const n = TREE[cat][comm].length;
-      const k = keyFor(cat, comm);
       return `<label class="comm">
-        <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" value="${encodeURIComponent(k)}" checked>
+        <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
         <span>${comm}</span><span class="count">${n}</span>
       </label>`;
     }).join("");
     return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
       <div class="cat-head">
-        <input type="checkbox" class="catbox" checked>
+        <input type="checkbox" class="catbox">
         <span class="caret">▾</span>
         <strong>${cat}</strong><span class="count">${catCount(cat)}</span>
       </div>
@@ -649,33 +999,37 @@ function renderCatTree() {
   }).join("");
   $("tree").innerHTML = srcRowHtml("the passage itself") + catsHtml;
 
-  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(cat => {
-    const head = cat.querySelector(".cat-head");
-    const catbox = cat.querySelector(".catbox");
-    const commboxes = [...cat.querySelectorAll(".commbox")];
+  const srcbox = $("srcbox");
+  if (srcbox && !srcbox.disabled) {
+    srcbox.addEventListener("change", () => setSrcSel(srcbox.checked));
+  }
+
+  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(catEl => {
+    const head = catEl.querySelector(".cat-head");
+    const catbox = catEl.querySelector(".catbox");
+    const cat = decodeURIComponent(catEl.dataset.cat);
 
     // click the header to drill in / collapse (but not when hitting the checkbox)
     head.addEventListener("click", e => {
       if (e.target === catbox) return;
-      cat.classList.toggle("collapsed");
+      catEl.classList.toggle("collapsed");
     });
-    // the section checkbox selects / clears the whole section
-    catbox.addEventListener("change", () => {
-      commboxes.forEach(b => b.checked = catbox.checked);
-    });
-    // individual commentators feed back into the section checkbox
-    commboxes.forEach(b => b.addEventListener("change", () => {
-      const on = commboxes.filter(x => x.checked).length;
-      catbox.checked = on > 0;
-      catbox.indeterminate = on > 0 && on < commboxes.length;
-    }));
+    // the category checkbox selects / clears every text in the category
+    catbox.addEventListener("change", () => setCatSel(cat, catbox.checked));
+    // commentator rows toggle every text of that commentator
+    [...catEl.querySelectorAll(".commbox")].forEach(b =>
+      b.addEventListener("change", () =>
+        setKeySel(decodeURIComponent(b.dataset.cat), decodeURIComponent(b.dataset.comm), b.checked)));
   });
 
   $("treeCard").style.display = "block";
 }
 
-// Section mode: section (segment of the page) → source → individual texts,
-// with a checkbox at every level.
+// Section mode: section (segment of the page) → category → commentator →
+// individual texts, with a checkbox at every level. Category, commentator,
+// and original-text toggles operate on the shared selection, so ticking or
+// unticking one is instantly mirrored in every other section. Only the
+// section header's own checkbox is limited to that section's texts.
 function renderSegTree() {
   const segsHtml = SEG_ORDER.map(seg => {
     const cats = segCats(seg);
@@ -687,22 +1041,22 @@ function renderSegTree() {
         const rows = links.map(l => {
           const label = l.sourceRef || l.ref || "(untitled)";
           return `<label class="linkrow">
-            <input type="checkbox" class="linkbox" data-i="${l._i}" checked>
+            <input type="checkbox" class="linkbox" data-i="${l._i}">
             <span>${escapeHtml(label)}</span>
           </label>`;
         }).join("");
-        return `<div class="commgrp collapsed">
+        return `<div class="commgrp collapsed" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
           <div class="comm commhead">
-            <input type="checkbox" class="commbox2" checked>
+            <input type="checkbox" class="commbox2">
             <span class="caret2">▾</span>
             <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
           </div>
           <div class="linklist">${rows}</div>
         </div>`;
       }).join("");
-      return `<div class="catgrp collapsed">
+      return `<div class="catgrp collapsed" data-cat="${encodeURIComponent(cat)}">
         <div class="comm catgrp-head">
-          <input type="checkbox" class="catbox2" checked>
+          <input type="checkbox" class="catbox2">
           <span class="caret2 catcaret">▾</span>
           <span>${escapeHtml(cat)}</span><span class="count">${catTotal}</span>
         </div>
@@ -711,110 +1065,101 @@ function renderSegTree() {
     }).join("");
     return `<div class="cat seg collapsed">
       <div class="cat-head">
-        <input type="checkbox" class="segbox" checked>
+        <input type="checkbox" class="segbox">
         <span class="caret">▾</span>
         <strong>${escapeHtml(seg)}</strong><span class="count">${total}</span>
       </div>
-      <div class="comm-list">${grps}</div>
+      <div class="comm-list">${segSrcGroupHtml(seg)}${grps}</div>
     </div>`;
   }).join("");
-  $("tree").innerHTML = srcRowHtml("each section’s own text") + segsHtml;
+  $("tree").innerHTML = segsHtml;
 
   [...$("tree").querySelectorAll(".cat.seg")].forEach(section => {
     const head = section.querySelector(".cat-head");
     const segbox = section.querySelector(".segbox");
-    const allLinks = [...section.querySelectorAll(".linkbox")];
 
-    function syncSeg() {
-      const on = allLinks.filter(b => b.checked).length;
-      segbox.checked = on > 0;
-      segbox.indeterminate = on > 0 && on < allLinks.length;
-    }
     head.addEventListener("click", e => {
       if (e.target === segbox) return;
       section.classList.toggle("collapsed");
     });
 
+    // per-section original-text group: one global on/off, mirrored everywhere
+    [...section.querySelectorAll(".srcgrp")].forEach(sg => {
+      const shead = sg.querySelector(".commhead");
+      const sbox = sg.querySelector(".segsrcbox");
+      shead.addEventListener("click", e => {
+        if (e.target === sbox) return;
+        sg.classList.toggle("collapsed");
+      });
+      sbox.addEventListener("change", () => setSrcSel(sbox.checked));
+    });
+
     [...section.querySelectorAll(".catgrp")].forEach(cg => {
       const chead = cg.querySelector(".catgrp-head");
       const cbox = cg.querySelector(".catbox2");
-      const catLinks = [...cg.querySelectorAll(".linkbox")];
-      const commGroups = [...cg.querySelectorAll(".commgrp")];
+      const cat = decodeURIComponent(cg.dataset.cat || "");
 
-      function syncCat() {
-        const on = catLinks.filter(b => b.checked).length;
-        cbox.checked = on > 0;
-        cbox.indeterminate = on > 0 && on < catLinks.length;
-      }
       chead.addEventListener("click", e => {
         if (e.target === cbox) return;
         cg.classList.toggle("collapsed");
       });
-      cbox.addEventListener("change", () => {
-        catLinks.forEach(b => b.checked = cbox.checked);
-        commGroups.forEach(g => {
-          const gb = g.querySelector(".commbox2");
-          gb.checked = cbox.checked; gb.indeterminate = false;
-        });
-        cbox.indeterminate = false;
-        syncSeg();
-      });
+      // toggles the whole category — in every section
+      cbox.addEventListener("change", () => setCatSel(cat, cbox.checked));
 
-      commGroups.forEach(g => {
+      [...cg.querySelectorAll(".commgrp")].forEach(g => {
         const ghead = g.querySelector(".commhead");
         const gbox = g.querySelector(".commbox2");
-        const links = [...g.querySelectorAll(".linkbox")];
-        function syncComm() {
-          const on = links.filter(b => b.checked).length;
-          gbox.checked = on > 0;
-          gbox.indeterminate = on > 0 && on < links.length;
-        }
+        const comm = decodeURIComponent(g.dataset.comm || "");
         ghead.addEventListener("click", e => {
           if (e.target === gbox) return;
           g.classList.toggle("collapsed");
         });
-        gbox.addEventListener("change", () => {
-          links.forEach(b => b.checked = gbox.checked);
-          gbox.indeterminate = false;
-          syncCat(); syncSeg();
-        });
-        links.forEach(b => b.addEventListener("change", () => { syncComm(); syncCat(); syncSeg(); }));
+        // toggles this commentator — in every section
+        gbox.addEventListener("change", () => setKeySel(cat, comm, gbox.checked));
+        [...g.querySelectorAll(".linkbox")].forEach(b =>
+          b.addEventListener("change", () => setLinkSel(parseInt(b.dataset.i, 10), b.checked)));
       });
     });
 
+    // the section checkbox selects / clears just this section's texts
+    // (plus the original text, whose state is global and so mirrors)
     segbox.addEventListener("change", () => {
-      allLinks.forEach(b => b.checked = segbox.checked);
-      section.querySelectorAll(".catbox2, .commbox2").forEach(cb => {
-        cb.checked = segbox.checked; cb.indeterminate = false;
+      const on = segbox.checked;
+      [...section.querySelectorAll(".linkbox")].forEach(b => {
+        const i = parseInt(b.dataset.i, 10);
+        if (on) SEL.add(i); else SEL.delete(i);
       });
-      segbox.indeterminate = false;
+      if (section.querySelector(".segsrcbox")) SRC_ON = on && srcAvailable();
+      syncTreeUI();
     });
   });
+
   $("treeCard").style.display = "block";
 }
 
 $("toggleAll").onclick = () => {
-  const src = $("srcbox");
-  const leaves = [...document.querySelectorAll(".commbox, .linkbox")];
-  const anyOff = leaves.some(b => !b.checked) || (src && !src.disabled && !src.checked);
-  leaves.forEach(b => b.checked = anyOff);
-  [...document.querySelectorAll(".catbox, .catbox2, .commbox2, .segbox")].forEach(cb => {
-    cb.checked = anyOff; cb.indeterminate = false;
-  });
-  if (src && !src.disabled) src.checked = anyOff;
+  const allOn = LINKS.length && SEL.size === LINKS.length && (!srcAvailable() || SRC_ON);
+  if (allOn) { SEL = new Set(); SRC_ON = false; }
+  else { SEL = new Set(LINKS.map(l => l._i)); SRC_ON = srcAvailable(); }
+  syncTreeUI();
 };
 
 // ===========================================================================
 // Gather the selected texts into a format-neutral structure.
-// Every builder (Word / EPUB / PDF) consumes this same shape.
-//   blocks: ordered [{type:"h1"|"h2"|"ref"|"he"|"en", text, anchor?, first?}]
-//   toc:    [{level:1|2, text, anchor}]
+// Every builder (Word / EPUB / PDF) consumes this same shape, and both
+// grouping modes read from the same SEL / SRC_ON selection, so the built
+// document contains exactly what's ticked — nothing more.
+//   blocks: ordered [{type:"h1"|"h2"|"h3"|"ref"|"note"|"he"|"en", text, anchor?, first?}]
+//   toc:    [{level:1|2|3, text, anchor}]
+// Notes are per-text: each one is printed directly beneath its own text
+// (a "L"+index note under its linked text, a "S:"+segment note under that
+// section's slice of the source, "__src__" under the whole source). The
+// notedone set guarantees a note is never printed twice.
 // ===========================================================================
 function gatherContent() {
   const incHe = $("incHe").checked;
   const incEn = $("incEn").checked;
-  const incSrc = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
-  const haveSrc = incSrc && SRC && (SRC.he.length || SRC.text.length);
+  const haveSrc = SRC_ON && srcAvailable();
 
   if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
 
@@ -824,6 +1169,11 @@ function gatherContent() {
   let bmId = 0;
   const nextId = () => "sec" + (bmId++);
   let written = 0;
+  const notedone = new Set();
+  const emitNote = (key) => {
+    const nt = noteOf(key);
+    if (nt && !notedone.has(key)) { notedone.add(key); blocks.push({ type: "note", text: nt }); }
+  };
 
   const emitWholeSource = () => {
     const srcLabel = SRC.heRef || SRC.ref || ref;
@@ -835,49 +1185,63 @@ function gatherContent() {
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
       if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
     }
+    emitNote("__src__");
+    // notes written on individual sections of the source (in Section mode)
+    // shouldn't vanish just because the build happens in Category mode
+    for (const s of SEG_ORDER) emitNote("S:" + s);
   };
 
   // ---------------- section mode ----------------
   if (GROUPMODE === "seg") {
-    const picked = pickedLinkSet();
-    if (!picked.size && !haveSrc) return { error: "Select at least one text, or include the source text." };
-
-    if (!picked.size) {          // source only — same output as category mode
-      emitWholeSource();
-      return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
-    }
+    if (!SEL.size && !haveSrc) return { error: "Select at least one text, or the original text." };
 
     for (const seg of SEG_ORDER) {
       const cats = segCats(seg);
       const sel = cats
-        .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
+        .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
         .filter(p => p[1].length);
-      if (!sel.length) continue;   // no selected texts in this section — skip it
+      const idx = haveSrc ? srcIdxFor(seg) : -1;
+      const segHe = (haveSrc && idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
+      const segEn = (haveSrc && idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
+      const wantSrc = haveSrc && idx >= 0 && (segHe || segEn);
+      if (!sel.length && !wantSrc) continue;   // nothing chosen in this section
 
       const anchor = nextId();
       toc.push({ level: 1, text: seg, anchor });
       blocks.push({ type: "h1", text: seg, anchor, first: blocks.length === 0 });
 
-      // the section's own text first, if Original Text is on
-      if (haveSrc) {
-        const idx = segNum(seg) - 1;
-        if (idx >= 0) {
-          if (incHe) { const he = stripHtml(SRC.he[idx] || ""); if (he) blocks.push({ type: "he", text: he }); }
-          if (incEn) { const en = stripHtml(SRC.text[idx] || ""); if (en) blocks.push({ type: "en", text: en }); }
-        }
+      // the section's own text first, if the original text is on
+      if (wantSrc) {
+        if (incHe && segHe) blocks.push({ type: "he", text: segHe });
+        if (incEn && segEn) blocks.push({ type: "en", text: segEn });
+        emitNote("S:" + seg);
+        emitNote("__src__");   // a whole-source note (from Category mode) prints once, here
       }
 
       for (const [cat, arr] of sel) {
         const a2 = nextId();
         toc.push({ level: 2, text: cat, anchor: a2 });
         blocks.push({ type: "h2", text: cat, anchor: a2 });
-        for (const l of arr) {
-          const enRef = l.sourceRef || l.ref || "";
-          const heRef = l.sourceHeRef || "";
-          blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
-          if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
-          if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
-          written++;
+        // one navigable sub-heading per work/commentator (Commentary → Rashi,
+        // Talmud → Berakhot 9b). A lone link is labelled by its own reference
+        // so a single parallel reads e.g. "Berakhot 9b:2" rather than "Berakhot".
+        for (const [comm, links] of groupByComm(arr)) {
+          const single = links.length === 1;
+          const h3text = single ? (links[0].sourceRef || links[0].ref || comm) : comm;
+          const a3 = nextId();
+          toc.push({ level: 3, text: h3text, anchor: a3 });
+          blocks.push({ type: "h3", text: h3text, anchor: a3 });
+          for (const l of links) {
+            if (!single) {   // the h3 already names a lone link, so skip its ref line
+              const enRef = l.sourceRef || l.ref || "";
+              const heRef = l.sourceHeRef || "";
+              blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
+            }
+            if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
+            if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+            emitNote("L" + l._i);   // this text's own note, right beneath it
+            written++;
+          }
         }
       }
     }
@@ -885,34 +1249,35 @@ function gatherContent() {
   }
 
   // ---------------- category mode ----------------
-  const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-    .map(b => decodeURIComponent(b.value)));
-  if (chosen.size === 0 && !haveSrc) return { error: "Select at least one source, or include the source text." };
+  if (!SEL.size && !haveSrc) return { error: "Select at least one source, or include the source text." };
 
   // ---- source text first, for context ----
   if (haveSrc) emitWholeSource();
 
-  // ---- selected categories / commentators ----
+  // ---- selected categories / commentators / texts ----
   for (const cat of CAT_ORDER) {
     const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-    const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
-    if (!active.length) continue;
+    const groups = comms
+      .map(comm => [comm, TREE[cat][comm].filter(l => SEL.has(l._i))])
+      .filter(p => p[1].length);
+    if (!groups.length) continue;
 
     const catAnchor = nextId();
     toc.push({ level: 1, text: cat, anchor: catAnchor });
     blocks.push({ type: "h1", text: cat, anchor: catAnchor });
 
-    for (const comm of active) {
+    for (const [comm, links] of groups) {
       const commAnchor = nextId();
       toc.push({ level: 2, text: comm, anchor: commAnchor });
       blocks.push({ type: "h2", text: comm, anchor: commAnchor });
 
-      for (const l of TREE[cat][comm]) {
+      for (const l of links) {
         const enRef = l.sourceRef || l.ref || "";
         const heRef = l.sourceHeRef || "";
         blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
         if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
         if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+        emitNote("L" + l._i);   // this text's own note, right beneath it
         written++;
       }
     }
@@ -939,13 +1304,65 @@ function finishStatus(content, ext) {
   setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
 }
 
-// Build a nested TOC tree (level-1 with level-2 kids) from the flat list.
+// On phones, hand the finished file straight to the system share sheet
+// (Send to Kindle appears there) instead of burying it in Downloads.
+// The share sheet is attempted immediately after the build: browsers keep the
+// original tap's "user activation" alive for a few seconds, so a quick build
+// usually still counts and the sheet opens by itself. If the browser refuses
+// (activation expired on a slow build), a one-tap Share button appears as a
+// fallback. Desktop and unsupporting browsers keep the normal download.
+let LASTOUT = null;
+function canShareFiles(file) {
+  try { return !!(navigator.canShare && navigator.canShare({ files: [file] })); }
+  catch (e) { return false; }
+}
+async function deliverFile(blob, filename) {
+  let file = null;
+  try { file = new File([blob], filename, { type: blob.type || "application/octet-stream" }); } catch (e) {}
+  if (!(file && canShareFiles(file))) { download(blob, filename); return; }
+
+  LASTOUT = { blob, filename };
+  try {
+    await navigator.share({ files: [file], title: filename });
+    setStatus("Shared.");
+    return;
+  } catch (e) {
+    if (e && e.name === "AbortError") return;   // user closed the sheet — done
+    // activation expired (NotAllowedError) or similar → offer a one-tap button
+  }
+  $("shareBtn").textContent = "📤 Share " + filename;
+  $("shareBar").style.display = "block";
+}
+function hideShareBar() { LASTOUT = null; $("shareBar").style.display = "none"; }
+$("shareBtn").onclick = async () => {
+  if (!LASTOUT) return;
+  const f = new File([LASTOUT.blob], LASTOUT.filename, { type: LASTOUT.blob.type || "application/octet-stream" });
+  try {
+    await navigator.share({ files: [f], title: LASTOUT.filename });
+    setStatus("Shared.");
+  } catch (e) {
+    // user closed the sheet → do nothing; real failure → fall back to download
+    if (!e || e.name !== "AbortError") download(LASTOUT.blob, LASTOUT.filename);
+  }
+};
+$("saveInstead").onclick = () => { if (LASTOUT) download(LASTOUT.blob, LASTOUT.filename); };
+
+// Build a nested TOC tree from the flat list. Supports three levels
+// (section → category → work), and still works for the 2-level category mode.
 function tocTree(toc) {
   const tree = [];
+  let l1 = null, l2 = null;
   for (const t of toc) {
-    if (t.level === 1) tree.push({ text: t.text, anchor: t.anchor, kids: [] });
-    else if (tree.length) tree[tree.length - 1].kids.push({ text: t.text, anchor: t.anchor });
-    else tree.push({ text: t.text, anchor: t.anchor, kids: [] });
+    const node = { text: t.text, anchor: t.anchor, kids: [] };
+    if (t.level === 1) { tree.push(node); l1 = node; l2 = null; }
+    else if (t.level === 2) {
+      if (l1) l1.kids.push(node); else tree.push(node);
+      l2 = node;
+    } else {   // level 3
+      if (l2) l2.kids.push(node);
+      else if (l1) l1.kids.push(node);
+      else tree.push(node);
+    }
   }
   return tree;
 }
@@ -984,9 +1401,17 @@ async function buildDocx(content) {
       heading: HeadingLevel.HEADING_2, spacing: { before: 220, after: 60 },
       children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
     }));
+    else if (b.type === "h3") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_3, spacing: { before: 160, after: 40 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
     else if (b.type === "ref") body.push(new Paragraph({
       spacing: { before: 120, after: 30 },
       children: [new TextRun({ text: b.text, bold: true, size: 20, color: "6f675a" })]
+    }));
+    else if (b.type === "note") body.push(new Paragraph({
+      spacing: { before: 60, after: 100 },
+      children: [new TextRun({ text: "Note: " + b.text, italics: true, size: 22, color: "6b5329" })]
     }));
     else if (b.type === "he") body.push(heParagraph(b.text));
     else if (b.type === "en") body.push(enParagraph(b.text));
@@ -1002,7 +1427,7 @@ async function buildDocx(content) {
     }));
     for (const t of content.toc) {
       children.push(new Paragraph({
-        spacing: { after: 30 }, indent: t.level === 2 ? { left: 360 } : undefined,
+        spacing: { after: 30 }, indent: t.level === 3 ? { left: 720 } : t.level === 2 ? { left: 360 } : undefined,
         children: [new InternalHyperlink({
           anchor: t.anchor, children: [new TextRun({ text: t.text, color: "0563C1", underline: {} })]
         })]
@@ -1014,7 +1439,7 @@ async function buildDocx(content) {
 
   const doc = new Document({ sections: [{ properties: {}, children }] });
   const blob = await Packer.toBlob(doc);
-  download(blob, fnameFor(content.ref) + ".docx");
+  await deliverFile(blob, fnameFor(content.ref) + ".docx");
   finishStatus(content, "docx");
 }
 
@@ -1039,36 +1464,86 @@ function navOl(tree) {
   let s = "<ol>\n";
   for (const n of tree) {
     s += `  <li><a href="text.xhtml#${n.anchor}">${xmlEsc(n.text)}</a>`;
-    if (n.kids && n.kids.length) {
-      s += "\n    <ol>\n";
-      for (const k of n.kids) s += `      <li><a href="text.xhtml#${k.anchor}">${xmlEsc(k.text)}</a></li>\n`;
-      s += "    </ol>\n  ";
-    }
+    if (n.kids && n.kids.length) s += "\n    " + navOl(n.kids) + "\n  ";
     s += "</li>\n";
   }
   return s + "</ol>";
 }
 function ncxMap(tree) {
-  let po = 0, s = "";
-  for (const n of tree) {
-    po++;
-    s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(n.text)}</text></navLabel><content src="text.xhtml#${n.anchor}"/>`;
-    if (n.kids && n.kids.length) {
-      for (const k of n.kids) {
-        po++;
-        s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(k.text)}</text></navLabel><content src="text.xhtml#${k.anchor}"/></navPoint>`;
-      }
+  let po = 0;
+  const walk = (nodes) => {
+    let s = "";
+    for (const n of nodes) {
+      po++;
+      s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(n.text)}</text></navLabel><content src="text.xhtml#${n.anchor}"/>`;
+      if (n.kids && n.kids.length) s += walk(n.kids);
+      s += `</navPoint>\n`;
     }
-    s += `</navPoint>\n`;
-  }
-  return s;
+    return s;
+  };
+  return walk(tree);
 }
+// Kindle strips scripts from books, so true expand/collapse is impossible
+// there. Instead the book itself carries tappable drill-down navigation:
+// a master Contents of sections, a menu line under every section heading
+// (its categories), a menu line under every category (its works), and
+// ⌂ / ↑ links to jump back up — open and close, by link.
 function epubBody(content) {
+  const tree = tocTree(content.toc);
+  const node = {};
+  (function walk(ns) { ns.forEach(n => { node[n.anchor] = n; if (n.kids) walk(n.kids); }); })(tree);
+  const menu = kids => kids.map(k => `<a href="#${k.anchor}">${xmlEsc(k.text)}</a>`).join(" · ");
+
   let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
+  if (tree.length) {
+    // "Collapsed" view: section titles only. Tapping one jumps to that
+    // section's expanded block below — the closest a Kindle book can get
+    // to expand/collapse, since Kindle strips all scripting from books.
+    // Sections with nothing beneath them link straight into the text.
+    s += `<div class="contents" id="bookcontents">\n<h2>Contents</h2>\n<ol>\n`;
+    for (const sec of tree) {
+      const kids = sec.kids && sec.kids.length;
+      const target = kids ? "ctoc-" + sec.anchor : sec.anchor;
+      s += `<li><a href="#${target}">${xmlEsc(sec.text)}${kids ? " ›" : ""}</a></li>\n`;
+    }
+    s += `</ol>\n</div>\n`;
+    // "Expanded" view, one block per section: its categories with their
+    // works, a link into the text, and ⌂ to fold back to the section list.
+    for (const sec of tree) {
+      if (!(sec.kids && sec.kids.length)) continue;
+      s += `<div class="ctoc" id="ctoc-${sec.anchor}">\n`;
+      s += `<h3 class="ctoc-h"><a href="#${sec.anchor}">${xmlEsc(sec.text)} — read</a></h3>\n`;
+      s += `<ol class="ctoc-cats">\n`;
+      for (const k of sec.kids) {
+        s += `<li><a href="#${k.anchor}">${xmlEsc(k.text)}</a>`;
+        if (k.kids && k.kids.length) {
+          s += `<ol class="ctoc-works">` +
+               k.kids.map(g => `<li><a href="#${g.anchor}">${xmlEsc(g.text)}</a></li>`).join("") +
+               `</ol>`;
+        }
+        s += `</li>\n`;
+      }
+      s += `</ol>\n<p class="secnav"><a href="#bookcontents">⌂ contents</a></p>\n</div>\n`;
+    }
+  }
+
+  let curH1 = null;
   for (const b of content.blocks) {
-    if (b.type === "h1") s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
-    else if (b.type === "h2") s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
+    if (b.type === "h1") {
+      curH1 = b.anchor;
+      s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
+      const kids = (node[b.anchor] && node[b.anchor].kids) || [];
+      s += `<p class="secnav"><a href="#bookcontents">⌂ contents</a>${kids.length ? " · " + menu(kids) : ""}</p>\n`;
+    }
+    else if (b.type === "h2") {
+      s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
+      const kids = (node[b.anchor] && node[b.anchor].kids) || [];
+      const up = curH1 ? `<a href="#${curH1}">↑ section</a>` : `<a href="#bookcontents">⌂ contents</a>`;
+      if (kids.length || curH1) s += `<p class="secnav">${up}${kids.length ? " · " + menu(kids) : ""}</p>\n`;
+    }
+    else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "note") s += `<p class="usernote">Note: ${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
   }
@@ -1111,9 +1586,12 @@ async function buildEpub(content) {
     <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>
   </manifest>
   <spine toc="ncx">
-    <itemref idref="nav"/>
     <itemref idref="text"/>
   </spine>
+  <guide>
+    <reference type="toc" title="Contents" href="text.xhtml#bookcontents"/>
+    <reference type="text" title="Start" href="text.xhtml#bookcontents"/>
+  </guide>
 </package>
 `;
 
@@ -1127,6 +1605,12 @@ async function buildEpub(content) {
 <h1>Contents</h1>
 ${navOl(tree)}
 </nav>
+<nav epub:type="landmarks" hidden="hidden">
+<ol>
+<li><a epub:type="toc" href="text.xhtml#bookcontents">Table of Contents</a></li>
+<li><a epub:type="bodymatter" href="text.xhtml#bookcontents">Start</a></li>
+</ol>
+</nav>
 </body>
 </html>
 `;
@@ -1136,7 +1620,7 @@ ${navOl(tree)}
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en">
 <head>
 <meta name="dtb:uid" content="${xmlEsc(id)}"/>
-<meta name="dtb:depth" content="2"/>
+<meta name="dtb:depth" content="3"/>
 <meta name="dtb:totalPageCount" content="0"/>
 <meta name="dtb:maxPageNumber" content="0"/>
 </head>
@@ -1150,10 +1634,24 @@ ${ncxMap(tree)}</navMap>
 `body { font-family: serif; line-height: 1.5; margin: 1em; }
 h1 { font-size: 1.4em; margin: 1em 0 .4em; }
 h2 { font-size: 1.15em; color: #6b5329; margin: .8em 0 .3em; }
+h3 { font-size: 1.02em; color: #8a6d3b; margin: .6em 0 .2em; }
 h1.doctitle { text-align: center; font-size: 1.6em; }
 p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
+p.usernote { font-style: italic; color: #6b5329; border-left: 2px solid #8a6d3b; padding-left: .6em; margin: .4em 0 .6em; }
 p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
 p.en { line-height: 1.6; }
+div.contents ol { list-style: none; padding-left: 0; }
+div.contents li { margin: .5em 0; }
+div.ctoc { margin: 1.1em 0 1.4em; }
+div.ctoc h3.ctoc-h { margin: .2em 0 .3em; font-size: 1.05em; }
+ol.ctoc-cats { list-style: none; padding-left: 1em; margin: .2em 0; }
+ol.ctoc-cats li { margin: .3em 0; }
+ol.ctoc-works { list-style: none; padding-left: 1.2em; font-size: .9em; margin: .15em 0; }
+ol.ctoc-works li { margin: .2em 0; }
+div.ctoc a { text-decoration: none; color: inherit; }
+ol.ctoc-works a { color: #6b5329; }
+p.secnav { font-size: .8em; color: #6f675a; margin: 0 0 .6em; }
+p.secnav a { color: #6b5329; text-decoration: none; }
 nav ol { list-style: none; }
 `;
 
@@ -1179,7 +1677,7 @@ ${epubBody(content)}</body>
   oebps.file("text.xhtml", textXhtml);
 
   const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE" });
-  download(blob, fnameFor(content.ref) + ".epub");
+  await deliverFile(blob, fnameFor(content.ref) + ".epub");
   finishStatus(content, "epub");
 }
 
@@ -1195,23 +1693,24 @@ function buildPdf(content) {
   if (!w) { setStatus("Pop-up blocked — allow pop-ups for this site, then try PDF again.", true); return; }
 
   const tree = tocTree(content.toc);
-  let tocHtml = "<ol class='toc'>";
-  for (const n of tree) {
-    tocHtml += `<li><a href="#${n.anchor}">${escapeHtml(n.text)}</a>`;
-    if (n.kids && n.kids.length) {
-      tocHtml += "<ol>";
-      for (const k of n.kids) tocHtml += `<li><a href="#${k.anchor}">${escapeHtml(k.text)}</a></li>`;
-      tocHtml += "</ol>";
+  const tocOl = (nodes, top) => {
+    let s = top ? "<ol class='toc'>" : "<ol>";
+    for (const n of nodes) {
+      s += `<li><a href="#${n.anchor}">${escapeHtml(n.text)}</a>`;
+      if (n.kids && n.kids.length) s += tocOl(n.kids, false);
+      s += "</li>";
     }
-    tocHtml += "</li>";
-  }
-  tocHtml += "</ol>";
+    return s + "</ol>";
+  };
+  const tocHtml = tocOl(tree, true);
 
   let bodyHtml = "";
   for (const b of content.blocks) {
     if (b.type === "h1") bodyHtml += `<h1 id="${b.anchor}">${escapeHtml(b.text)}</h1>`;
     else if (b.type === "h2") bodyHtml += `<h2 id="${b.anchor}">${escapeHtml(b.text)}</h2>`;
+    else if (b.type === "h3") bodyHtml += `<h3 id="${b.anchor}">${escapeHtml(b.text)}</h3>`;
     else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "note") bodyHtml += `<p class="usernote">Note: ${escapeHtml(b.text)}</p>`;
     else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
     else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
   }
@@ -1224,8 +1723,10 @@ function buildPdf(content) {
   body { font-family: Georgia,'Times New Roman',serif; line-height: 1.5; color: #2b2620; margin: 40px; }
   h1 { font-size: 20px; margin: 22px 0 8px; }
   h2 { font-size: 16px; color: #6b5329; margin: 16px 0 4px; }
+  h3 { font-size: 14px; color: #8a6d3b; margin: 12px 0 2px; }
   h1.title { font-size: 24px; text-align: center; margin: 0 0 6px; }
   p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
+  p.usernote { font-style: italic; color: #6b5329; border-left: 3px solid #8a6d3b; padding-left: 8px; font-size: 13px; margin: 4px 0 8px; }
   p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
   p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
   .contents-h { font-size: 18px; margin: 18px 0 8px; }
@@ -1253,11 +1754,12 @@ ${bodyHtml}
   else setTimeout(go, 600);
 
   finishStatus(content, "pdf (print view)");
-  setStatus("Opened a print view — choose “Save as PDF”.");
+  setStatus("Opened a print view — choose \u201cSave as PDF\u201d.");
 }
 
 // ===========================================================================
-// Format selector + dispatch
+// Format selector + dispatch — choosing a format now triggers the full
+// build → deliver (download or share) flow directly.
 // ===========================================================================
 let OUTFMT = "kindle";
 function setFmt(f) {
@@ -1265,9 +1767,9 @@ function setFmt(f) {
   document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
 }
 
-// Group-by selector: re-renders the tree in the chosen grouping.
-// Note: switching resets the checkbox selection (the two views select
-// by different units — commentator keys vs individual texts).
+// Group-by selector: re-renders the tree in the chosen grouping. The selection
+// itself lives in SEL / SRC_ON, so it carries across unchanged — anything
+// ticked in Category mode is still ticked in Section mode, and vice versa.
 function setGrp(g) {
   if (g === GROUPMODE) return;
   GROUPMODE = g;
@@ -1275,6 +1777,7 @@ function setGrp(g) {
   if (LINKS.length) {
     renderTree();
     $("previewCard").style.display = "none";
+    hideShareBar();
   }
 }
 
@@ -1282,7 +1785,9 @@ async function buildOutput() {
   const content = gatherContent();
   if (content.error) { setStatus(content.error, true); return; }
 
-  $("genBtn").disabled = true;
+  const fmtBtns = [...document.querySelectorAll(".fmtseg:not(.grpseg) button")];
+  fmtBtns.forEach(b => b.disabled = true);
+  hideShareBar();
   try {
     if (OUTFMT === "word") await buildDocx(content);
     else if (OUTFMT === "pdf") buildPdf(content);
@@ -1290,7 +1795,7 @@ async function buildOutput() {
   } catch (e) {
     setStatus("Failed to build: " + e.message, true);
   } finally {
-    $("genBtn").disabled = false;
+    fmtBtns.forEach(b => b.disabled = false);
   }
 }
 
@@ -1303,13 +1808,49 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-function pvItem(label, he, en, isSrc) {
+// Texts shown in the current preview, indexed for the per-item copy button.
+// (The name predates the share→copy change; it's referenced in renderPreview
+// too, so it keeps its name to keep that function untouched.)
+let PV_SHARE_TEXTS = [];
+
+// The two-rectangles copy glyph, drawn inline so it inherits the button's
+// (muted, cream-friendly) colour — plus a checkmark shown briefly after a
+// successful copy.
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="9" y="9" width="11" height="11" rx="2"/>' +
+  '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const COPIED_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="20 6 9 17 4 12"/></svg>';
+
+function pvItem(label, he, en, isSrc, startCollapsed, noteKey) {
+  const idx = PV_SHARE_TEXTS.length;
+  PV_SHARE_TEXTS.push({ label, he, en });
   let body = "";
   if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
   if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
-  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}">
-    <div class="pv-ref pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</div>
+  if (noteKey) body += noteBoxHtml(noteKey);   // the note lives beneath its text
+  const collapsed = startCollapsed && !(noteKey && noteOf(noteKey));
+  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${collapsed ? " collapsed" : ""}">
+    <div class="pv-ref">
+      <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
+      ${noteKey ? pvNoteBtnHtml(noteKey) : ""}
+      <button type="button" class="pv-copy" data-idx="${idx}" title="Copy this text" aria-label="Copy this text">${COPY_ICON}</button>
+    </div>
     <div class="pv-body">${body}</div>
+  </div>`;
+}
+
+// A collapsible group wrapper for the preview: a section, a category, or a
+// commentator. level picks the header style ("top" | "" | "sub");
+// collapsed sets the starting state.
+function pvGrp(title, n, body, level, collapsed) {
+  return `<div class="pv-grp${collapsed ? " collapsed" : ""}">
+    <div class="pv-grp-head${level ? " " + level : ""}"><span class="pv-caret">▾</span><span>${escapeHtml(title)}</span><span class="pv-grp-count">${n}</span></div>
+    <div class="pv-grp-body">${body}</div>
   </div>`;
 }
 
@@ -1326,74 +1867,128 @@ function wholeSrcPvItem(ref) {
     const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
     const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
   }
-  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true);
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__");
+}
+
+// Copy a single preview item's text to the clipboard — respects the
+// Hebrew / English toggles currently shown in the preview. btn is the tapped
+// button; on success its icon flashes to a checkmark for a moment.
+async function copyPvItem(idx, btn) {
+  const item = PV_SHARE_TEXTS[idx];
+  if (!item) return;
+  const showHe = $("pvHe").checked, showEn = $("pvEn").checked;
+  let text = item.label;
+  if (showHe && item.he) text += "\n\n" + item.he;
+  if (showEn && item.en) text += "\n\n" + item.en;
+  text = text.trim();
+  if (!text) return;
+
+  let ok = false;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {}
+  }
+  if (!ok) {
+    // fallback for contexts without the async clipboard API
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed"; ta.style.top = "-1000px";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      ta.remove();
+    } catch (e) { ok = false; }
+  }
+
+  if (ok) {
+    setStatus("Copied to clipboard.");
+    if (btn) {
+      btn.innerHTML = COPIED_ICON;
+      setTimeout(() => { btn.innerHTML = COPY_ICON; }, 1200);
+    }
+  } else {
+    setStatus("Couldn't copy — select the text manually.", true);
+  }
 }
 
 function renderPreview() {
-  const srcOn = !!($("srcbox") && !$("srcbox").disabled && $("srcbox").checked);
-  const haveSrc = srcOn && SRC && (SRC.he.length || SRC.text.length);
+  PV_SHARE_TEXTS = [];
+  const haveSrc = SRC_ON && srcAvailable();
   const ref = $("ref").value.trim();
   let html = "", count = 0, sections = 0;
 
   if (GROUPMODE === "seg") {
     // ---------------- section mode ----------------
-    const picked = pickedLinkSet();
-    if (!picked.size && !haveSrc) { setStatus("Select at least one text, or include the Original Text.", true); return; }
+    // Only the selected texts appear. Every level is a collapsible group:
+    // section → category → commentator → individual texts, so "collapse all"
+    // folds the whole preview to its section headings and the reader drills
+    // back down level by level.
+    if (!SEL.size && !haveSrc) { setStatus("Select at least one text, or the original text.", true); return; }
 
-    if (!picked.size) {
-      html += wholeSrcPvItem(ref);
-    } else {
-      for (const seg of SEG_ORDER) {
-        const cats = segCats(seg);
-        const sel = cats
-          .map(c => [c, segCatLinks(seg, c).filter(l => picked.has(l._i))])
-          .filter(p => p[1].length);
-        if (!sel.length) continue;
-        sections++;
-        html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
-        if (haveSrc) {
-          const idx = segNum(seg) - 1;
-          if (idx >= 0) {
-            const he = stripHtml(SRC.he[idx] || "");
-            const en = stripHtml(SRC.text[idx] || "");
-            if (he || en) html += pvItem("Source — " + seg, he, en, true);
-          }
-        }
-        for (const [cat, arr] of sel) {
-          html += `<div class="pv-comm">${escapeHtml(cat)}</div>`;
-          for (const l of arr) {
+    for (const seg of SEG_ORDER) {
+      const cats = segCats(seg);
+      const sel = cats
+        .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
+        .filter(p => p[1].length);
+      const idx = haveSrc ? srcIdxFor(seg) : -1;
+      const he = (idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
+      const en = (idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
+      const wantSrc = haveSrc && idx >= 0 && (he || en);
+      if (!sel.length && !wantSrc) continue;
+      sections++;
+      let secBody = "", secN = 0;
+      if (wantSrc) {
+        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg);
+        secN++;
+      }
+      for (const [cat, arr] of sel) {
+        let catBody = "";
+        for (const [comm, links] of groupByComm(arr)) {
+          let items = "";
+          for (const l of links) {
             const enRef = l.sourceRef || l.ref || "";
             const heRef = l.sourceHeRef || "";
-            const label = enRef + (heRef ? "  —  " + heRef : "");
-            html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
+            const label = enRef + (heRef ? "  \u2014  " + heRef : "");
+            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i);
             count++;
           }
+          catBody += pvGrp(comm, links.length, items, "sub", true);
         }
+        secBody += pvGrp(cat, arr.length, catBody, "", true);
+        secN += arr.length;
       }
+      html += pvGrp(seg, secN, secBody, "top", false);
     }
   } else {
     // ---------------- category mode ----------------
-    const chosen = new Set([...document.querySelectorAll(".commbox:checked")]
-      .map(b => decodeURIComponent(b.value)));
-    if (chosen.size === 0 && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
+    // category → commentator → individual texts, each level collapsible.
+    if (!SEL.size && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
 
-    if (haveSrc) html += wholeSrcPvItem(ref);
+    if (haveSrc) {
+      html += wholeSrcPvItem(ref);
+    }
 
     for (const cat of CAT_ORDER) {
       const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
-      const active = comms.filter(comm => chosen.has(keyFor(cat, comm)));
-      if (!active.length) continue;
-      html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
-      for (const comm of active) {
-        html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
-        for (const l of TREE[cat][comm]) {
+      const groups = comms
+        .map(comm => [comm, TREE[cat][comm].filter(l => SEL.has(l._i))])
+        .filter(p => p[1].length);
+      if (!groups.length) continue;
+      let catBody = "", catN = 0;
+      for (const [comm, links] of groups) {
+        let items = "";
+        for (const l of links) {
           const enRef = l.sourceRef || l.ref || "";
           const heRef = l.sourceHeRef || "";
-          const label = enRef + (heRef ? "  —  " + heRef : "");
-          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false);
+          const label = enRef + (heRef ? "  \u2014  " + heRef : "");
+          items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i);
           count++;
         }
+        catBody += pvGrp(comm, links.length, items, "sub", false);
+        catN += links.length;
       }
+      html += pvGrp(cat, catN, catBody, "top", false);
     }
   }
 
@@ -1408,26 +2003,65 @@ function renderPreview() {
   if (GROUPMODE === "seg") {
     if (sections) bits.push(sections + " section" + (sections === 1 ? "" : "s"));
     if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
-    if (!count && haveSrc) bits.push("Original Text");
+    if (!count && sections) bits.push("original text only");
   } else {
     if (haveSrc) bits.push("Original Text");
     if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
   }
-  $("previewCount").textContent = "Showing " + (bits.join(" · ") || "nothing") + " — tap a heading to collapse it";
+  $("previewCount").textContent = "Showing " + (bits.join(" \u00b7 ") || "nothing") +
+    " \u2014 tap a group or heading to open and close it";
   $("previewCard").style.display = "block";
   setStatus("");
   $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// per-item collapse (event delegation), language toggles, expand/collapse all
+// per-item collapse + group drill-down (event delegation), copy button,
+// note (pencil) button, language toggles, expand/collapse all
 $("preview").addEventListener("click", e => {
+  const copyBtn = e.target.closest(".pv-copy");
+  if (copyBtn) {
+    e.stopPropagation();
+    copyPvItem(parseInt(copyBtn.dataset.idx, 10), copyBtn);
+    return;
+  }
+  const noteBtn = e.target.closest(".pv-notebtn");
+  if (noteBtn) {
+    e.stopPropagation();
+    const item = noteBtn.closest(".pv-item");
+    const box = item && item.querySelector(".notebox");
+    if (box) {
+      const show = box.style.display !== "block";
+      box.style.display = show ? "block" : "none";
+      if (show) {
+        item.classList.remove("collapsed");   // the editor lives in the body
+        const ta = box.querySelector("textarea");
+        if (ta) ta.focus();
+      }
+    }
+    return;
+  }
+  if (e.target.closest(".notebox")) return;   // typing in the note — nothing to toggle
+  const gh = e.target.closest(".pv-grp-head");
+  if (gh) { gh.parentElement.classList.toggle("collapsed"); return; }
   const t = e.target.closest(".pv-toggle");
-  if (t) t.parentElement.classList.toggle("collapsed");
+  if (t) t.parentElement.parentElement.classList.toggle("collapsed");
+});
+// save notes as they're typed; the pencil lights up when its text has a note
+$("preview").addEventListener("input", e => {
+  const ta = e.target.closest(".notetext");
+  if (!ta) return;
+  const key = decodeURIComponent(ta.dataset.key);
+  if (ta.value.trim()) NOTES[key] = ta.value; else delete NOTES[key];
+  const item = ta.closest(".pv-item");
+  const btn = item && item.querySelector(".pv-notebtn");
+  if (btn) btn.classList.toggle("has-note", !!ta.value.trim());
 });
 $("pvHe").onchange = applyPvLang;
 $("pvEn").onchange = applyPvLang;
-$("pvExpandAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.remove("collapsed"));
-$("pvCollapseAll").onclick = () => [...document.querySelectorAll("#preview .pv-item")].forEach(it => it.classList.add("collapsed"));
+$("pvExpandAll").onclick = () =>
+  [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.remove("collapsed"));
+$("pvCollapseAll").onclick = () =>
+  [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.add("collapsed"));
 
 // ===========================================================================
 // Reference builder — Browse (category drill-down)
@@ -1435,6 +2069,7 @@ $("pvCollapseAll").onclick = () => [...document.querySelectorAll("#preview .pv-i
 // ===========================================================================
 const TOC_API = "https://www.sefaria.org/api/index";
 const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
+const RAW_INDEX_API = "https://www.sefaria.org/api/v2/raw/index/";
 const SHAPE_API = "https://www.sefaria.org/api/shape/";
 
 const CORPORA = [
@@ -1442,6 +2077,7 @@ const CORPORA = [
   { label: "Mishnah",  he: "משנה",   match: ["mishnah"] },
   { label: "Talmud",   he: "תלמוד",  match: ["talmud"] },
   { label: "Halakhah", he: "הלכה",   match: ["halakhah", "halacha"] },
+  { label: "Midrash",  he: "מדרש",   match: ["midrash"] },
   { label: "Kabbalah", he: "קבלה",   match: ["kabbalah", "kabbala"] },
   { label: "Chasidut", he: "חסידות", match: ["chasidut", "chassidut", "hasidut"] }
 ];
@@ -1523,10 +2159,10 @@ function renderCorpora() {
       const node = toc.find(n => n.category && c.match.includes(String(n.category).toLowerCase()));
       if (node) items.push({ label: c.label, he: c.he, node });
     });
-    if (!items.length) { navError("Couldn’t find the expected categories in the library index."); return; }
+    if (!items.length) { navError("Couldn't find the expected categories in the library index."); return; }
     navBody().innerHTML = "";
     navBody().appendChild(rowList(items, it => pushView(it.label, () => renderToc(it.node))));
-  }).catch(e => navError("Couldn’t load the library index: " + e.message));
+  }).catch(e => navError("Couldn't load the library index: " + e.message));
 }
 
 function renderToc(node) {
@@ -1536,6 +2172,15 @@ function renderToc(node) {
     return null;
   }).filter(Boolean);
   if (!items.length) { navError("Nothing to browse here."); return; }
+  // Inside Midrash, the aggadic subcategory reads above the halakhic one.
+  if (String(node.category || "").toLowerCase() === "midrash") {
+    const ai = items.findIndex(it => /aggad/i.test(it.label));
+    const hi = items.findIndex(it => /hala[ck]h/i.test(it.label));
+    if (ai > -1 && hi > -1 && hi < ai) {
+      const moved = items.splice(ai, 1)[0];
+      items.splice(hi, 0, moved);
+    }
+  }
   navBody().innerHTML = "";
   navBody().appendChild(rowList(items, it => {
     if (it.type === "cat") pushView(it.label, () => renderToc(it.node));
@@ -1544,21 +2189,104 @@ function renderToc(node) {
 }
 
 async function openBook(title) {
-  navLoading('Loading “' + title + '”…');
+  navLoading('Loading "' + title + '"…');
   let rec;
   try {
     const res = await fetch(BOOK_INDEX_API + encodeURIComponent(title));
     if (!res.ok) throw new Error("HTTP " + res.status);
     rec = await res.json();
   } catch (e) {
-    navError('Couldn’t load the structure of “' + title + '”. Filling the box so you can type the rest.');
+    navError('Couldn\u2019t load the structure of "' + title + '". Filling the box so you can type the rest.');
     setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
     return;
   }
+  // Torah books also carry Sefaria's Parasha structure (each parsha with its
+  // seven aliyot) — offer it alongside the plain chapter grid.
+  const parshiot = await parshaStructOf(title, rec);
+  if (parshiot) { renderBookWithParshiot(title, rec, parshiot); return; }
+
   const schema = rec.schema;
   if (!schema) { commitRef(title); return; }
   if (schema.nodes) renderSchemaNodes(title, schema, title);
   else renderJagged(title, schema);
+}
+
+// ---- Parasha browsing (Torah books) ---------------------------------------
+// Sefaria's index records for the Chumash carry an alternate "Parasha"
+// structure: one node per parsha, with wholeRef (the full range) and refs
+// (the seven aliyah ranges). Some API variants expose it as alt_structs,
+// others as alts; the v2 raw index always has it, so that's the fallback.
+function parshaNodesFrom(rec) {
+  const alts = rec && (rec.alt_structs || rec.alts);
+  const p = alts && (alts.Parasha || alts.Parsha || alts.parasha);
+  return (p && Array.isArray(p.nodes) && p.nodes.length) ? p.nodes : null;
+}
+async function parshaStructOf(title, rec) {
+  let nodes = parshaNodesFrom(rec);
+  if (nodes) return nodes;
+  const isTorah = Array.isArray(rec && rec.categories) && rec.categories.indexOf("Torah") >= 0;
+  if (!isTorah) return null;   // don't waste a request on non-Torah books
+  try {
+    const r = await fetch(RAW_INDEX_API + encodeURIComponent(title));
+    if (!r.ok) return null;
+    const j = await r.json();
+    return parshaNodesFrom(j);
+  } catch (e) { return null; }
+}
+
+const ALIYOT = ["Rishon", "Sheni", "Shlishi", "Revi'i", "Chamishi", "Shishi", "Shevi'i"];
+const HE_ALIYOT = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שביעי"];
+
+function renderBookWithParshiot(title, rec, parshiot) {
+  const items = [
+    { label: "By chapter", he: "לפי פרק", kind: "chap" },
+    { label: "By parasha", he: "לפי פרשה", kind: "par" }
+  ];
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    if (it.kind === "chap") {
+      pushView("chapters", () => {
+        const schema = rec.schema;
+        if (schema && schema.nodes) renderSchemaNodes(title, schema, title);
+        else if (schema) renderJagged(title, schema);
+        else commitRef(title);
+      });
+    } else {
+      pushView("parasha", () => renderParshiot(parshiot));
+    }
+  }));
+}
+
+function renderParshiot(parshiot) {
+  const items = parshiot.map(n => ({ label: nodeEn(n), he: nodeHe(n), node: n }));
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => pushView(it.label, () => renderAliyot(it.node))));
+}
+
+function renderAliyot(node) {
+  navBody().innerHTML = "";
+  const whole = node.wholeRef || "";
+  if (whole) {
+    const w = document.createElement("div"); w.className = "navwhole";
+    const b = document.createElement("button"); b.className = "secondary";
+    b.textContent = "Whole parasha — " + whole;
+    b.onclick = () => commitRef(whole);
+    w.appendChild(b); navBody().appendChild(w);
+    navBody().appendChild(mk('<div class="navnote">A whole parasha fetches every verse\u2019s links — it can take a while.</div>'));
+  }
+  const refs = Array.isArray(node.refs) ? node.refs : [];
+  if (!refs.length) {
+    if (!whole) navError("This parasha has no reference data.");
+    else navBody().appendChild(mk('<div class="navnote">No aliyah breakdown is available for this parasha.</div>'));
+    return;
+  }
+  navBody().appendChild(mk('<div class="navnote">\u2026or a single aliyah:</div>'));
+  const items = refs.map((r, i) => ({
+    label: (ALIYOT[i] || ("Aliyah " + (i + 1))) + " \u00b7 " + r,
+    he: HE_ALIYOT[i] || "",
+    ref: r
+  }));
+  navBody().appendChild(rowList(items, it => commitRef(it.ref)));
 }
 
 function renderSchemaNodes(title, node, prefix) {
@@ -1586,7 +2314,7 @@ function renderJagged(prefix, node) {
   if (addr === "Talmud") {
     const build = (amudim) => {
       navBody().innerHTML = "";
-      navBody().appendChild(mk('<div class="navnote">Pick a page — a is the front, b the back.</div>'));
+      navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back.</div>'));
       const grid = document.createElement("div"); grid.className = "navgrid";
       for (let i = 0; i < amudim; i++) {
         const b = document.createElement("button"); b.textContent = dafLabel(i);
@@ -1631,12 +2359,12 @@ function pickNumber(prefix, node, sections) {
   const wb = document.createElement("button"); wb.className = "secondary"; wb.textContent = "Use all of " + cur;
   wb.onclick = () => commitRef(cur); whole.appendChild(wb);
   navBody().appendChild(whole);
-  navBody().appendChild(mk('<div class="navnote">…or narrow to a ' + String(nextName).toLowerCase() + ':</div>'));
-  const holder = document.createElement("div"); holder.innerHTML = '<div class="navloading">Loading…</div>';
+  navBody().appendChild(mk('<div class="navnote">\u2026or narrow to a ' + String(nextName).toLowerCase() + ':</div>'));
+  const holder = document.createElement("div"); holder.innerHTML = '<div class="navloading">Loading\u2026</div>';
   navBody().appendChild(holder);
   fetchCount(cur).then(c => {
     holder.innerHTML = "";
-    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn’t list these — use the button above, or type it.</div>')); return; }
+    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn\u2019t list these \u2014 use the button above, or type it.</div>')); return; }
     const grid = document.createElement("div"); grid.className = "navgrid";
     for (let i = 1; i <= c; i++) {
       const b = document.createElement("button"); b.textContent = i;
@@ -1673,14 +2401,19 @@ async function fetchCount(ref) {
 // Wiring
 // ===========================================================================
 document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => setFmt(b.dataset.fmt));
+document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
+
+$("incHe").addEventListener("change", applyTreeLang);
+$("incEn").addEventListener("change", applyTreeLang);
 
 $("clearBtn").onclick = () => {
   $("ref").value = "";
   LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
+  SEL = new Set(); SRC_ON = false; NOTES = {};
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
+  hideShareBar();
   $("tree").innerHTML = "";
   $("preview").innerHTML = "";
   setStatus("");
@@ -1690,9 +2423,8 @@ $("clearBtn").onclick = () => {
 };
 
 $("previewBtn").onclick = renderPreview;
-$("fetchBtn").onclick = fetchLinks;
-$("genBtn").onclick = buildOutput;
 
+$("verHint").textContent += " \u00b7 app v" + APP_VERSION;
 setFmt("kindle");
 </script>
 </body>
