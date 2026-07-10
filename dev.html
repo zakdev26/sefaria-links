@@ -309,7 +309,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 20;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 21;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -1170,9 +1170,16 @@ function gatherContent() {
   const nextId = () => "sec" + (bmId++);
   let written = 0;
   const notedone = new Set();
+  const _noteDate = (function() {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return dd + "/" + mm + "/" + yyyy;
+  })();
   const emitNote = (key) => {
     const nt = noteOf(key);
-    if (nt && !notedone.has(key)) { notedone.add(key); blocks.push({ type: "note", text: nt }); }
+    if (nt && !notedone.has(key)) { notedone.add(key); blocks.push({ type: "note", text: nt, date: _noteDate }); }
   };
 
   const emitWholeSource = () => {
@@ -1411,7 +1418,10 @@ async function buildDocx(content) {
     }));
     else if (b.type === "note") body.push(new Paragraph({
       spacing: { before: 60, after: 100 },
-      children: [new TextRun({ text: "Note: " + b.text, italics: true, size: 22, color: "6b5329" })]
+      children: [
+        new TextRun({ text: b.text, italics: true, size: 22, color: "6b5329" }),
+        new TextRun({ text: "\n" + (b.date || ""), italics: true, size: 18, color: "6b5329", break: 1 })
+      ]
     }));
     else if (b.type === "he") body.push(heParagraph(b.text));
     else if (b.type === "en") body.push(enParagraph(b.text));
@@ -1543,7 +1553,7 @@ function epubBody(content) {
     }
     else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
-    else if (b.type === "note") s += `<p class="usernote">Note: ${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "note") s += `<p class="usernote">${xmlEsc(b.text)}</p>\n<p class="usernote-date">${xmlEsc(b.date || "")}</p>\n`;
     else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
   }
@@ -1637,7 +1647,8 @@ h2 { font-size: 1.15em; color: #6b5329; margin: .8em 0 .3em; }
 h3 { font-size: 1.02em; color: #8a6d3b; margin: .6em 0 .2em; }
 h1.doctitle { text-align: center; font-size: 1.6em; }
 p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
-p.usernote { font-style: italic; color: #6b5329; border-left: 2px solid #8a6d3b; padding-left: .6em; margin: .4em 0 .6em; }
+p.usernote { font-style: italic; color: #6b5329; margin: .4em 0 .2em; }
+p.usernote-date { font-style: italic; color: #6b5329; font-size: .8em; margin: 0 0 .6em; }
 p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
 p.en { line-height: 1.6; }
 div.contents ol { list-style: none; padding-left: 0; }
@@ -1710,7 +1721,7 @@ function buildPdf(content) {
     else if (b.type === "h2") bodyHtml += `<h2 id="${b.anchor}">${escapeHtml(b.text)}</h2>`;
     else if (b.type === "h3") bodyHtml += `<h3 id="${b.anchor}">${escapeHtml(b.text)}</h3>`;
     else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
-    else if (b.type === "note") bodyHtml += `<p class="usernote">Note: ${escapeHtml(b.text)}</p>`;
+    else if (b.type === "note") bodyHtml += `<p class="usernote">${escapeHtml(b.text)}</p><p class="usernote-date">${escapeHtml(b.date || "")}</p>`;
     else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
     else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
   }
@@ -1726,7 +1737,8 @@ function buildPdf(content) {
   h3 { font-size: 14px; color: #8a6d3b; margin: 12px 0 2px; }
   h1.title { font-size: 24px; text-align: center; margin: 0 0 6px; }
   p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
-  p.usernote { font-style: italic; color: #6b5329; border-left: 3px solid #8a6d3b; padding-left: 8px; font-size: 13px; margin: 4px 0 8px; }
+  p.usernote { font-style: italic; color: #6b5329; font-size: 13px; margin: 4px 0 2px; }
+  p.usernote-date { font-style: italic; color: #6b5329; font-size: 11px; margin: 0 0 8px; }
   p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
   p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
   .contents-h { font-size: 18px; margin: 18px 0 8px; }
