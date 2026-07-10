@@ -85,6 +85,7 @@
     display: flex; align-items: center; gap: 8px; padding: 8px 12px;
     background: #f2ecdd; cursor: pointer; font-size: 15px; user-select: none;
   }
+  .pv-grp-head.top { background: #ece3d0; font-size: 16px; font-weight: bold; }
   .pv-grp-head.sub { background: #fbf8f0; font-size: 14px; color: var(--accent-dark); }
   .pv-grp-head .pv-caret { transition: transform .15s; }
   .pv-grp.collapsed > .pv-grp-head .pv-caret { transform: rotate(-90deg); }
@@ -227,6 +228,10 @@
   }
   .pv-share:hover { background: #f2ecdd; color: var(--accent-dark); }
   .pv-share svg { display: block; }
+  /* share + note buttons belong to the open text only — a collapsed
+     text shows just its reference line */
+  .pv-item.collapsed .pv-share,
+  .pv-item.collapsed .pv-notebtn { display: none; }
 </style>
 </head>
 <body>
@@ -304,7 +309,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 18;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 19;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -721,50 +726,71 @@ async function fetchLinksBySegments(ref) {
   return await linksForSegs(segs);
 }
 
-// Expand a ranged ref (an aliyah, a whole parsha) into its individual segment
-// refs, together with each segment's own Hebrew / English text — one texts
-// call gives both. Handles a range within one section ("Shabbat 100a:1-5",
-// "Genesis 24:10-26") and a numeric range across chapters ("Genesis 2:4-3:21",
-// a whole parsha). Anything odder returns null and the caller falls back.
+// Expand a ranged reference (an aliyah, a whole parsha) into its individual
+// segment refs, together with each segment's own Hebrew / English text.
+// A range within one section ("Shabbat 100a:1-5", "Genesis 24:10-26") is a
+// single fetch — those responses are dependably flat. A numeric range across
+// chapters ("Genesis 2:4-3:21", a whole parsha) is expanded by fetching each
+// chapter WHOLE and slicing it: whole-chapter responses are flat, parallel
+// he/text arrays, whereas the shape of Sefaria's spanning-ref response varies
+// (nested per chapter, sometimes differently per language), and rebuilding
+// verse numbers from that shape produced phantom sections like "Genesis 4:1"
+// for an aliyah. Anything odder (a cross-daf range…) returns null and the
+// caller falls back.
 async function expandRangedRef(ref) {
   const t = String(ref).trim();
-  let base = null, start = 0, span = null;
-  let m = t.match(/^(.+?):(\d+)\s*[-–]\s*(\d+)$/);
-  if (m && +m[3] >= +m[2]) { base = m[1]; start = +m[2]; }
-  if (!base) {
-    m = t.match(/^(.+?)\s(\d+):(\d+)\s*[-–]\s*(\d+):(\d+)$/);
-    if (m) span = { book: m[1], c1: +m[2], v1: +m[3], c2: +m[4], v2: +m[5] };
-  }
-  if (!base && !span) return null;
-  try {
-    const r = await fetch(TEXTS_API + encodeURIComponent(t) + "?context=0&commentary=0");
-    if (!r.ok) return null;
-    const j = await r.json();
-    if (j.error) return null;
+  const fetchJson = async (r) => {
+    try {
+      const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0");
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.error ? null : j;
+    } catch (e) { return null; }
+  };
+
+  // -- a range within one section: "Book 2:4-19", "Shabbat 100a:1-5" --------
+  let m = t.match(/^(.+?):(\d+)\s*[-\u2013]\s*(\d+)$/);
+  if (m && +m[3] >= +m[2]) {
+    const base = m[1], start = +m[2];
+    const j = await fetchJson(t);
+    if (!j) return null;
     const heArr = Array.isArray(j.he) ? j.he : [];
     const enArr = Array.isArray(j.text) ? j.text : [];
+    const n = Math.max(heArr.length, enArr.length);
+    if (!n) return null;
     const out = [];
-    if (base) {
-      // one section: flat arrays, verses start..start+n-1
-      const n = Math.max(heArr.length, enArr.length);
-      for (let i = 0; i < n; i++)
-        out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
-    } else {
-      // spanning chapters: nested arrays, one inner array per chapter; the
-      // first chapter starts at the range's opening verse, the rest at 1
-      const outer = Math.max(heArr.length, enArr.length);
-      for (let c = 0; c < outer; c++) {
-        const hc = heArr[c] == null ? [] : (Array.isArray(heArr[c]) ? heArr[c] : [heArr[c]]);
-        const ec = enArr[c] == null ? [] : (Array.isArray(enArr[c]) ? enArr[c] : [enArr[c]]);
-        const n = Math.max(hc.length, ec.length);
-        const sv = c === 0 ? span.v1 : 1;
-        for (let i = 0; i < n; i++)
-          out.push({ ref: span.book + " " + (span.c1 + c) + ":" + (sv + i), he: asText(hc[i]), en: asText(ec[i]) });
-      }
-    }
-    if (!out.length) return null;
+    for (let i = 0; i < n; i++)
+      out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
     return { ref: j.ref || t, heRef: j.heRef || "", segs: out };
-  } catch (e) { return null; }
+  }
+
+  // -- a numeric range across chapters: "Genesis 2:4-3:21", a parsha --------
+  m = t.match(/^(.+?)\s(\d+):(\d+)\s*[-\u2013]\s*(\d+):(\d+)$/);
+  if (!m) return null;
+  const book = m[1], c1 = +m[2], v1 = +m[3], c2 = +m[4], v2 = +m[5];
+  if (c2 < c1 || (c2 === c1 && v2 < v1)) return null;
+
+  // canonical English + Hebrew names of the range, for the source heading
+  let refName = t, heRef = "";
+  const meta = await fetchJson(t);
+  if (meta) { refName = meta.ref || t; heRef = meta.heRef || ""; }
+
+  const out = [];
+  for (let c = c1; c <= c2; c++) {
+    const j = await fetchJson(book + " " + c);
+    if (!j) return null;
+    const heArr = Array.isArray(j.he) ? j.he : [];
+    const enArr = Array.isArray(j.text) ? j.text : [];
+    const n = Math.max(heArr.length, enArr.length);
+    if (!n) return null;
+    const from = (c === c1) ? v1 : 1;
+    const to = (c === c2) ? Math.min(v2, n) : n;
+    if (from > to) return null;
+    for (let v = from; v <= to; v++)
+      out.push({ ref: book + " " + c + ":" + v, he: asText(heArr[v - 1]), en: asText(enArr[v - 1]) });
+  }
+  if (!out.length) return null;
+  return { ref: refName, heRef: heRef, segs: out };
 }
 
 // Ranged ref → links (segment by segment, so section grouping works) plus a
@@ -1728,7 +1754,7 @@ ${bodyHtml}
   else setTimeout(go, 600);
 
   finishStatus(content, "pdf (print view)");
-  setStatus("Opened a print view — choose “Save as PDF”.");
+  setStatus("Opened a print view — choose \u201cSave as PDF\u201d.");
 }
 
 // ===========================================================================
@@ -1811,11 +1837,12 @@ function pvItem(label, he, en, isSrc, startCollapsed, noteKey) {
   </div>`;
 }
 
-// A collapsible group wrapper for the preview (Section mode): a category or
-// a commentator, closed until the reader opens it and drills down.
-function pvGrp(title, n, body, sub) {
-  return `<div class="pv-grp collapsed">
-    <div class="pv-grp-head${sub ? " sub" : ""}"><span class="pv-caret">▾</span><span>${escapeHtml(title)}</span><span class="pv-grp-count">${n}</span></div>
+// A collapsible group wrapper for the preview: a section, a category, or a
+// commentator. level picks the header style ("top" | "" | "sub");
+// collapsed sets the starting state.
+function pvGrp(title, n, body, level, collapsed) {
+  return `<div class="pv-grp${collapsed ? " collapsed" : ""}">
+    <div class="pv-grp-head${level ? " " + level : ""}"><span class="pv-caret">▾</span><span>${escapeHtml(title)}</span><span class="pv-grp-count">${n}</span></div>
     <div class="pv-grp-body">${body}</div>
   </div>`;
 }
@@ -1868,8 +1895,10 @@ function renderPreview() {
 
   if (GROUPMODE === "seg") {
     // ---------------- section mode ----------------
-    // Only the selected texts appear, nested under collapsed category →
-    // commentator groups: e.g. Commentary ▸ Rashi ▸ each Rashi comment.
+    // Only the selected texts appear. Every level is a collapsible group:
+    // section → category → commentator → individual texts, so "collapse all"
+    // folds the whole preview to its section headings and the reader drills
+    // back down level by level.
     if (!SEL.size && !haveSrc) { setStatus("Select at least one text, or the original text.", true); return; }
 
     for (const seg of SEG_ORDER) {
@@ -1883,9 +1912,10 @@ function renderPreview() {
       const wantSrc = haveSrc && idx >= 0 && (he || en);
       if (!sel.length && !wantSrc) continue;
       sections++;
-      html += `<div class="pv-cat">${escapeHtml(seg)}</div>`;
+      let secBody = "", secN = 0;
       if (wantSrc) {
-        html += pvItem("Source — " + seg, he, en, true, true, "S:" + seg);
+        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg);
+        secN++;
       }
       for (const [cat, arr] of sel) {
         let catBody = "";
@@ -1894,17 +1924,20 @@ function renderPreview() {
           for (const l of links) {
             const enRef = l.sourceRef || l.ref || "";
             const heRef = l.sourceHeRef || "";
-            const label = enRef + (heRef ? "  —  " + heRef : "");
+            const label = enRef + (heRef ? "  \u2014  " + heRef : "");
             items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i);
             count++;
           }
-          catBody += pvGrp(comm, links.length, items, true);
+          catBody += pvGrp(comm, links.length, items, "sub", true);
         }
-        html += pvGrp(cat, arr.length, catBody, false);
+        secBody += pvGrp(cat, arr.length, catBody, "", true);
+        secN += arr.length;
       }
+      html += pvGrp(seg, secN, secBody, "top", false);
     }
   } else {
     // ---------------- category mode ----------------
+    // category → commentator → individual texts, each level collapsible.
     if (!SEL.size && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
 
     if (haveSrc) {
@@ -1917,17 +1950,20 @@ function renderPreview() {
         .map(comm => [comm, TREE[cat][comm].filter(l => SEL.has(l._i))])
         .filter(p => p[1].length);
       if (!groups.length) continue;
-      html += `<div class="pv-cat">${escapeHtml(cat)}</div>`;
+      let catBody = "", catN = 0;
       for (const [comm, links] of groups) {
-        html += `<div class="pv-comm">${escapeHtml(comm)}</div>`;
+        let items = "";
         for (const l of links) {
           const enRef = l.sourceRef || l.ref || "";
           const heRef = l.sourceHeRef || "";
-          const label = enRef + (heRef ? "  —  " + heRef : "");
-          html += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i);
+          const label = enRef + (heRef ? "  \u2014  " + heRef : "");
+          items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i);
           count++;
         }
+        catBody += pvGrp(comm, links.length, items, "sub", false);
+        catN += links.length;
       }
+      html += pvGrp(cat, catN, catBody, "top", false);
     }
   }
 
@@ -1947,8 +1983,8 @@ function renderPreview() {
     if (haveSrc) bits.push("Original Text");
     if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
   }
-  $("previewCount").textContent = "Showing " + (bits.join(" · ") || "nothing") +
-    (GROUPMODE === "seg" ? " — tap a group to open it" : " — tap a heading to collapse it");
+  $("previewCount").textContent = "Showing " + (bits.join(" \u00b7 ") || "nothing") +
+    " \u2014 tap a group or heading to open and close it";
   $("previewCard").style.display = "block";
   setStatus("");
   $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -2098,10 +2134,10 @@ function renderCorpora() {
       const node = toc.find(n => n.category && c.match.includes(String(n.category).toLowerCase()));
       if (node) items.push({ label: c.label, he: c.he, node });
     });
-    if (!items.length) { navError("Couldn’t find the expected categories in the library index."); return; }
+    if (!items.length) { navError("Couldn't find the expected categories in the library index."); return; }
     navBody().innerHTML = "";
     navBody().appendChild(rowList(items, it => pushView(it.label, () => renderToc(it.node))));
-  }).catch(e => navError("Couldn’t load the library index: " + e.message));
+  }).catch(e => navError("Couldn't load the library index: " + e.message));
 }
 
 function renderToc(node) {
@@ -2128,14 +2164,14 @@ function renderToc(node) {
 }
 
 async function openBook(title) {
-  navLoading('Loading “' + title + '”…');
+  navLoading('Loading "' + title + '"…');
   let rec;
   try {
     const res = await fetch(BOOK_INDEX_API + encodeURIComponent(title));
     if (!res.ok) throw new Error("HTTP " + res.status);
     rec = await res.json();
   } catch (e) {
-    navError('Couldn’t load the structure of “' + title + '”. Filling the box so you can type the rest.');
+    navError('Couldn\u2019t load the structure of "' + title + '". Filling the box so you can type the rest.');
     setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
     return;
   }
@@ -2211,7 +2247,7 @@ function renderAliyot(node) {
     b.textContent = "Whole parasha — " + whole;
     b.onclick = () => commitRef(whole);
     w.appendChild(b); navBody().appendChild(w);
-    navBody().appendChild(mk('<div class="navnote">A whole parasha fetches every verse’s links — it can take a while.</div>'));
+    navBody().appendChild(mk('<div class="navnote">A whole parasha fetches every verse\u2019s links — it can take a while.</div>'));
   }
   const refs = Array.isArray(node.refs) ? node.refs : [];
   if (!refs.length) {
@@ -2219,9 +2255,9 @@ function renderAliyot(node) {
     else navBody().appendChild(mk('<div class="navnote">No aliyah breakdown is available for this parasha.</div>'));
     return;
   }
-  navBody().appendChild(mk('<div class="navnote">…or a single aliyah:</div>'));
+  navBody().appendChild(mk('<div class="navnote">\u2026or a single aliyah:</div>'));
   const items = refs.map((r, i) => ({
-    label: (ALIYOT[i] || ("Aliyah " + (i + 1))) + " · " + r,
+    label: (ALIYOT[i] || ("Aliyah " + (i + 1))) + " \u00b7 " + r,
     he: HE_ALIYOT[i] || "",
     ref: r
   }));
@@ -2253,7 +2289,7 @@ function renderJagged(prefix, node) {
   if (addr === "Talmud") {
     const build = (amudim) => {
       navBody().innerHTML = "";
-      navBody().appendChild(mk('<div class="navnote">Pick a page — a is the front, b the back.</div>'));
+      navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back.</div>'));
       const grid = document.createElement("div"); grid.className = "navgrid";
       for (let i = 0; i < amudim; i++) {
         const b = document.createElement("button"); b.textContent = dafLabel(i);
@@ -2298,12 +2334,12 @@ function pickNumber(prefix, node, sections) {
   const wb = document.createElement("button"); wb.className = "secondary"; wb.textContent = "Use all of " + cur;
   wb.onclick = () => commitRef(cur); whole.appendChild(wb);
   navBody().appendChild(whole);
-  navBody().appendChild(mk('<div class="navnote">…or narrow to a ' + String(nextName).toLowerCase() + ':</div>'));
-  const holder = document.createElement("div"); holder.innerHTML = '<div class="navloading">Loading…</div>';
+  navBody().appendChild(mk('<div class="navnote">\u2026or narrow to a ' + String(nextName).toLowerCase() + ':</div>'));
+  const holder = document.createElement("div"); holder.innerHTML = '<div class="navloading">Loading\u2026</div>';
   navBody().appendChild(holder);
   fetchCount(cur).then(c => {
     holder.innerHTML = "";
-    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn’t list these — use the button above, or type it.</div>')); return; }
+    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn\u2019t list these \u2014 use the button above, or type it.</div>')); return; }
     const grid = document.createElement("div"); grid.className = "navgrid";
     for (let i = 1; i <= c; i++) {
       const b = document.createElement("button"); b.textContent = i;
