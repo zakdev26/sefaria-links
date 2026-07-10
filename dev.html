@@ -218,19 +218,19 @@
   .fmtseg button:hover { background: #ece3d0; }
   .fmtseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-  /* ---- per-text share button (preview) ---- */
+  /* ---- per-text copy button (preview) ---- */
   .pv-ref { justify-content: space-between; }
   .pv-ref .pv-reflabel { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-  .pv-share {
+  .pv-copy {
     width: auto; margin: 0; padding: 4px 8px; line-height: 0;
     background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
     flex: none; display: inline-flex; align-items: center;
   }
-  .pv-share:hover { background: #f2ecdd; color: var(--accent-dark); }
-  .pv-share svg { display: block; }
-  /* share + note buttons belong to the open text only — a collapsed
+  .pv-copy:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .pv-copy svg { display: block; }
+  /* copy + note buttons belong to the open text only — a collapsed
      text shows just its reference line */
-  .pv-item.collapsed .pv-share,
+  .pv-item.collapsed .pv-copy,
   .pv-item.collapsed .pv-notebtn { display: none; }
 </style>
 </head>
@@ -309,7 +309,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 19;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 20;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -1808,16 +1808,23 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
-// Texts shown in the current preview, indexed for the per-item share button.
+// Texts shown in the current preview, indexed for the per-item copy button.
+// (The name predates the share→copy change; it's referenced in renderPreview
+// too, so it keeps its name to keep that function untouched.)
 let PV_SHARE_TEXTS = [];
 
-// The classic three-pronged share glyph, drawn inline so it inherits the
-// button's (muted, cream-friendly) colour.
-const SHARE_ICON =
+// The two-rectangles copy glyph, drawn inline so it inherits the button's
+// (muted, cream-friendly) colour — plus a checkmark shown briefly after a
+// successful copy.
+const COPY_ICON =
   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
   ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-  '<circle cx="18" cy="5" r="2.6"/><circle cx="6" cy="12" r="2.6"/><circle cx="18" cy="19" r="2.6"/>' +
-  '<line x1="8.4" y1="10.8" x2="15.6" y2="6.2"/><line x1="8.4" y1="13.2" x2="15.6" y2="17.8"/></svg>';
+  '<rect x="9" y="9" width="11" height="11" rx="2"/>' +
+  '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const COPIED_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="20 6 9 17 4 12"/></svg>';
 
 function pvItem(label, he, en, isSrc, startCollapsed, noteKey) {
   const idx = PV_SHARE_TEXTS.length;
@@ -1831,7 +1838,7 @@ function pvItem(label, he, en, isSrc, startCollapsed, noteKey) {
     <div class="pv-ref">
       <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
       ${noteKey ? pvNoteBtnHtml(noteKey) : ""}
-      <button type="button" class="pv-share" data-idx="${idx}" title="Share this text" aria-label="Share this text">${SHARE_ICON}</button>
+      <button type="button" class="pv-copy" data-idx="${idx}" title="Copy this text" aria-label="Copy this text">${COPY_ICON}</button>
     </div>
     <div class="pv-body">${body}</div>
   </div>`;
@@ -1863,9 +1870,10 @@ function wholeSrcPvItem(ref) {
   return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__");
 }
 
-// Share (or, as a fallback, copy) a single preview item's text — respects the
-// Hebrew / English toggles currently shown in the preview.
-async function sharePvItem(idx) {
+// Copy a single preview item's text to the clipboard — respects the
+// Hebrew / English toggles currently shown in the preview. btn is the tapped
+// button; on success its icon flashes to a checkmark for a moment.
+async function copyPvItem(idx, btn) {
   const item = PV_SHARE_TEXTS[idx];
   if (!item) return;
   const showHe = $("pvHe").checked, showEn = $("pvEn").checked;
@@ -1875,15 +1883,32 @@ async function sharePvItem(idx) {
   text = text.trim();
   if (!text) return;
 
-  if (navigator.share) {
-    try { await navigator.share({ text, title: item.label }); return; }
-    catch (e) { if (e && e.name === "AbortError") return; /* else fall through to copy */ }
+  let ok = false;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {}
   }
-  try {
-    await navigator.clipboard.writeText(text);
+  if (!ok) {
+    // fallback for contexts without the async clipboard API
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed"; ta.style.top = "-1000px";
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand("copy");
+      ta.remove();
+    } catch (e) { ok = false; }
+  }
+
+  if (ok) {
     setStatus("Copied to clipboard.");
-  } catch (e) {
-    setStatus("Couldn't share or copy — select the text manually.", true);
+    if (btn) {
+      btn.innerHTML = COPIED_ICON;
+      setTimeout(() => { btn.innerHTML = COPY_ICON; }, 1200);
+    }
+  } else {
+    setStatus("Couldn't copy — select the text manually.", true);
   }
 }
 
@@ -1990,13 +2015,13 @@ function renderPreview() {
   $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-// per-item collapse + group drill-down (event delegation), share button,
+// per-item collapse + group drill-down (event delegation), copy button,
 // note (pencil) button, language toggles, expand/collapse all
 $("preview").addEventListener("click", e => {
-  const shareBtn = e.target.closest(".pv-share");
-  if (shareBtn) {
+  const copyBtn = e.target.closest(".pv-copy");
+  if (copyBtn) {
     e.stopPropagation();
-    sharePvItem(parseInt(shareBtn.dataset.idx, 10));
+    copyPvItem(parseInt(copyBtn.dataset.idx, 10), copyBtn);
     return;
   }
   const noteBtn = e.target.closest(".pv-notebtn");
