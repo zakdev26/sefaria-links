@@ -232,6 +232,29 @@
      text shows just its reference line */
   .pv-item.collapsed .pv-copy,
   .pv-item.collapsed .pv-notebtn { display: none; }
+
+  /* ---- AI translation helper ---- */
+  .aipanel { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbf8f0; }
+  .aipanel label { margin-bottom: 4px; }
+  .ai-row { margin-bottom: 12px; }
+  .ai-row:last-child { margin-bottom: 0; }
+  .aipanel textarea {
+    width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical;
+    font-family: inherit; font-size: 14px; padding: 8px; margin-top: 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+  .ai-report { font-size: 13px; color: var(--muted); margin-top: 8px; white-space: pre-wrap; }
+  .ai-report.err { color: #a23b2c; }
+  .ai-backup-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+
+  /* per-text AI translation shown in the preview, beneath he/en, above notes */
+  .aitransbox { padding: 8px 10px; margin: 6px 0; background: #fbf8f0; border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; }
+  .aitransbox .ai-label { font-size: 12px; font-style: italic; color: var(--accent-dark); margin: 0 0 4px; }
+  .aitransbox textarea.aitrans {
+    width: 100%; min-height: 50px; box-sizing: border-box; resize: vertical;
+    font-family: inherit; font-size: 14px; padding: 6px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
 </style>
 </head>
 <body>
@@ -278,6 +301,29 @@
     </div>
     <div id="tree"></div>
     <button id="previewBtn">Preview selected texts</button>
+    <button id="aiHelperBtn" class="secondary" type="button">AI translation helper</button>
+
+    <div class="aipanel" id="aiPanel" style="display:none">
+      <div class="ai-row">
+        <label for="aiLang">Translate into</label>
+        <input type="text" id="aiLang" value="English" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="ai-row">
+        <button type="button" id="aiCopyBtn">Copy texts for translation</button>
+      </div>
+      <div class="ai-row">
+        <button type="button" class="secondary" id="aiPasteBtn">Paste translations</button>
+        <div id="aiPasteArea" style="display:none">
+          <textarea id="aiPasteText" placeholder="Paste the AI's reply here"></textarea>
+          <button type="button" id="aiApplyBtn">Apply</button>
+        </div>
+      </div>
+      <div class="ai-report" id="aiReport"></div>
+      <div class="ai-backup-row">
+        <span class="globaltoggle" id="aiSaveBackup">save backup in this browser</span>
+        <span class="globaltoggle" id="aiRestoreBackup" style="display:none">restore backup</span>
+      </div>
+    </div>
 
     <div class="fmtlabel">Format</div>
     <div class="fmtseg">
@@ -309,7 +355,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 21;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 22;   // bump when deploying, shows in footer + built books
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -342,6 +388,18 @@ let SRC_ON = false;
 // reference is fetched (they belong to the old one).
 let NOTES = {};
 
+// AI translation helper state.
+// TRANS: canonical ref -> { text, lang } — the current (possibly edited)
+// translation for a linked text. Keyed by canonical ref (l.sourceRef || l.ref),
+// never by l._i, since indices are only stable within one fetch.
+// SENTMAP / SENTORDER describe the most recent copy batch, used to match the
+// AI's reply back to the right text (direct match, or positional fallback).
+let TRANS = {};
+let SENTMAP = {};
+let SENTORDER = [];
+
+function canonicalRef(l) { return l.sourceRef || l.ref || ""; }
+
 function srcAvailable() { return !!(SRC && (SRC.he.length || SRC.text.length)); }
 
 function noteOf(key) { return (NOTES[key] || "").trim(); }
@@ -353,6 +411,25 @@ function noteBoxHtml(key) {
   const k = encodeURIComponent(key);
   const has = !!noteOf(key);
   return `<div class="notebox" data-key="${k}"${has ? ' style="display:block"' : ""}><textarea class="notetext" data-key="${k}" placeholder="Your note — printed beneath this text in the built file.">${escapeHtml(NOTES[key] || "")}</textarea></div>`;
+}
+
+// The AI translation shown (and editable) beneath a text's Hebrew/English in
+// the preview. Only rendered when a translation exists for this ref.
+function aiTransBoxHtml(ref) {
+  const t = TRANS[ref];
+  if (!t) return "";
+  const r = encodeURIComponent(ref);
+  return `<div class="aitransbox">
+    <p class="ai-label">AI translation (${escapeHtml(t.lang || "")})</p>
+    <textarea class="aitrans" data-ref="${r}">${escapeHtml(t.text || "")}</textarea>
+  </div>`;
+}
+
+// emitAiBlock: pushed into gatherContent's blocks list right after a link's
+// he/en, before its note — used by both grouping modes.
+function emitAiBlock(blocks, ref) {
+  const t = TRANS[ref];
+  if (t && t.text && t.text.trim()) blocks.push({ type: "ai", text: t.text.trim(), lang: t.lang || "" });
 }
 
 function setLinkSel(i, on) {
@@ -425,6 +502,8 @@ function syncTreeUI() {
   // global Original Text row (Category mode)
   const src = $("srcbox");
   if (src && !src.disabled) src.checked = SRC_ON;
+
+  refreshAiUI();
 }
 
 // The Hebrew / English toggles also govern the source snippets shown
@@ -485,6 +564,26 @@ function asText(field) {
   if (Array.isArray(field)) return field.map(asText).join(" ");
   return String(field);
 }
+// Shared clipboard writer: modern async API first, falling back to a hidden
+// textarea + execCommand("copy") for older/unsupporting contexts. Returns
+// true/false rather than throwing, so callers just check the result.
+async function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.top = "-1000px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
 function stripHtml(html) {
   if (!html) return "";
   const div = document.createElement("div");
@@ -817,6 +916,8 @@ async function fetchLinks() {
   const ref = $("ref").value.trim();
   if (!ref) { setStatus("Enter a reference and press Enter, or switch to Browse.", true); return; }
 
+  if (!confirmDiscardTranslations()) return;
+
   FETCHING = true;
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
@@ -921,6 +1022,8 @@ async function fetchLinks() {
     SEL = new Set(LINKS.map(l => l._i));
     SRC_ON = srcAvailable();
     NOTES = {};
+    TRANS = {}; SENTMAP = {}; SENTORDER = [];
+    refreshAiUI();
 
     renderTree();
     setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
@@ -1246,6 +1349,7 @@ function gatherContent() {
             }
             if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
             if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+            emitAiBlock(blocks, canonicalRef(l));
             emitNote("L" + l._i);   // this text's own note, right beneath it
             written++;
           }
@@ -1284,6 +1388,7 @@ function gatherContent() {
         blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
         if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
         if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+        emitAiBlock(blocks, canonicalRef(l));
         emitNote("L" + l._i);   // this text's own note, right beneath it
         written++;
       }
@@ -1292,6 +1397,300 @@ function gatherContent() {
 
   return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
 }
+
+// ===========================================================================
+// AI translation helper
+// Round-trips Hebrew through an external AI chat via the clipboard: copy a
+// batch of untranslated selected texts (with instructions + @@REF@@ headers),
+// the user pastes the AI's reply back, and each translated block is matched
+// to its text by canonical ref (l.sourceRef || l.ref) and stored in TRANS.
+// ===========================================================================
+const AI_BATCH_CHAR_LIMIT = 5000;
+const AI_BACKUP_KEY = "sefariaLinksTransBackup";
+
+// Eligible = ticked (SEL), has Hebrew, not yet translated — in the same
+// order gatherContent would emit them for the current GROUPMODE, so a copy
+// matches what the user sees in the preview/output.
+function eligibleLinksInOrder() {
+  const out = [];
+  const seenRefs = new Set();
+  const pushIfEligible = (l) => {
+    if (!SEL.has(l._i)) return;
+    const ref = canonicalRef(l);
+    if (!ref || TRANS[ref] || seenRefs.has(ref)) return;
+    const he = stripHtml(asText(l.he));
+    if (!he) return;
+    seenRefs.add(ref);
+    out.push(l);
+  };
+  if (GROUPMODE === "seg") {
+    for (const seg of SEG_ORDER) for (const cat of segCats(seg)) for (const l of segCatLinks(seg, cat)) pushIfEligible(l);
+  } else {
+    for (const cat of CAT_ORDER) {
+      const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+      for (const comm of comms) for (const l of TREE[cat][comm]) pushIfEligible(l);
+    }
+  }
+  return out;
+}
+
+function normalizeSlug(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9:]/g, ""); }
+
+function aiPromptHeader(ref) { return "@@" + String(ref).trim().replace(/\s+/g, "_") + "@@"; }
+
+function buildAiPrompt(lang, passages) {
+  return `You are translating Hebrew/Aramaic passages from classical Jewish texts (Talmud, Rishonim, etc.).
+
+Translate each passage below into ${lang}.
+
+RULES — follow all of them exactly:
+1. Translate literally and precisely. No paraphrase, no bracketed explanations, no added interpretation. Translate what is written; never invent or expand.
+2. Your entire reply must consist ONLY of blocks in the format shown below. No introduction, no closing remarks, no commentary between blocks, no markdown code fences, no headings.
+3. Each passage begins with a header line like @@Example_Header@@. Copy every header line back EXACTLY, character for character. Never translate, reword, reformat, or decorate a header line.
+4. Keep the blocks in the same order as given.
+5. Include a block for every passage. If you cannot translate one, output its header followed by: [unable to translate]
+
+REPLY FORMAT:
+
+@@Header_1@@
+translation of passage 1
+@@Header_2@@
+translation of passage 2
+
+PASSAGES TO TRANSLATE:
+
+${passages}`;
+}
+
+// Whether including this text would still keep the batch under the char
+// cap — always take at least one text, even if it alone exceeds it.
+function refreshAiUI() {
+  const btn = $("aiCopyBtn");
+  if (!btn) return;
+  const list = eligibleLinksInOrder();
+  const n = list.length;
+  if (!n) {
+    btn.disabled = true;
+    btn.textContent = "All selected texts translated";
+  } else {
+    btn.disabled = false;
+    let total = 0;
+    for (const l of list) total += stripHtml(asText(l.he)).length;
+    btn.textContent = (total > AI_BATCH_CHAR_LIMIT && n > 1)
+      ? `Copy next batch (${n} texts remaining)`
+      : `Copy texts for translation (${n} remaining)`;
+  }
+  updateBackupLinkVisibility();
+}
+
+function loadAiBackup() {
+  try {
+    const raw = localStorage.getItem(AI_BACKUP_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function transEqualsBackup(backup) {
+  if (!backup || !backup.items) return false;
+  const k1 = Object.keys(TRANS), k2 = Object.keys(backup.items);
+  if (k1.length !== k2.length) return false;
+  for (const k of k1) {
+    const a = TRANS[k], b = backup.items[k];
+    if (!b || a.text !== b.text || a.lang !== b.lang) return false;
+  }
+  return true;
+}
+function hasUnsavedTranslations() {
+  if (!Object.keys(TRANS).length) return false;
+  return !transEqualsBackup(loadAiBackup());
+}
+// Guards clearBtn / fetchLinks: warns before discarding un-backed-up
+// translations. Returns true if it's safe to proceed.
+function confirmDiscardTranslations() {
+  if (!hasUnsavedTranslations()) return true;
+  const n = Object.keys(TRANS).length;
+  return confirm(`This will discard ${n} AI translations that aren't backed up. Continue?`);
+}
+function updateBackupLinkVisibility() {
+  const el = $("aiRestoreBackup");
+  if (!el) return;
+  const backup = loadAiBackup();
+  const n = backup && backup.items ? Object.keys(backup.items).length : 0;
+  if (n) {
+    const d = new Date(backup.savedAt);
+    const when = isNaN(d.getTime()) ? backup.savedAt : d.toLocaleString();
+    el.textContent = `restore backup (${n} texts, ${when})`;
+    el.style.display = "";
+  } else {
+    el.style.display = "none";
+  }
+}
+
+function aiReport(msg, isErr) {
+  const el = $("aiReport");
+  el.textContent = msg;
+  el.className = "ai-report" + (isErr ? " err" : "");
+  setStatus(msg, isErr);
+}
+
+// --- paste parsing -----------------------------------------------------
+// Strip markdown code fences and zero-width/bidi control characters that
+// AI chat UIs sometimes inject when a reply is copied out.
+function aiPreClean(raw) {
+  let s = String(raw || "").replace(/\r\n/g, "\n");
+  s = s.split("\n").filter(line => !/^\s*```/.test(line.trim())).join("\n");
+  s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "");
+  return s;
+}
+// A header line, after stripping leading/trailing markdown decoration and
+// quote characters, is something wrapped in 1-3 "@" on each side — lenient
+// about inner/outer spacing, curly quotes, and trailing punctuation.
+function aiHeaderBody(line) {
+  let t = line.trim();
+  if (!t) return null;
+  t = t.replace(/^[#>*`\s]+/, "").replace(/[#>*`\s]+$/, "");
+  t = t.replace(/^[\u201C\u201D\u2018\u2019"']+/, "").replace(/[\u201C\u201D\u2018\u2019"']+$/, "");
+  const m = t.match(/^@{1,3}\s*([\s\S]+?)\s*@{1,3}[\s.,:;!?]*$/);
+  return m ? m[1] : null;
+}
+function parseAiBlocks(cleanText) {
+  const lines = cleanText.split("\n");
+  const blocks = [];
+  let current = null;
+  for (const line of lines) {
+    const hb = aiHeaderBody(line);
+    if (hb !== null) {
+      if (current) blocks.push(current);
+      current = { header: hb, bodyLines: [] };
+    } else if (current) {
+      current.bodyLines.push(line);
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks;
+}
+
+function applyAiPaste(raw, lang) {
+  if (!SENTORDER.length) return { matchedCount: 0, total: 0, unmatched: [], positional: [], nothing: true };
+  const clean = aiPreClean(raw);
+  const blocks = parseAiBlocks(clean).map(b => ({
+    ...b, ref: SENTMAP[normalizeSlug(b.header)] || null, positional: false
+  }));
+
+  // positional fallback for blocks that didn't match directly
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].ref) continue;
+    let prevRef = null, nextRef = null;
+    for (let j = i - 1; j >= 0; j--) { if (blocks[j].ref) { prevRef = blocks[j].ref; break; } }
+    for (let j = i + 1; j < blocks.length; j++) { if (blocks[j].ref) { nextRef = blocks[j].ref; break; } }
+    if (prevRef && nextRef) {
+      const p = SENTORDER.indexOf(prevRef), q = SENTORDER.indexOf(nextRef);
+      if (p >= 0 && q >= 0 && q - p === 2) { blocks[i].ref = SENTORDER[p + 1]; blocks[i].positional = true; }
+    }
+  }
+
+  let matchedCount = 0;
+  const positional = [];
+  for (const b of blocks) {
+    if (!b.ref) continue;
+    const body = b.bodyLines.join("\n").trim();
+    if (!body) continue;
+    if (/^\[unable to translate\]$/i.test(body)) continue;   // leave untranslated
+    TRANS[b.ref] = { text: body, lang };
+    matchedCount++;
+    if (b.positional) positional.push(b.ref);
+  }
+
+  const unmatched = SENTORDER.filter(r => !TRANS[r]);
+  return { matchedCount, total: SENTORDER.length, unmatched, positional, nothing: matchedCount === 0 };
+}
+
+$("aiHelperBtn").onclick = () => {
+  const p = $("aiPanel");
+  const show = p.style.display !== "block";
+  p.style.display = show ? "block" : "none";
+  if (show) refreshAiUI();
+};
+
+$("aiCopyBtn").onclick = async () => {
+  const list = eligibleLinksInOrder();
+  if (!list.length) return;
+  const lang = ($("aiLang").value || "").trim() || "English";
+
+  const batch = [];
+  let total = 0;
+  for (const l of list) {
+    const he = stripHtml(asText(l.he));
+    if (batch.length && total + he.length > AI_BATCH_CHAR_LIMIT) break;
+    batch.push({ l, he });
+    total += he.length;
+  }
+  if (!batch.length) { const he = stripHtml(asText(list[0].he)); batch.push({ l: list[0], he }); total = he.length; }
+
+  SENTMAP = {}; SENTORDER = [];
+  const passages = batch.map(({ l, he }) => {
+    const ref = canonicalRef(l);
+    const header = aiPromptHeader(ref);
+    SENTMAP[normalizeSlug(header)] = ref;
+    SENTORDER.push(ref);
+    return header + "\n" + he;
+  }).join("\n\n");
+
+  const ok = await copyToClipboard(buildAiPrompt(lang, passages));
+  const remaining = list.length - batch.length;
+  if (ok) {
+    aiReport(`Copied ${batch.length} text${batch.length === 1 ? "" : "s"} (~${total.toLocaleString()} Hebrew characters) — paste into an AI chat.` +
+      (remaining ? ` ${remaining} text${remaining === 1 ? "" : "s"} remain for the next batch.` : ""));
+  } else {
+    aiReport("Couldn't copy — check clipboard permissions.", true);
+  }
+  refreshAiUI();
+};
+
+$("aiPasteBtn").onclick = () => {
+  const area = $("aiPasteArea");
+  const show = area.style.display !== "block";
+  area.style.display = show ? "block" : "none";
+  if (show) $("aiPasteText").focus();
+};
+
+$("aiApplyBtn").onclick = () => {
+  const lang = ($("aiLang").value || "").trim() || "English";
+  const raw = $("aiPasteText").value;
+  const r = applyAiPaste(raw, lang);
+  if (r.nothing) {
+    aiReport("Nothing matched — did you paste the AI's reply (not your own message)?", true);
+  } else {
+    let msg = `Matched ${r.matchedCount} of ${r.total}.`;
+    if (r.unmatched.length) msg += ` Unmatched: ${r.unmatched.join(", ")}.`;
+    if (r.positional.length) msg += ` Matched by position (check): ${r.positional.join(", ")}.`;
+    aiReport(msg, r.unmatched.length > 0 && r.matchedCount === 0);
+  }
+  refreshAiUI();
+  if ($("previewCard").style.display !== "none") renderPreview();
+};
+
+$("aiSaveBackup").onclick = () => {
+  try {
+    localStorage.setItem(AI_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), items: TRANS }));
+    aiReport(`Backup saved (${Object.keys(TRANS).length} translations).`);
+  } catch (e) {
+    aiReport("Couldn't save backup: " + e.message, true);
+  }
+  refreshAiUI();
+};
+
+$("aiRestoreBackup").onclick = () => {
+  const backup = loadAiBackup();
+  if (!backup || !backup.items) { aiReport("No backup found.", true); return; }
+  const curRefs = new Set(LINKS.map(l => canonicalRef(l)));
+  let n = 0;
+  for (const ref of Object.keys(backup.items)) {
+    if (curRefs.has(ref)) { TRANS[ref] = backup.items[ref]; n++; }
+  }
+  aiReport(`Restored ${n} translations.`);
+  refreshAiUI();
+  if ($("previewCard").style.display !== "none") renderPreview();
+};
 
 // --- shared output helpers -------------------------------------------------
 function download(blob, filename) {
@@ -1421,6 +1820,13 @@ async function buildDocx(content) {
       children: [
         new TextRun({ text: b.text, italics: true, size: 22, color: "6b5329" }),
         new TextRun({ text: "\n" + (b.date || ""), italics: true, size: 18, color: "6b5329", break: 1 })
+      ]
+    }));
+    else if (b.type === "ai") body.push(new Paragraph({
+      spacing: { before: 60, after: 100 },
+      children: [
+        new TextRun({ text: "AI translation (" + b.lang + "): ", bold: true, size: 20, color: "8a6d3b" }),
+        new TextRun({ text: b.text, italics: true, size: 22 })
       ]
     }));
     else if (b.type === "he") body.push(heParagraph(b.text));
@@ -1554,6 +1960,7 @@ function epubBody(content) {
     else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "note") s += `<p class="usernote">${xmlEsc(b.text)}</p>\n<p class="usernote-date">${xmlEsc(b.date || "")}</p>\n`;
+    else if (b.type === "ai") s += `<p class="ai-label">AI translation (${xmlEsc(b.lang)})</p>\n<p class="ai">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
   }
@@ -1649,6 +2056,8 @@ h1.doctitle { text-align: center; font-size: 1.6em; }
 p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
 p.usernote { font-style: italic; color: #6b5329; margin: .4em 0 .2em; }
 p.usernote-date { font-style: italic; color: #6b5329; font-size: .8em; margin: 0 0 .6em; }
+p.ai-label { font-style: italic; font-size: .85em; color: #8a6d3b; margin: .5em 0 .1em; }
+p.ai { line-height: 1.6; margin: 0 0 .6em; }
 p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
 p.en { line-height: 1.6; }
 div.contents ol { list-style: none; padding-left: 0; }
@@ -1722,6 +2131,7 @@ function buildPdf(content) {
     else if (b.type === "h3") bodyHtml += `<h3 id="${b.anchor}">${escapeHtml(b.text)}</h3>`;
     else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
     else if (b.type === "note") bodyHtml += `<p class="usernote">${escapeHtml(b.text)}</p><p class="usernote-date">${escapeHtml(b.date || "")}</p>`;
+    else if (b.type === "ai") bodyHtml += `<p class="ai-label">AI translation (${escapeHtml(b.lang)})</p><p class="ai">${escapeHtml(b.text)}</p>`;
     else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
     else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
   }
@@ -1739,6 +2149,8 @@ function buildPdf(content) {
   p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
   p.usernote { font-style: italic; color: #6b5329; font-size: 13px; margin: 4px 0 2px; }
   p.usernote-date { font-style: italic; color: #6b5329; font-size: 11px; margin: 0 0 8px; }
+  p.ai-label { font-style: italic; font-size: 12px; color: #8a6d3b; margin: 6px 0 1px; }
+  p.ai { font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
   p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
   p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
   .contents-h { font-size: 18px; margin: 18px 0 8px; }
@@ -1838,14 +2250,15 @@ const COPIED_ICON =
   ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<polyline points="20 6 9 17 4 12"/></svg>';
 
-function pvItem(label, he, en, isSrc, startCollapsed, noteKey) {
+function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef) {
   const idx = PV_SHARE_TEXTS.length;
   PV_SHARE_TEXTS.push({ label, he, en });
   let body = "";
   if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
   if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
+  if (transRef && TRANS[transRef]) body += aiTransBoxHtml(transRef);
   if (noteKey) body += noteBoxHtml(noteKey);   // the note lives beneath its text
-  const collapsed = startCollapsed && !(noteKey && noteOf(noteKey));
+  const collapsed = startCollapsed && !(noteKey && noteOf(noteKey)) && !(transRef && TRANS[transRef]);
   return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${collapsed ? " collapsed" : ""}">
     <div class="pv-ref">
       <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
@@ -1895,24 +2308,7 @@ async function copyPvItem(idx, btn) {
   text = text.trim();
   if (!text) return;
 
-  let ok = false;
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) {}
-  }
-  if (!ok) {
-    // fallback for contexts without the async clipboard API
-    try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.setAttribute("readonly", "");
-      ta.style.position = "fixed"; ta.style.top = "-1000px";
-      document.body.appendChild(ta);
-      ta.select();
-      ok = document.execCommand("copy");
-      ta.remove();
-    } catch (e) { ok = false; }
-  }
-
+  const ok = await copyToClipboard(text);
   if (ok) {
     setStatus("Copied to clipboard.");
     if (btn) {
@@ -1962,7 +2358,7 @@ function renderPreview() {
             const enRef = l.sourceRef || l.ref || "";
             const heRef = l.sourceHeRef || "";
             const label = enRef + (heRef ? "  \u2014  " + heRef : "");
-            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i);
+            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i, canonicalRef(l));
             count++;
           }
           catBody += pvGrp(comm, links.length, items, "sub", true);
@@ -1994,7 +2390,7 @@ function renderPreview() {
           const enRef = l.sourceRef || l.ref || "";
           const heRef = l.sourceHeRef || "";
           const label = enRef + (heRef ? "  \u2014  " + heRef : "");
-          items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i);
+          items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i, canonicalRef(l));
           count++;
         }
         catBody += pvGrp(comm, links.length, items, "sub", false);
@@ -2053,6 +2449,7 @@ $("preview").addEventListener("click", e => {
     return;
   }
   if (e.target.closest(".notebox")) return;   // typing in the note — nothing to toggle
+  if (e.target.closest(".aitrans")) return;   // typing in the AI translation — nothing to toggle
   const gh = e.target.closest(".pv-grp-head");
   if (gh) { gh.parentElement.classList.toggle("collapsed"); return; }
   const t = e.target.closest(".pv-toggle");
@@ -2061,12 +2458,19 @@ $("preview").addEventListener("click", e => {
 // save notes as they're typed; the pencil lights up when its text has a note
 $("preview").addEventListener("input", e => {
   const ta = e.target.closest(".notetext");
-  if (!ta) return;
-  const key = decodeURIComponent(ta.dataset.key);
-  if (ta.value.trim()) NOTES[key] = ta.value; else delete NOTES[key];
-  const item = ta.closest(".pv-item");
-  const btn = item && item.querySelector(".pv-notebtn");
-  if (btn) btn.classList.toggle("has-note", !!ta.value.trim());
+  if (ta) {
+    const key = decodeURIComponent(ta.dataset.key);
+    if (ta.value.trim()) NOTES[key] = ta.value; else delete NOTES[key];
+    const item = ta.closest(".pv-item");
+    const btn = item && item.querySelector(".pv-notebtn");
+    if (btn) btn.classList.toggle("has-note", !!ta.value.trim());
+    return;
+  }
+  const at = e.target.closest(".aitrans");
+  if (at) {
+    const ref = decodeURIComponent(at.dataset.ref);
+    if (TRANS[ref]) TRANS[ref].text = at.value;
+  }
 });
 $("pvHe").onchange = applyPvLang;
 $("pvEn").onchange = applyPvLang;
@@ -2420,9 +2824,12 @@ $("incHe").addEventListener("change", applyTreeLang);
 $("incEn").addEventListener("change", applyTreeLang);
 
 $("clearBtn").onclick = () => {
+  if (!confirmDiscardTranslations()) return;
   $("ref").value = "";
   LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
   SEL = new Set(); SRC_ON = false; NOTES = {};
+  TRANS = {}; SENTMAP = {}; SENTORDER = [];
+  refreshAiUI();
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
   hideShareBar();
