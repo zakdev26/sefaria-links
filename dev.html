@@ -322,6 +322,7 @@
       <div class="ai-backup-row">
         <span class="globaltoggle" id="aiSaveBackup">save backup in this browser</span>
         <span class="globaltoggle" id="aiRestoreBackup" style="display:none">restore backup</span>
+        <span class="globaltoggle" id="aiDeleteBackup" style="display:none">delete backup</span>
       </div>
     </div>
 
@@ -355,7 +356,10 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 22;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 23;   // bump when deploying, shows in footer + built books
+// Known risk: Send-to-Kindle's EPUB→KFX conversion sometimes degrades noteref/
+// footnote to a plain jump-link, varying by device; if reported, set this false.
+const RTS_POPUPS = true;  // EPUB popup footnotes for Rashi/Tosafot/Steinsaltz
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -397,6 +401,7 @@ let NOTES = {};
 let TRANS = {};
 let SENTMAP = {};
 let SENTORDER = [];
+let SENTLEN = {};
 
 function canonicalRef(l) { return l.sourceRef || l.ref || ""; }
 
@@ -621,6 +626,23 @@ function srcIdxFor(seg) {
   if (SRC.segMap) return (seg in SRC.segMap) ? SRC.segMap[seg] : -1;
   if (SEG_ORDER.length === 1 && Math.max(SRC.he.length, SRC.text.length) === 1) return 0;
   return segNum(seg) - 1;
+}
+// The opening words of a section's source text, for use in headings —
+// Hebrew if available, else English. Truncated at a word boundary.
+function incipitFor(seg) {
+  if (!srcAvailable()) return "";
+  const idx = srcIdxFor(seg);
+  if (idx < 0) return "";
+  const t = stripHtml(SRC.he[idx] || "") || stripHtml(SRC.text[idx] || "");
+  if (!t) return "";
+  const words = t.split(" ");
+  let out = "";
+  for (const w of words) {
+    if (out && (out.length + 1 + w.length) > 30) break;
+    out += (out ? " " : "") + w;
+    if (out.length >= 30) break;
+  }
+  return out + (out.length < t.length ? "\u2026" : "");
 }
 // Categories present within a segment: fixed category rank, then frequency.
 function segCats(seg) {
@@ -1022,7 +1044,7 @@ async function fetchLinks() {
     SEL = new Set(LINKS.map(l => l._i));
     SRC_ON = srcAvailable();
     NOTES = {};
-    TRANS = {}; SENTMAP = {}; SENTORDER = [];
+    TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {};
     refreshAiUI();
 
     renderTree();
@@ -1316,14 +1338,48 @@ function gatherContent() {
       const wantSrc = haveSrc && idx >= 0 && (segHe || segEn);
       if (!sel.length && !wantSrc) continue;   // nothing chosen in this section
 
+      // R/T/S popup footnotes (EPUB, Section mode only): a marker row after
+      // the section's source text, and matching footnote asides at the
+      // section's end — Rashi / Tosafot / Steinsaltz only, and only those
+      // actually selected in this section.
+      let rtsMarks = null, rtsNotesList = null;
+      if (wantSrc && RTS_POPUPS) {
+        const segLinks = [];
+        for (const c of segCats(seg)) for (const l of segCatLinks(seg, c)) if (SEL.has(l._i)) segLinks.push(l);
+        const groups = groupByComm(segLinks)
+          .filter(([name]) => commRank(name) <= 2)
+          .sort((a, b) => commRank(a[0]) - commRank(b[0]));
+        if (groups.length) {
+          const letters = ["R", "T", "S"];
+          rtsMarks = []; rtsNotesList = [];
+          groups.forEach(([name, links]) => {
+            const letter = letters[commRank(name)];
+            const id = "fn" + nextId();
+            rtsMarks.push({ letter, comm: name, id });
+            rtsNotesList.push({
+              id, letter, comm: name,
+              pieces: links.map(l => ({
+                ref: l.sourceRef || l.ref || "",
+                he: incHe ? stripHtml(asText(l.he)) : "",
+                en: incEn ? stripHtml(asText(l.text)) : "",
+                ai: (TRANS[canonicalRef(l)] && TRANS[canonicalRef(l)].text) || ""
+              }))
+            });
+          });
+        }
+      }
+
       const anchor = nextId();
-      toc.push({ level: 1, text: seg, anchor });
-      blocks.push({ type: "h1", text: seg, anchor, first: blocks.length === 0 });
+      const inc = incipitFor(seg);
+      const h1text = seg + (inc ? " \u2014 " + inc : "");
+      toc.push({ level: 1, text: h1text, anchor });
+      blocks.push({ type: "h1", text: h1text, anchor, first: blocks.length === 0 });
 
       // the section's own text first, if the original text is on
       if (wantSrc) {
         if (incHe && segHe) blocks.push({ type: "he", text: segHe });
         if (incEn && segEn) blocks.push({ type: "en", text: segEn });
+        if (rtsMarks && rtsMarks.length) blocks.push({ type: "rtsrow", marks: rtsMarks });
         emitNote("S:" + seg);
         emitNote("__src__");   // a whole-source note (from Category mode) prints once, here
       }
@@ -1355,6 +1411,7 @@ function gatherContent() {
           }
         }
       }
+      if (rtsNotesList && rtsNotesList.length) blocks.push({ type: "rtsnotes", notes: rtsNotesList });
     }
     return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
   }
@@ -1449,6 +1506,7 @@ RULES — follow all of them exactly:
 3. Each passage begins with a header line like @@Example_Header@@. Copy every header line back EXACTLY, character for character. Never translate, reword, reformat, or decorate a header line.
 4. Keep the blocks in the same order as given.
 5. Include a block for every passage. If you cannot translate one, output its header followed by: [unable to translate]
+6. After the final block, output one last line containing exactly: @@DONE@@
 
 REPLY FORMAT:
 
@@ -1456,6 +1514,7 @@ REPLY FORMAT:
 translation of passage 1
 @@Header_2@@
 translation of passage 2
+@@DONE@@
 
 PASSAGES TO TRANSLATE:
 
@@ -1512,16 +1571,22 @@ function confirmDiscardTranslations() {
 }
 function updateBackupLinkVisibility() {
   const el = $("aiRestoreBackup");
+  const delEl = $("aiDeleteBackup");
   if (!el) return;
+  let raw = null;
+  try { raw = localStorage.getItem(AI_BACKUP_KEY); } catch (e) {}
   const backup = loadAiBackup();
   const n = backup && backup.items ? Object.keys(backup.items).length : 0;
   if (n) {
     const d = new Date(backup.savedAt);
     const when = isNaN(d.getTime()) ? backup.savedAt : d.toLocaleString();
-    el.textContent = `restore backup (${n} texts, ${when})`;
+    const kb = Math.max(1, Math.round((raw ? raw.length : 0) / 1024));
+    el.textContent = `restore backup (${n} texts, ~${kb} KB, ${when})`;
     el.style.display = "";
+    if (delEl) delEl.style.display = "";
   } else {
     el.style.display = "none";
+    if (delEl) delEl.style.display = "none";
   }
 }
 
@@ -1570,9 +1635,19 @@ function parseAiBlocks(cleanText) {
 }
 
 function applyAiPaste(raw, lang) {
-  if (!SENTORDER.length) return { matchedCount: 0, total: 0, unmatched: [], positional: [], nothing: true };
+  if (!SENTORDER.length) return { matchedCount: 0, total: 0, unmatched: [], positional: [], short: [], nothing: true };
   const clean = aiPreClean(raw);
-  const blocks = parseAiBlocks(clean).map(b => ({
+  let parsed = parseAiBlocks(clean);
+
+  // strip the @@DONE@@ sentinel block(s) before any ref matching or the
+  // positional fallback — they must never be treated as translated text
+  let doneSeen = false;
+  parsed = parsed.filter(b => {
+    if (normalizeSlug(b.header) === "done") { doneSeen = true; return false; }
+    return true;
+  });
+
+  const blocks = parsed.map(b => ({
     ...b, ref: SENTMAP[normalizeSlug(b.header)] || null, positional: false
   }));
 
@@ -1588,8 +1663,18 @@ function applyAiPaste(raw, lang) {
     }
   }
 
+  // no @@DONE@@ seen + at least one real block parsed → the reply looks
+  // truncated; don't store the final block, it will be re-offered next batch
+  let droppedRef = null;
+  const truncated = !doneSeen && blocks.length > 0;
+  if (truncated) {
+    const last = blocks.pop();
+    droppedRef = last.ref || null;
+  }
+
   let matchedCount = 0;
   const positional = [];
+  const short = [];
   for (const b of blocks) {
     if (!b.ref) continue;
     const body = b.bodyLines.join("\n").trim();
@@ -1598,10 +1683,11 @@ function applyAiPaste(raw, lang) {
     TRANS[b.ref] = { text: body, lang };
     matchedCount++;
     if (b.positional) positional.push(b.ref);
+    if (SENTLEN[b.ref] > 200 && body.length < 0.25 * SENTLEN[b.ref]) short.push(b.ref);
   }
 
   const unmatched = SENTORDER.filter(r => !TRANS[r]);
-  return { matchedCount, total: SENTORDER.length, unmatched, positional, nothing: matchedCount === 0 };
+  return { matchedCount, total: SENTORDER.length, unmatched, positional, short, truncated, droppedRef, nothing: matchedCount === 0 };
 }
 
 $("aiHelperBtn").onclick = () => {
@@ -1626,12 +1712,13 @@ $("aiCopyBtn").onclick = async () => {
   }
   if (!batch.length) { const he = stripHtml(asText(list[0].he)); batch.push({ l: list[0], he }); total = he.length; }
 
-  SENTMAP = {}; SENTORDER = [];
+  SENTMAP = {}; SENTORDER = []; SENTLEN = {};
   const passages = batch.map(({ l, he }) => {
     const ref = canonicalRef(l);
     const header = aiPromptHeader(ref);
     SENTMAP[normalizeSlug(header)] = ref;
     SENTORDER.push(ref);
+    SENTLEN[ref] = he.length;
     return header + "\n" + he;
   }).join("\n\n");
 
@@ -1639,7 +1726,8 @@ $("aiCopyBtn").onclick = async () => {
   const remaining = list.length - batch.length;
   if (ok) {
     aiReport(`Copied ${batch.length} text${batch.length === 1 ? "" : "s"} (~${total.toLocaleString()} Hebrew characters) — paste into an AI chat.` +
-      (remaining ? ` ${remaining} text${remaining === 1 ? "" : "s"} remain for the next batch.` : ""));
+      (remaining ? ` ${remaining} text${remaining === 1 ? "" : "s"} remain for the next batch.` : "") +
+      ` You can still tick more texts in the tree \u2014 they will join the next batch.`);
   } else {
     aiReport("Couldn't copy — check clipboard permissions.", true);
   }
@@ -1663,6 +1751,8 @@ $("aiApplyBtn").onclick = () => {
     let msg = `Matched ${r.matchedCount} of ${r.total}.`;
     if (r.unmatched.length) msg += ` Unmatched: ${r.unmatched.join(", ")}.`;
     if (r.positional.length) msg += ` Matched by position (check): ${r.positional.join(", ")}.`;
+    if (r.truncated) msg += ` Reply looks cut off \u2014 the last passage (${r.droppedRef || "last block"}) was not saved; it will be offered again in the next batch.`;
+    if (r.short && r.short.length) msg += ` Unusually short (check these): ${r.short.join(", ")}.`;
     aiReport(msg, r.unmatched.length > 0 && r.matchedCount === 0);
   }
   refreshAiUI();
@@ -1690,6 +1780,17 @@ $("aiRestoreBackup").onclick = () => {
   aiReport(`Restored ${n} translations.`);
   refreshAiUI();
   if ($("previewCard").style.display !== "none") renderPreview();
+};
+
+$("aiDeleteBackup").onclick = () => {
+  if (!confirm("Delete the saved backup from this browser?")) return;
+  try {
+    localStorage.removeItem(AI_BACKUP_KEY);
+    aiReport("Backup deleted.");
+  } catch (e) {
+    aiReport("Couldn't delete backup: " + e.message, true);
+  }
+  updateBackupLinkVisibility();
 };
 
 // --- shared output helpers -------------------------------------------------
@@ -1944,9 +2045,11 @@ function epubBody(content) {
   }
 
   let curH1 = null;
+  let srcAnchor = null;
   for (const b of content.blocks) {
     if (b.type === "h1") {
       curH1 = b.anchor;
+      if (content.haveSrc && srcAnchor === null && b.text.indexOf("Source \u2014 ") === 0) srcAnchor = b.anchor;
       s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
       const kids = (node[b.anchor] && node[b.anchor].kids) || [];
       s += `<p class="secnav"><a href="#bookcontents">⌂ contents</a>${kids.length ? " · " + menu(kids) : ""}</p>\n`;
@@ -1955,7 +2058,8 @@ function epubBody(content) {
       s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
       const kids = (node[b.anchor] && node[b.anchor].kids) || [];
       const up = curH1 ? `<a href="#${curH1}">↑ section</a>` : `<a href="#bookcontents">⌂ contents</a>`;
-      if (kids.length || curH1) s += `<p class="secnav">${up}${kids.length ? " · " + menu(kids) : ""}</p>\n`;
+      const srcLink = (srcAnchor && b.anchor !== srcAnchor) ? ` \u00b7 <a href="#${srcAnchor}">\u25c4 source</a>` : "";
+      if (kids.length || curH1 || srcLink) s += `<p class="secnav">${up}${kids.length ? " · " + menu(kids) : ""}${srcLink}</p>\n`;
     }
     else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
@@ -1963,6 +2067,22 @@ function epubBody(content) {
     else if (b.type === "ai") s += `<p class="ai-label">AI translation (${xmlEsc(b.lang)})</p>\n<p class="ai">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "rtsrow") {
+      s += `<p class="rtsrow">` + b.marks.map(m => `<a class="rts" epub:type="noteref" href="#${m.id}" title="${xmlEsc(m.comm)}">${xmlEsc(m.letter)}</a>`).join(" ") + `</p>\n`;
+    }
+    else if (b.type === "rtsnotes") {
+      for (const note of b.notes) {
+        s += `<aside epub:type="footnote" id="${note.id}" class="fnaside">\n`;
+        s += `<p class="fnhead">${xmlEsc(note.letter)} \u00b7 ${xmlEsc(note.comm)}</p>\n`;
+        for (const piece of note.pieces) {
+          s += `<p class="ref">${xmlEsc(piece.ref)}</p>\n`;
+          if (piece.he) s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(piece.he)}</p>\n`;
+          if (piece.en) s += `<p class="en">${xmlEsc(piece.en)}</p>\n`;
+          if (piece.ai) s += `<p class="ai-label">AI translation</p>\n<p class="ai">${xmlEsc(piece.ai)}</p>\n`;
+        }
+        s += `</aside>\n`;
+      }
+    }
   }
   return s;
 }
@@ -1976,6 +2096,7 @@ async function buildEpub(content) {
   const title = content.title;
   const tree = tocTree(content.toc);
   const modified = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  const bookLang = content.incEn ? "en" : "he";
 
   const containerXml =
 `<?xml version="1.0" encoding="UTF-8"?>
@@ -1988,11 +2109,11 @@ async function buildEpub(content) {
 
   const opf =
 `<?xml version="1.0" encoding="UTF-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="he">
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="${bookLang}">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
     <dc:identifier id="bookid">${xmlEsc(id)}</dc:identifier>
     <dc:title>${xmlEsc(title)}</dc:title>
-    <dc:language>he</dc:language>
+    <dc:language>${bookLang}</dc:language>
     <dc:creator>Sefaria</dc:creator>
     <meta property="dcterms:modified">${modified}</meta>
   </metadata>
@@ -2073,12 +2194,16 @@ ol.ctoc-works a { color: #6b5329; }
 p.secnav { font-size: .8em; color: #6f675a; margin: 0 0 .6em; }
 p.secnav a { color: #6b5329; text-decoration: none; }
 nav ol { list-style: none; }
+p.rtsrow { font-size: .8em; margin: .2em 0 .6em; }
+a.rts { display: inline-block; padding: .05em .5em; margin-right: .3em; border: 1px solid #ddd5c7; border-radius: .8em; color: #6b5329; text-decoration: none; font-size: .95em; vertical-align: super; }
+aside.fnaside { border-top: 1px solid #ddd5c7; margin: .8em 0; padding-top: .5em; font-size: .92em; }
+p.fnhead { font-weight: bold; font-size: .95em; margin: 0 0 .3em; }
 `;
 
   const textXhtml =
 `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
 <head><meta charset="utf-8"/><title>${xmlEsc(title)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
 <body>
 ${epubBody(content)}</body>
@@ -2366,7 +2491,8 @@ function renderPreview() {
         secBody += pvGrp(cat, arr.length, catBody, "", true);
         secN += arr.length;
       }
-      html += pvGrp(seg, secN, secBody, "top", false);
+      const incTitle = seg + (incipitFor(seg) ? " \u2014 " + incipitFor(seg) : "");
+      html += pvGrp(incTitle, secN, secBody, "top", false);
     }
   } else {
     // ---------------- category mode ----------------
