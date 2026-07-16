@@ -255,6 +255,29 @@
     font-family: inherit; font-size: 14px; padding: 6px;
     border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
   }
+
+  /* ---- AI batch board ---- */
+  .batchboard { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .batchboard .batchbtn {
+    width: 46px; margin: 0; padding: 10px 0; font-size: 15px; font-weight: bold;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  .batchbtn.st-todo { background: #f2ecdd; color: var(--accent-dark); }
+  .batchbtn.st-todo:hover { background: #ece3d0; }
+  .batchbtn.st-sent { background: #e8c877; color: #5a4310; border-color: #cfa84e; }
+  .batchbtn.st-sent:hover { background: #dfba5e; }
+  .batchbtn.st-done { background: #4a7c59; color: #fff; border-color: #3d684a; }
+  .batchbtn.st-done:hover { background: #3d684a; }
+  .batchbtn.st-warn { background: #a23b2c; color: #fff; border-color: #872f23; }
+  .batchbtn.st-warn:hover { background: #872f23; }
+  .batchempty { font-size: 13px; color: var(--muted); padding: 6px 2px; }
+  .batchlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .bl-item { display: inline-flex; align-items: center; gap: 5px; }
+  .bl-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; border: 1px solid var(--line); }
+  .bl-dot.bl-todo { background: #f2ecdd; }
+  .bl-dot.bl-sent { background: #e8c877; }
+  .bl-dot.bl-done { background: #4a7c59; }
+  .bl-dot.bl-warn { background: #a23b2c; }
 </style>
 </head>
 <body>
@@ -309,10 +332,22 @@
         <input type="text" id="aiLang" value="English" autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>
       <div class="ai-row">
-        <button type="button" id="aiCopyBtn">Copy texts for translation</button>
+        <label for="aiBatchSize">Batch size (Hebrew characters per batch)</label>
+        <input type="text" id="aiBatchSize" value="5000" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>
       <div class="ai-row">
-        <button type="button" class="secondary" id="aiPasteBtn">Paste translations</button>
+        <label>Batches — tap one to copy it for the AI, then use Paste reply</label>
+        <div class="batchboard" id="batchBoard"></div>
+        <div class="batchlegend" id="batchLegend" style="display:none">
+          <span class="bl-item"><span class="bl-dot bl-todo"></span>not sent</span>
+          <span class="bl-item"><span class="bl-dot bl-sent"></span>awaiting reply</span>
+          <span class="bl-item"><span class="bl-dot bl-done"></span>done</span>
+          <span class="bl-item"><span class="bl-dot bl-warn"></span>needs attention — tap to re-copy</span>
+        </div>
+        <div class="clearrow" id="aiRebuildRow" style="display:none; text-align:left"><span class="globaltoggle" id="aiRebuildBatches">rebuild batches</span></div>
+      </div>
+      <div class="ai-row">
+        <button type="button" id="aiPasteBtn">Paste reply</button>
         <div id="aiPasteArea" style="display:none">
           <textarea id="aiPasteText" placeholder="Paste the AI's reply here"></textarea>
           <button type="button" id="aiApplyBtn">Apply</button>
@@ -356,7 +391,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 23;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 24;   // bump when deploying, shows in footer + built books
 // Known risk: Send-to-Kindle's EPUB→KFX conversion sometimes degrades noteref/
 // footnote to a plain jump-link, varying by device; if reported, set this false.
 const RTS_POPUPS = true;  // EPUB popup footnotes for Rashi/Tosafot/Steinsaltz
@@ -398,10 +433,17 @@ let NOTES = {};
 // never by l._i, since indices are only stable within one fetch.
 // SENTMAP / SENTORDER describe the most recent copy batch, used to match the
 // AI's reply back to the right text (direct match, or positional fallback).
+// SENTHE keeps each batched ref's Hebrew, so a batch can be re-copied.
 let TRANS = {};
 let SENTMAP = {};
 let SENTORDER = [];
 let SENTLEN = {};
+let SENTHE = {};
+// Batch board. null until built (panel first opened, or rebuilt). Each batch
+// owns an ordered list of canonical refs. SENTMAP / SENTORDER / SENTLEN /
+// SENTHE cover the WHOLE board, so one universal Paste can match a reply to
+// any batch, in any order.
+let BATCHES = null;   // [{ refs: [...], status: "todo"|"sent"|"done"|"warn", short: [] }]
 
 function canonicalRef(l) { return l.sourceRef || l.ref || ""; }
 
@@ -1044,7 +1086,7 @@ async function fetchLinks() {
     SEL = new Set(LINKS.map(l => l._i));
     SRC_ON = srcAvailable();
     NOTES = {};
-    TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {};
+    TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {}; BATCHES = null;
     refreshAiUI();
 
     renderTree();
@@ -1307,20 +1349,72 @@ function gatherContent() {
     if (nt && !notedone.has(key)) { notedone.add(key); blocks.push({ type: "note", text: nt, date: _noteDate }); }
   };
 
+  // Selected Rashi / Tosafot / Steinsaltz links of one section, prepared as
+  // popup-footnote data: { marks: [{letter, comm, id}], notes: [{id, letter,
+  // comm, pieces}] }. Returns null when the flag is off or nothing selected
+  // in this section qualifies. Shared by Section mode (marker row after the
+  // section's source line) and Category mode (marker row after each verse of
+  // the whole Source section).
+  const rtsFor = (seg) => {
+    if (!RTS_POPUPS || !SEG_TREE[seg]) return null;
+    const segLinks = [];
+    for (const c of segCats(seg)) for (const l of segCatLinks(seg, c)) if (SEL.has(l._i)) segLinks.push(l);
+    const groups = groupByComm(segLinks)
+      .filter(([name]) => commRank(name) <= 2)
+      .sort((a, b) => commRank(a[0]) - commRank(b[0]));
+    if (!groups.length) return null;
+    const letters = ["R", "T", "S"];
+    const marks = [], notes = [];
+    groups.forEach(([name, links]) => {
+      const letter = letters[commRank(name)];
+      const id = "fn" + nextId();
+      marks.push({ letter, comm: name, id });
+      notes.push({
+        id, letter, comm: name,
+        pieces: links.map(l => ({
+          ref: l.sourceRef || l.ref || "",
+          he: incHe ? stripHtml(asText(l.he)) : "",
+          en: incEn ? stripHtml(asText(l.text)) : "",
+          ai: (TRANS[canonicalRef(l)] && TRANS[canonicalRef(l)].text) || ""
+        }))
+      });
+    });
+    return { marks, notes };
+  };
+
   const emitWholeSource = () => {
     const srcLabel = SRC.heRef || SRC.ref || ref;
     const anchor = nextId();
     toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
     blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true });
+    // which source slice belongs to which section, for per-verse R/T/S markers
+    const segForIdx = {};
+    for (const s of SEG_ORDER) {
+      const si = srcIdxFor(s);
+      if (si >= 0) segForIdx[si] = s;
+    }
+    const allNotes = [];
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
       if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
+      const seg = segForIdx[i];
+      if (seg) {
+        const rts = rtsFor(seg);
+        if (rts) {
+          blocks.push({ type: "rtsrow", marks: rts.marks });
+          for (const nt of rts.notes) allNotes.push(nt);
+        }
+      }
     }
     emitNote("__src__");
     // notes written on individual sections of the source (in Section mode)
     // shouldn't vanish just because the build happens in Category mode
     for (const s of SEG_ORDER) emitNote("S:" + s);
+    // all the source's popup-footnote asides live at the end of the Source
+    // section (popup renderers open them in place; fallback renderers show
+    // them as a notes block between the source and the first category)
+    if (allNotes.length) blocks.push({ type: "rtsnotes", notes: allNotes });
   };
 
   // ---------------- section mode ----------------
@@ -1338,36 +1432,7 @@ function gatherContent() {
       const wantSrc = haveSrc && idx >= 0 && (segHe || segEn);
       if (!sel.length && !wantSrc) continue;   // nothing chosen in this section
 
-      // R/T/S popup footnotes (EPUB, Section mode only): a marker row after
-      // the section's source text, and matching footnote asides at the
-      // section's end — Rashi / Tosafot / Steinsaltz only, and only those
-      // actually selected in this section.
-      let rtsMarks = null, rtsNotesList = null;
-      if (wantSrc && RTS_POPUPS) {
-        const segLinks = [];
-        for (const c of segCats(seg)) for (const l of segCatLinks(seg, c)) if (SEL.has(l._i)) segLinks.push(l);
-        const groups = groupByComm(segLinks)
-          .filter(([name]) => commRank(name) <= 2)
-          .sort((a, b) => commRank(a[0]) - commRank(b[0]));
-        if (groups.length) {
-          const letters = ["R", "T", "S"];
-          rtsMarks = []; rtsNotesList = [];
-          groups.forEach(([name, links]) => {
-            const letter = letters[commRank(name)];
-            const id = "fn" + nextId();
-            rtsMarks.push({ letter, comm: name, id });
-            rtsNotesList.push({
-              id, letter, comm: name,
-              pieces: links.map(l => ({
-                ref: l.sourceRef || l.ref || "",
-                he: incHe ? stripHtml(asText(l.he)) : "",
-                en: incEn ? stripHtml(asText(l.text)) : "",
-                ai: (TRANS[canonicalRef(l)] && TRANS[canonicalRef(l)].text) || ""
-              }))
-            });
-          });
-        }
-      }
+      const rts = wantSrc ? rtsFor(seg) : null;
 
       const anchor = nextId();
       const inc = incipitFor(seg);
@@ -1379,7 +1444,7 @@ function gatherContent() {
       if (wantSrc) {
         if (incHe && segHe) blocks.push({ type: "he", text: segHe });
         if (incEn && segEn) blocks.push({ type: "en", text: segEn });
-        if (rtsMarks && rtsMarks.length) blocks.push({ type: "rtsrow", marks: rtsMarks });
+        if (rts) blocks.push({ type: "rtsrow", marks: rts.marks });
         emitNote("S:" + seg);
         emitNote("__src__");   // a whole-source note (from Category mode) prints once, here
       }
@@ -1411,7 +1476,7 @@ function gatherContent() {
           }
         }
       }
-      if (rtsNotesList && rtsNotesList.length) blocks.push({ type: "rtsnotes", notes: rtsNotesList });
+      if (rts) blocks.push({ type: "rtsnotes", notes: rts.notes });
     }
     return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
   }
@@ -1464,6 +1529,7 @@ function gatherContent() {
 // ===========================================================================
 const AI_BATCH_CHAR_LIMIT = 5000;
 const AI_BACKUP_KEY = "sefariaLinksTransBackup";
+const BATCH_SIZE_KEY = "sefariaLinksBatchSize";
 
 // Eligible = ticked (SEL), has Hebrew, not yet translated — in the same
 // order gatherContent would emit them for the current GROUPMODE, so a copy
@@ -1521,24 +1587,77 @@ PASSAGES TO TRANSLATE:
 ${passages}`;
 }
 
-// Whether including this text would still keep the batch under the char
-// cap — always take at least one text, even if it alone exceeds it.
+// Repaint the batch board and backup links from current state. Called from
+// syncTreeUI on every selection change — it never rebuilds the board (that is
+// explicit, via buildBatches), it only repaints and surfaces the rebuild hint.
 function refreshAiUI() {
-  const btn = $("aiCopyBtn");
-  if (!btn) return;
+  renderBatchBoard();
+}
+
+function batchSizeSetting() {
+  let v = parseInt(($("aiBatchSize").value || "").replace(/[^0-9]/g, ""), 10);
+  if (!v || v < 500) v = 5000;
+  if (v > 100000) v = 100000;
+  $("aiBatchSize").value = String(v);
+  try { localStorage.setItem(BATCH_SIZE_KEY, String(v)); } catch (e) {}
+  return v;
+}
+
+// (Re)build the batch board from the currently eligible texts. Refs that
+// already have a translation are excluded (eligibleLinksInOrder does that),
+// so rebuilding mid-job never loses finished work — it only re-batches what
+// is still untranslated.
+function buildBatches() {
+  const limit = batchSizeSetting();
   const list = eligibleLinksInOrder();
-  const n = list.length;
-  if (!n) {
-    btn.disabled = true;
-    btn.textContent = "All selected texts translated";
-  } else {
-    btn.disabled = false;
-    let total = 0;
-    for (const l of list) total += stripHtml(asText(l.he)).length;
-    btn.textContent = (total > AI_BATCH_CHAR_LIMIT && n > 1)
-      ? `Copy next batch (${n} texts remaining)`
-      : `Copy texts for translation (${n} remaining)`;
+  SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {};
+  BATCHES = [];
+  let cur = null, curLen = 0;
+  for (const l of list) {
+    const ref = canonicalRef(l);
+    const he = stripHtml(asText(l.he));
+    SENTMAP[normalizeSlug(aiPromptHeader(ref))] = ref;
+    SENTORDER.push(ref);
+    SENTLEN[ref] = he.length;
+    SENTHE[ref] = he;
+    if (!cur || (cur.refs.length && curLen + he.length > limit)) {
+      cur = { refs: [], status: "todo", short: [] };
+      BATCHES.push(cur);
+      curLen = 0;
+    }
+    cur.refs.push(ref);
+    curLen += he.length;
   }
+  renderBatchBoard();
+}
+
+const BATCH_ST_LABEL = { todo: "not sent", sent: "awaiting reply", done: "done", warn: "needs attention" };
+
+function renderBatchBoard() {
+  const board = $("batchBoard");
+  if (!board) return;
+  if (!BATCHES) {
+    board.innerHTML = "";
+    $("batchLegend").style.display = "none";
+    $("aiRebuildRow").style.display = "none";
+    updateBackupLinkVisibility();
+    return;
+  }
+  if (!BATCHES.length) {
+    board.innerHTML = '<div class="batchempty">All selected texts are translated.</div>';
+    $("batchLegend").style.display = "none";
+  } else {
+    board.innerHTML = BATCHES.map((b, i) =>
+      `<button type="button" class="batchbtn st-${b.status}" data-b="${i}" title="Batch ${i + 1}: ${b.refs.length} text${b.refs.length === 1 ? "" : "s"} \u2014 ${BATCH_ST_LABEL[b.status]}">${i + 1}</button>`
+    ).join("");
+    $("batchLegend").style.display = "";
+  }
+  // texts ticked after the board was built are not in any batch yet
+  const extra = eligibleLinksInOrder().filter(l => !(canonicalRef(l) in SENTLEN)).length;
+  $("aiRebuildRow").style.display = (extra || BATCHES.length) ? "" : "none";
+  $("aiRebuildBatches").textContent = extra
+    ? `rebuild batches (${extra} new text${extra === 1 ? "" : "s"} to include)`
+    : "rebuild batches";
   updateBackupLinkVisibility();
 }
 
@@ -1634,8 +1753,81 @@ function parseAiBlocks(cleanText) {
   return blocks;
 }
 
+async function copyBatch(i) {
+  const b = BATCHES && BATCHES[i];
+  if (!b) return;
+  const missing = b.refs.filter(r => !TRANS[r]);
+  if (!missing.length) {
+    aiReport(`Batch ${i + 1} is fully translated` +
+      (b.short.length ? ` \u2014 unusually short, check: ${b.short.join(", ")}.` : "."));
+    return;
+  }
+  const lang = ($("aiLang").value || "").trim() || "English";
+  const passages = missing.map(r => aiPromptHeader(r) + "\n" + (SENTHE[r] || "")).join("\n\n");
+  const ok = await copyToClipboard(buildAiPrompt(lang, passages));
+  if (ok) {
+    if (b.status !== "done") b.status = "sent";
+    aiReport(`Copied batch ${i + 1} (${missing.length} text${missing.length === 1 ? "" : "s"}) \u2014 paste it into an AI chat, then tap Paste reply.`);
+  } else {
+    aiReport("Couldn't copy \u2014 check clipboard permissions.", true);
+  }
+  renderBatchBoard();
+}
+
+// After a paste: recolor every batch from the ground truth (TRANS).
+function updateBatchStatuses(appliedRefs, shortRefs) {
+  if (!BATCHES) return;
+  const applied = new Set(appliedRefs);
+  const shorts = new Set(shortRefs);
+  for (const b of BATCHES) {
+    for (const r of b.refs) if (shorts.has(r) && b.short.indexOf(r) < 0) b.short.push(r);
+    const missing = b.refs.filter(r => !TRANS[r]);
+    const touched = b.refs.some(r => applied.has(r));
+    if (!missing.length) b.status = b.short.length ? "warn" : "done";
+    else if (touched) b.status = "warn";   // a paste reached it but left gaps
+    // batches the paste didn't touch keep their current status
+  }
+}
+
+// One universal paste: read the clipboard if the browser allows it,
+// otherwise fall back to the manual textarea. Header matching decides which
+// batch(es) the reply belongs to — the user never aims a paste.
+async function pasteReply() {
+  let raw = "";
+  if (navigator.clipboard && navigator.clipboard.readText) {
+    try { raw = await navigator.clipboard.readText(); } catch (e) {}
+  }
+  if (raw && raw.trim()) { applyReply(raw); return; }
+  $("aiPasteArea").style.display = "block";
+  $("aiPasteText").focus();
+  aiReport("Couldn't read the clipboard automatically \u2014 paste the reply into the box and tap Apply.");
+}
+
+// Returns true when at least one translation was applied.
+function applyReply(raw) {
+  const lang = ($("aiLang").value || "").trim() || "English";
+  const r = applyAiPaste(raw, lang);
+  if (r.nothing) {
+    aiReport("Nothing matched \u2014 did you copy the AI's reply (not your own message)?", true);
+    return false;
+  }
+  updateBatchStatuses(r.appliedRefs, r.short);
+  const done = BATCHES ? BATCHES.filter(b => b.status === "done").length : 0;
+  const totalB = BATCHES ? BATCHES.length : 0;
+  let msg = `Applied ${r.appliedRefs.length} translation${r.appliedRefs.length === 1 ? "" : "s"}.`;
+  if (totalB) msg += ` ${done} of ${totalB} batch${totalB === 1 ? "" : "es"} complete.`;
+  if (r.positional.length) msg += ` Matched by position (check): ${r.positional.join(", ")}.`;
+  if (r.truncated) msg += ` Reply looks cut off \u2014 the last passage (${r.droppedRef || "last block"}) was not saved; its batch stays open, tap it to re-copy what is missing.`;
+  if (r.short.length) msg += ` Unusually short (check these): ${r.short.join(", ")}.`;
+  if (r.unknownHeaders) msg += ` Skipped ${r.unknownHeaders} block${r.unknownHeaders === 1 ? "" : "s"} whose header matched nothing.`;
+  aiReport(msg);
+  renderBatchBoard();
+  if ($("previewCard").style.display !== "none") renderPreview();
+  return true;
+}
+
 function applyAiPaste(raw, lang) {
-  if (!SENTORDER.length) return { matchedCount: 0, total: 0, unmatched: [], positional: [], short: [], nothing: true };
+  if (!SENTORDER.length) return { appliedRefs: [], positional: [], short: [], truncated: false, droppedRef: null, unknownHeaders: 0, nothing: true };
   const clean = aiPreClean(raw);
   let parsed = parseAiBlocks(clean);
 
@@ -1664,7 +1856,7 @@ function applyAiPaste(raw, lang) {
   }
 
   // no @@DONE@@ seen + at least one real block parsed → the reply looks
-  // truncated; don't store the final block, it will be re-offered next batch
+  // truncated; don't store the final block, it stays open on its batch
   let droppedRef = null;
   const truncated = !doneSeen && blocks.length > 0;
   if (truncated) {
@@ -1672,92 +1864,55 @@ function applyAiPaste(raw, lang) {
     droppedRef = last.ref || null;
   }
 
-  let matchedCount = 0;
+  const appliedRefs = [];
   const positional = [];
   const short = [];
+  let unknownHeaders = 0;
   for (const b of blocks) {
-    if (!b.ref) continue;
+    if (!b.ref) { unknownHeaders++; continue; }
     const body = b.bodyLines.join("\n").trim();
     if (!body) continue;
     if (/^\[unable to translate\]$/i.test(body)) continue;   // leave untranslated
     TRANS[b.ref] = { text: body, lang };
-    matchedCount++;
+    appliedRefs.push(b.ref);
     if (b.positional) positional.push(b.ref);
     if (SENTLEN[b.ref] > 200 && body.length < 0.25 * SENTLEN[b.ref]) short.push(b.ref);
   }
-
-  const unmatched = SENTORDER.filter(r => !TRANS[r]);
-  return { matchedCount, total: SENTORDER.length, unmatched, positional, short, truncated, droppedRef, nothing: matchedCount === 0 };
+  return { appliedRefs, positional, short, truncated, droppedRef, unknownHeaders, nothing: appliedRefs.length === 0 };
 }
 
 $("aiHelperBtn").onclick = () => {
   const p = $("aiPanel");
   const show = p.style.display !== "block";
   p.style.display = show ? "block" : "none";
-  if (show) refreshAiUI();
-};
-
-$("aiCopyBtn").onclick = async () => {
-  const list = eligibleLinksInOrder();
-  if (!list.length) return;
-  const lang = ($("aiLang").value || "").trim() || "English";
-
-  const batch = [];
-  let total = 0;
-  for (const l of list) {
-    const he = stripHtml(asText(l.he));
-    if (batch.length && total + he.length > AI_BATCH_CHAR_LIMIT) break;
-    batch.push({ l, he });
-    total += he.length;
+  if (show) {
+    if (BATCHES === null) buildBatches();
+    else renderBatchBoard();
   }
-  if (!batch.length) { const he = stripHtml(asText(list[0].he)); batch.push({ l: list[0], he }); total = he.length; }
-
-  SENTMAP = {}; SENTORDER = []; SENTLEN = {};
-  const passages = batch.map(({ l, he }) => {
-    const ref = canonicalRef(l);
-    const header = aiPromptHeader(ref);
-    SENTMAP[normalizeSlug(header)] = ref;
-    SENTORDER.push(ref);
-    SENTLEN[ref] = he.length;
-    return header + "\n" + he;
-  }).join("\n\n");
-
-  const ok = await copyToClipboard(buildAiPrompt(lang, passages));
-  const remaining = list.length - batch.length;
-  if (ok) {
-    aiReport(`Copied ${batch.length} text${batch.length === 1 ? "" : "s"} (~${total.toLocaleString()} Hebrew characters) — paste into an AI chat.` +
-      (remaining ? ` ${remaining} text${remaining === 1 ? "" : "s"} remain for the next batch.` : "") +
-      ` You can still tick more texts in the tree \u2014 they will join the next batch.`);
-  } else {
-    aiReport("Couldn't copy — check clipboard permissions.", true);
-  }
-  refreshAiUI();
 };
 
-$("aiPasteBtn").onclick = () => {
-  const area = $("aiPasteArea");
-  const show = area.style.display !== "block";
-  area.style.display = show ? "block" : "none";
-  if (show) $("aiPasteText").focus();
-};
+$("aiPasteBtn").onclick = () => { pasteReply(); };
 
 $("aiApplyBtn").onclick = () => {
-  const lang = ($("aiLang").value || "").trim() || "English";
-  const raw = $("aiPasteText").value;
-  const r = applyAiPaste(raw, lang);
-  if (r.nothing) {
-    aiReport("Nothing matched — did you paste the AI's reply (not your own message)?", true);
-  } else {
-    let msg = `Matched ${r.matchedCount} of ${r.total}.`;
-    if (r.unmatched.length) msg += ` Unmatched: ${r.unmatched.join(", ")}.`;
-    if (r.positional.length) msg += ` Matched by position (check): ${r.positional.join(", ")}.`;
-    if (r.truncated) msg += ` Reply looks cut off \u2014 the last passage (${r.droppedRef || "last block"}) was not saved; it will be offered again in the next batch.`;
-    if (r.short && r.short.length) msg += ` Unusually short (check these): ${r.short.join(", ")}.`;
-    aiReport(msg, r.unmatched.length > 0 && r.matchedCount === 0);
+  if (applyReply($("aiPasteText").value)) {
+    $("aiPasteText").value = "";
+    $("aiPasteArea").style.display = "none";
   }
-  refreshAiUI();
-  if ($("previewCard").style.display !== "none") renderPreview();
 };
+
+$("batchBoard").addEventListener("click", e => {
+  const btn = e.target.closest(".batchbtn");
+  if (btn) copyBatch(parseInt(btn.dataset.b, 10));
+});
+
+$("aiRebuildBatches").onclick = () => {
+  buildBatches();
+  aiReport("Batches rebuilt from the current selection.");
+};
+
+$("aiBatchSize").addEventListener("change", () => {
+  if (BATCHES && BATCHES.length) aiReport("Tap rebuild batches to apply the new batch size.");
+});
 
 $("aiSaveBackup").onclick = () => {
   try {
@@ -1777,6 +1932,7 @@ $("aiRestoreBackup").onclick = () => {
   for (const ref of Object.keys(backup.items)) {
     if (curRefs.has(ref)) { TRANS[ref] = backup.items[ref]; n++; }
   }
+  updateBatchStatuses([], []);
   aiReport(`Restored ${n} translations.`);
   refreshAiUI();
   if ($("previewCard").style.display !== "none") renderPreview();
@@ -2954,7 +3110,7 @@ $("clearBtn").onclick = () => {
   $("ref").value = "";
   LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
   SEL = new Set(); SRC_ON = false; NOTES = {};
-  TRANS = {}; SENTMAP = {}; SENTORDER = [];
+  TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {}; BATCHES = null;
   refreshAiUI();
   $("treeCard").style.display = "none";
   $("previewCard").style.display = "none";
@@ -2970,6 +3126,7 @@ $("clearBtn").onclick = () => {
 $("previewBtn").onclick = renderPreview;
 
 $("verHint").textContent += " \u00b7 app v" + APP_VERSION;
+try { const bs = localStorage.getItem(BATCH_SIZE_KEY); if (bs) $("aiBatchSize").value = bs; } catch (e) {}
 setFmt("kindle");
 </script>
 </body>
