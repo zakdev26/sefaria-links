@@ -323,8 +323,8 @@
       <span class="globaltoggle" id="toggleAll">select all / none</span>
     </div>
     <div id="tree"></div>
-    <button id="previewBtn">Preview selected texts</button>
     <button id="aiHelperBtn" class="secondary" type="button">AI translation helper</button>
+    <p class="hint" style="margin:8px 2px 0">Translating? First tick <em>only</em> the texts you want translated, then open the helper. Once the translations are in, tick everything you want in the finished document and carry on below.</p>
 
     <div class="aipanel" id="aiPanel" style="display:none">
       <div class="ai-row">
@@ -346,13 +346,6 @@
         </div>
         <div class="clearrow" id="aiRebuildRow" style="display:none; text-align:left"><span class="globaltoggle" id="aiRebuildBatches">rebuild batches</span></div>
       </div>
-      <div class="ai-row">
-        <button type="button" id="aiPasteBtn">Paste reply</button>
-        <div id="aiPasteArea" style="display:none">
-          <textarea id="aiPasteText" placeholder="Paste the AI's reply here"></textarea>
-          <button type="button" id="aiApplyBtn">Apply</button>
-        </div>
-      </div>
       <div class="ai-report" id="aiReport"></div>
       <div class="ai-backup-row">
         <span class="globaltoggle" id="aiSaveBackup">save backup in this browser</span>
@@ -360,6 +353,8 @@
         <span class="globaltoggle" id="aiDeleteBackup" style="display:none">delete backup</span>
       </div>
     </div>
+
+    <button id="previewBtn">Preview selected texts</button>
 
     <div class="fmtlabel">Format</div>
     <div class="fmtseg">
@@ -391,7 +386,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 24;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 25;   // bump when deploying, shows in footer + built books
 // Known risk: Send-to-Kindle's EPUB→KFX conversion sometimes degrades noteref/
 // footnote to a plain jump-link, varying by device; if reported, set this false.
 const RTS_POPUPS = true;  // EPUB popup footnotes for Rashi/Tosafot/Steinsaltz
@@ -1559,6 +1554,26 @@ function eligibleLinksInOrder() {
 
 function normalizeSlug(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9:]/g, ""); }
 
+// The copied batch prompt itself contains @@ref@@ headers followed by the
+// original Hebrew, and its REPLY FORMAT example contains a bare @@DONE@@ line
+// — so a stale clipboard (tapping a batch again without having copied the
+// AI's reply) used to parse as a perfect "reply" and store the original
+// Hebrew as its own translation. Two guards prevent that:
+//   looksLikePrompt — recognises the batch prompt by its fixed marker lines;
+//   looksHebrew     — recognises a block body that is still (mostly) Hebrew.
+function looksLikePrompt(s) {
+  return /PASSAGES TO TRANSLATE:/.test(String(s || "")) ||
+         /RULES \u2014 follow all of them exactly/.test(String(s || ""));
+}
+function looksHebrew(s) {
+  const letters = String(s || "").match(/[A-Za-z\u0590-\u05FF]/g) || [];
+  if (letters.length < 10) return false;
+  let he = 0;
+  for (const ch of letters) if (ch >= "\u0590" && ch <= "\u05FF") he++;
+  return he / letters.length > 0.6;
+}
+function langWantsHebrew(lang) { return /hebrew|ivrit|\u05e2\u05d1\u05e8\u05d9\u05ea/i.test(String(lang || "")); }
+
 function aiPromptHeader(ref) { return "@@" + String(ref).trim().replace(/\s+/g, "_") + "@@"; }
 
 function buildAiPrompt(lang, passages) {
@@ -1767,7 +1782,7 @@ async function copyBatch(i) {
   const ok = await copyToClipboard(buildAiPrompt(lang, passages));
   if (ok) {
     if (b.status !== "done") b.status = "sent";
-    aiReport(`Copied batch ${i + 1} (${missing.length} text${missing.length === 1 ? "" : "s"}) \u2014 paste it into an AI chat, then tap Paste reply.`);
+    aiReport(`Copied batch ${i + 1} (${missing.length} text${missing.length === 1 ? "" : "s"}). Paste it into an AI chat; when the AI is done, copy its whole reply, come back here, and tap batch ${i + 1} again.`);
   } else {
     aiReport("Couldn't copy \u2014 check clipboard permissions.", true);
   }
@@ -1789,28 +1804,44 @@ function updateBatchStatuses(appliedRefs, shortRefs) {
   }
 }
 
-// One universal paste: read the clipboard if the browser allows it,
-// otherwise fall back to the manual textarea. Header matching decides which
-// batch(es) the reply belongs to — the user never aims a paste.
-async function pasteReply() {
-  let raw = "";
-  if (navigator.clipboard && navigator.clipboard.readText) {
-    try { raw = await navigator.clipboard.readText(); } catch (e) {}
+// One button per batch, two taps. The first tap copies the batch for the AI
+// (button turns amber); the second tap reads the clipboard and applies the
+// AI's reply. Header matching still decides where each block lands, so a
+// reply can be pasted via any amber batch, in any order. If the clipboard
+// turns out to hold the batch prompt itself (a stale clipboard — the old
+// Hebrew-echo bug), nothing is stored and the user is told what to do; if it
+// holds neither a reply nor the prompt, the batch's untranslated texts are
+// simply copied again.
+async function tapBatch(i) {
+  const b = BATCHES && BATCHES[i];
+  if (!b) return;
+  const missing = b.refs.filter(r => !TRANS[r]);
+  if (b.status === "todo" || !missing.length) { await copyBatch(i); return; }
+
+  if (!(navigator.clipboard && navigator.clipboard.readText)) {
+    aiReport("This browser can't read the clipboard \u2014 use Chrome or Safari, or allow clipboard access for this site.", true);
+    return;
   }
-  if (raw && raw.trim()) { applyReply(raw); return; }
-  $("aiPasteArea").style.display = "block";
-  $("aiPasteText").focus();
-  aiReport("Couldn't read the clipboard automatically \u2014 paste the reply into the box and tap Apply.");
+  let raw = "";
+  try { raw = await navigator.clipboard.readText(); } catch (e) {}
+  if (raw && looksLikePrompt(raw)) {
+    aiReport(`Your clipboard still holds the batch text, not the AI's reply. Paste it into the AI chat, copy the AI's reply, then tap batch ${i + 1} again.`, true);
+    return;
+  }
+  if (raw && raw.trim() && applyReply(raw)) return;
+
+  // nothing usable on the clipboard — re-copy this batch's untranslated texts
+  await copyBatch(i);
+  aiReport(`No AI reply found on the clipboard, so batch ${i + 1} was copied again (${missing.length} untranslated text${missing.length === 1 ? "" : "s"}). Paste it into the AI, copy the reply, then tap the batch.`);
 }
 
-// Returns true when at least one translation was applied.
+// Returns true when at least one translation was applied. A false return
+// means the caller (tapBatch) should treat the clipboard as not-a-reply.
 function applyReply(raw) {
+  if (looksLikePrompt(raw)) return false;   // stale clipboard: the batch itself
   const lang = ($("aiLang").value || "").trim() || "English";
   const r = applyAiPaste(raw, lang);
-  if (r.nothing) {
-    aiReport("Nothing matched \u2014 did you copy the AI's reply (not your own message)?", true);
-    return false;
-  }
+  if (r.nothing) return false;
   updateBatchStatuses(r.appliedRefs, r.short);
   const done = BATCHES ? BATCHES.filter(b => b.status === "done").length : 0;
   const totalB = BATCHES ? BATCHES.length : 0;
@@ -1820,6 +1851,7 @@ function applyReply(raw) {
   if (r.truncated) msg += ` Reply looks cut off \u2014 the last passage (${r.droppedRef || "last block"}) was not saved; its batch stays open, tap it to re-copy what is missing.`;
   if (r.short.length) msg += ` Unusually short (check these): ${r.short.join(", ")}.`;
   if (r.unknownHeaders) msg += ` Skipped ${r.unknownHeaders} block${r.unknownHeaders === 1 ? "" : "s"} whose header matched nothing.`;
+  if (r.echoed) msg += ` Skipped ${r.echoed} block${r.echoed === 1 ? "" : "s"} that still contained the original Hebrew instead of a translation.`;
   aiReport(msg);
   renderBatchBoard();
   if ($("previewCard").style.display !== "none") renderPreview();
@@ -1827,7 +1859,7 @@ function applyReply(raw) {
 }
 
 function applyAiPaste(raw, lang) {
-  if (!SENTORDER.length) return { appliedRefs: [], positional: [], short: [], truncated: false, droppedRef: null, unknownHeaders: 0, nothing: true };
+  if (!SENTORDER.length) return { appliedRefs: [], positional: [], short: [], truncated: false, droppedRef: null, unknownHeaders: 0, echoed: 0, nothing: true };
   const clean = aiPreClean(raw);
   let parsed = parseAiBlocks(clean);
 
@@ -1868,17 +1900,24 @@ function applyAiPaste(raw, lang) {
   const positional = [];
   const short = [];
   let unknownHeaders = 0;
+  let echoed = 0;
+  const wantHe = langWantsHebrew(lang);
+  const squash = s => String(s || "").replace(/\s+/g, " ").trim();
   for (const b of blocks) {
     if (!b.ref) { unknownHeaders++; continue; }
     const body = b.bodyLines.join("\n").trim();
     if (!body) continue;
     if (/^\[unable to translate\]$/i.test(body)) continue;   // leave untranslated
+    // a body identical to the original Hebrew — or still mostly Hebrew when
+    // the target language isn't Hebrew — is an echo, not a translation
+    if (squash(body) === squash(SENTHE[b.ref])) { echoed++; continue; }
+    if (!wantHe && looksHebrew(body)) { echoed++; continue; }
     TRANS[b.ref] = { text: body, lang };
     appliedRefs.push(b.ref);
     if (b.positional) positional.push(b.ref);
     if (SENTLEN[b.ref] > 200 && body.length < 0.25 * SENTLEN[b.ref]) short.push(b.ref);
   }
-  return { appliedRefs, positional, short, truncated, droppedRef, unknownHeaders, nothing: appliedRefs.length === 0 };
+  return { appliedRefs, positional, short, truncated, droppedRef, unknownHeaders, echoed, nothing: appliedRefs.length === 0 };
 }
 
 $("aiHelperBtn").onclick = () => {
@@ -1891,18 +1930,9 @@ $("aiHelperBtn").onclick = () => {
   }
 };
 
-$("aiPasteBtn").onclick = () => { pasteReply(); };
-
-$("aiApplyBtn").onclick = () => {
-  if (applyReply($("aiPasteText").value)) {
-    $("aiPasteText").value = "";
-    $("aiPasteArea").style.display = "none";
-  }
-};
-
 $("batchBoard").addEventListener("click", e => {
   const btn = e.target.closest(".batchbtn");
-  if (btn) copyBatch(parseInt(btn.dataset.b, 10));
+  if (btn) tapBatch(parseInt(btn.dataset.b, 10));
 });
 
 $("aiRebuildBatches").onclick = () => {
