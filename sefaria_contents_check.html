@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sefaria Links — contents mismatch checker</title>
+<style>
+  body { font-family: Georgia, serif; background:#f4f1ea; color:#2b2620; margin:0; line-height:1.5; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 14px 60px; }
+  h1 { font-size: 20px; }
+  .card { background:#fffdf8; border:1px solid #ddd5c7; border-radius:10px; padding:14px; margin-bottom:14px; }
+  input[type=text] { width:100%; box-sizing:border-box; padding:10px; font-size:15px; font-family:inherit; border:1px solid #ddd5c7; border-radius:8px; }
+  button { font-family:inherit; font-size:14px; cursor:pointer; border:none; border-radius:8px; padding:9px 14px; background:#8a6d3b; color:#fff; margin:8px 8px 0 0; }
+  button:hover { background:#6b5329; }
+  table { border-collapse: collapse; width:100%; font-size:13.5px; margin-top:10px; }
+  th, td { border:1px solid #ddd5c7; padding:5px 8px; text-align:left; vertical-align:top; }
+  th { background:#f2ecdd; }
+  .ok { background:#e7f0e8; }
+  .bad { background:#f6e3df; }
+  .warn { background:#f7efd8; }
+  .muted { color:#6f675a; font-size:12.5px; }
+  pre { background:#fbf8f0; border:1px solid #ddd5c7; border-radius:8px; padding:8px; font-size:12px; overflow:auto; }
+  .sec { font-weight:bold; margin-top:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Contents mismatch checker</h1>
+  <p class="muted">Compares, node by node, what <em>Sefaria Links'</em> Browse logic would draw against what Sefaria's own APIs say the book contains. Run it on the same network you use the app from.</p>
+
+  <div class="card">
+    <input type="text" id="title" value="Pardes Rimmonim" spellcheck="false">
+    <div>
+      <button onclick="runCheck('Pardes Rimmonim')">Pardes Rimmonim</button>
+      <button onclick="runCheck('Likutei Moharan')">Likutei Moharan</button>
+      <button onclick="runCheck(document.getElementById('title').value.trim())">Check typed title</button>
+    </div>
+    <label style="display:block;margin-top:10px;font-size:13.5px">
+      <input type="checkbox" id="deep" checked>
+      Deep check: also verify per-gate / per-torah chapter counts (first 12 sections of each node)
+    </label>
+  </div>
+
+  <div class="card" id="out"><span class="muted">Results appear here.</span></div>
+</div>
+
+<script>
+const INDEX_API = "https://www.sefaria.org/api/index/";
+const SHAPE_API = "https://www.sefaria.org/api/shape/";
+const TEXTS_API = "https://www.sefaria.org/api/texts/";
+
+const out = document.getElementById("out");
+function esc(s){const d=document.createElement("div");d.textContent=s==null?"":String(s);return d.innerHTML;}
+function log(html){ out.innerHTML += html; }
+
+async function getJson(url){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status + " for " + url);
+  const j = await r.json();
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+
+// walk the schema, collecting leaf JaggedArray nodes with their full titles
+function leaves(node, prefix, isRoot){
+  const outArr = [];
+  if (node.nodes) {
+    for (const ch of node.nodes) {
+      const name = ch.default ? "" : (ch.title || (ch.titles||[]).filter(t=>t.lang==="en"&&t.primary).map(t=>t.text)[0] || "?");
+      const childPrefix = ch.default ? prefix : (prefix + ", " + name);
+      outArr.push(...leaves(ch, childPrefix, false));
+    }
+  } else {
+    outArr.push({
+      fullTitle: prefix,
+      isDefault: isRoot ? false : undefined,
+      depth: node.depth,
+      sectionNames: node.sectionNames || [],
+      addressTypes: node.addressTypes || [],
+      lengths: node.lengths || null
+    });
+  }
+  return outArr;
+}
+
+// ---- replicas of the app's logic (verbatim behaviour) ----------------------
+// the app's shapeLen, bug included:
+function appShapeLen(shapeJson){
+  const first = Array.isArray(shapeJson) ? shapeJson[0] : shapeJson;
+  return first && (first.length || (first.chapters && first.chapters.length)) || null;
+}
+// the app's fetchCount:
+async function appFetchCount(ref){
+  try {
+    const j = await getJson(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    const arr = (j.he && j.he.length) ? j.he : j.text;
+    return Array.isArray(arr) ? arr.length : null;
+  } catch(e){ return null; }
+}
+
+// ground truth for one leaf from the shape API
+function trueLeafShape(shapeJson, fullTitle){
+  const first = Array.isArray(shapeJson) ? shapeJson[0] : shapeJson;
+  if (!first) return null;
+  if (first.isComplex && Array.isArray(first.chapters)) {
+    return first.chapters.find(c => c.title === fullTitle) || null;
+  }
+  return (first.title === fullTitle || !Array.isArray(shapeJson) || shapeJson.length===1) ? first : null;
+}
+
+async function runCheck(title){
+  if (!title) return;
+  document.getElementById("title").value = title;
+  out.innerHTML = "<div class='muted'>Checking \u201C" + esc(title) + "\u201D\u2026</div>";
+  try {
+    const rec = await getJson(INDEX_API + encodeURIComponent(title));
+    if (!rec.schema) { out.innerHTML = "<b>" + esc(title) + "</b> has no schema (simple legacy record) — the Browse grid uses other paths; this checker targets complex books."; return; }
+
+    const bookShape = await getJson(SHAPE_API + encodeURIComponent(title));
+    const first = Array.isArray(bookShape) ? bookShape[0] : bookShape;
+    const complex = !!(first && first.isComplex);
+
+    const ls = leaves(rec.schema, title, true);
+    out.innerHTML = "<div class='sec'>" + esc(title) + " — " + ls.length + " leaf node" + (ls.length===1?"":"s") +
+      (complex ? " (complex book: shape API returns one collapsed record)" : "") + "</div>";
+
+    let rows = "<table><tr><th>Node</th><th>depth</th><th>lengths in /api/index?</th><th>App grid would show</th><th>Sefaria actually has</th><th>Verdict</th></tr>";
+    const deepTargets = [];
+
+    for (const leaf of ls) {
+      const truth = trueLeafShape(bookShape, leaf.fullTitle);
+      const trueLen = truth ? truth.length : null;
+
+      // simulate the app: lengths[0] → shapeLen(prefix) → fetchCount(prefix)
+      let appLen, path;
+      if (leaf.lengths && leaf.lengths[0]) { appLen = leaf.lengths[0]; path = "lengths[0]"; }
+      else {
+        // the app calls /api/shape/{prefix}; for the DEFAULT node the prefix is
+        // the bare book title → the collapsed complex record; for named nodes
+        // the shape API returns just that leaf.
+        let shapeForPrefix;
+        try { shapeForPrefix = await getJson(SHAPE_API + encodeURIComponent(leaf.fullTitle)); }
+        catch(e){ shapeForPrefix = null; }
+        const sl = shapeForPrefix ? appShapeLen(shapeForPrefix) : null;
+        if (sl) { appLen = sl; path = "shapeLen (\u2190 the buggy branch)"; }
+        else { appLen = await appFetchCount(leaf.fullTitle); path = "fetchCount"; }
+      }
+
+      const isTalmudAddr = (leaf.addressTypes||[])[0] === "Talmud";
+      const shownAs = isTalmudAddr ? (appLen*1) + " amudim" : appLen;
+      const good = (appLen != null && trueLen != null && Number(appLen) === Number(trueLen));
+      const cls = good ? "ok" : (appLen==null||trueLen==null ? "warn" : "bad");
+      rows += "<tr class='" + cls + "'><td>" + esc(leaf.fullTitle) +
+        (leaf.fullTitle===title ? " <span class='muted'>(main text / default node)</span>" : "") +
+        "</td><td>" + esc(leaf.depth) + " (" + esc((leaf.sectionNames||[]).join("\u2192")) + ")</td>" +
+        "<td>" + (leaf.lengths ? "yes ["+leaf.lengths.join(", ")+"]" : "<b>no</b>") + "</td>" +
+        "<td>" + esc(shownAs==null?"?":shownAs) + " <span class='muted'>via " + esc(path) + "</span></td>" +
+        "<td>" + esc(trueLen==null?"?":trueLen) + "</td>" +
+        "<td>" + (good ? "match" : "MISMATCH") + "</td></tr>";
+
+      if (truth && Array.isArray(truth.chapters) && leaf.depth >= 2) deepTargets.push({leaf, truth});
+    }
+    rows += "</table>";
+    log(rows);
+
+    if (document.getElementById("deep").checked) {
+      for (const {leaf, truth} of deepTargets) {
+        const n = Math.min(12, truth.chapters.length);
+        log("<div class='sec'>Per-section check — " + esc(leaf.fullTitle) + " (first " + n + " of " + truth.chapters.length + " sections)</div>");
+        let t = "<table><tr><th>Section</th><th>App (texts API count \u2014 what fetchLinksBySegments walks)</th><th>Sefaria shape</th><th>Verdict</th></tr>";
+        for (let i=1; i<=n; i++) {
+          const trueC = Array.isArray(truth.chapters[i-1]) ? truth.chapters[i-1].length : truth.chapters[i-1];
+          const appC = await appFetchCount(leaf.fullTitle + " " + i);
+          const good = (appC != null && Number(appC) === Number(trueC));
+          t += "<tr class='" + (good?"ok":"bad") + "'><td>" + esc(leaf.fullTitle + " " + i) + "</td><td>" +
+               esc(appC==null?"?":appC) + "</td><td>" + esc(trueC) + "</td><td>" + (good?"match":"MISMATCH") + "</td></tr>";
+        }
+        t += "</table>";
+        log(t);
+      }
+    }
+    log("<p class='muted'>\u201CApp grid would show\u201D reproduces the exact decision chain in renderJagged (lengths[0] \u2192 shapeLen \u2192 fetchCount). Any row marked \u201Cvia shapeLen\u201D that mismatches is the collapsed-complex-shape bug. Per-section mismatches mean the Hebrew text array the app counts is shorter/longer than the section really is (the app counts <code>he</code> when present, else <code>text</code>).</p>");
+  } catch(e){
+    out.innerHTML = "<b>Error:</b> " + esc(e.message);
+  }
+}
+</script>
+</body>
+</html>
