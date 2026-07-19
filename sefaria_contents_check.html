@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sefaria Links — contents auditor v4</title>
+<title>Sefaria Links — contents auditor v5 (app v26)</title>
 <style>
   body { font-family: Georgia, serif; background:#f4f1ea; color:#2b2620; margin:0; line-height:1.5; }
   .wrap { max-width: 820px; margin: 0 auto; padding: 20px 14px 60px; }
@@ -27,7 +27,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Contents auditor v4</h1>
+  <h1>Contents auditor v5 — for app v26</h1>
   <p class="muted">Exhaustively audits a whole category: every book Sefaria lists, every node of every book, every grid count the app's Browse would draw, and per-section chapter counts — against Sefaria's own shape data. Tap <b>Copy report</b> when done and paste it into the chat (it contains only the problems, so it stays short).</p>
 
   <div class="card">
@@ -122,7 +122,8 @@ function leaves(node, prefix){
     }
   } else {
     outArr.push({ fullTitle: prefix, depth: node.depth,
-      sectionNames: node.sectionNames || [], lengths: node.lengths || null });
+      sectionNames: node.sectionNames || [], lengths: node.lengths || null,
+      talmud: ((node.addressTypes || [])[0] === "Talmud") });
   }
   return outArr;
 }
@@ -141,13 +142,20 @@ function tocTitles(node){
 }
 
 // ---- the app's decision chain, verbatim ------------------------------------
-function appShapeLen(shapeJson){
-  const first = Array.isArray(shapeJson) ? shapeJson[0] : shapeJson;
-  return first && (first.length || (first.chapters && first.chapters.length)) || null;
+function appShapeLen(shapeJson, title){
+  let first = Array.isArray(shapeJson) ? shapeJson[0] : shapeJson;
+  if (!first) return null;
+  if (first.isComplex && Array.isArray(first.chapters)) {
+    const leaf = first.chapters.find(c => c && c.title === title);
+    if (!leaf) return null;
+    first = leaf;
+  }
+  if (typeof first.chapters === "number") return first.chapters || null;
+  return first.length || (Array.isArray(first.chapters) ? first.chapters.length : null) || null;
 }
 async function appFetchCount(ref){
   try {
-    const j = await getJson(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    const j = await getJson(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
     const arr = (j.he && j.he.length) ? j.he : j.text;
     return Array.isArray(arr) ? arr.length : null;
   } catch(e){ return null; }
@@ -174,7 +182,7 @@ async function nodeTruth(fullTitle, depth){
 // ---- probe: raw texts-API structure for a mismatched ref -------------------
 async function probe(ref){
   try {
-    const j = await getJson(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    const j = await getJson(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
     const shape = v => !Array.isArray(v) ? typeof v
       : v.length + " items, first is " + (Array.isArray(v[0]) ? "an ARRAY (nested)" : typeof v[0]);
     return { requested: ref, resolvedRef: j.ref, sections: JSON.stringify(j.sections),
@@ -206,22 +214,30 @@ async function auditBook(title, opts){
   if (!rec.schema) return { issues:[{kind:"book", node:title, msg:"no schema in index record"}], nodes:0, sectionsChecked:0 };
 
   const ls = leaves(rec.schema, title);
-  let sectionsChecked = 0;
+  let sectionsChecked = 0, talmudSkipped = 0;
 
   for (const leaf of ls) {
     if (STOP) break;
     const truth = await nodeTruth(leaf.fullTitle, leaf.depth);
     const trueLen = truth ? truth.topCount : null;
 
-    // grid count the app would draw: lengths[0] → shapeLen → (fetchCount)
+    // v26 decision chain. Talmud-addressed nodes are deliberately not
+    // audited: daf addressing is outside the scope of the v26 fixes, and
+    // integer refs against them produce meaningless comparisons.
+    if (leaf.talmud) { talmudSkipped++; continue; }
+
     let appLen = null, path;
-    if (leaf.lengths && leaf.lengths[0]) { appLen = leaf.lengths[0]; path = "lengths[0]"; }
-    else if (truth) {
-      const sl = appShapeLen([truth.raw]);
+    if (leaf.depth === 1) {
+      // v26 fetches the whole node — verify the app receives every paragraph
+      appLen = await appFetchCount(leaf.fullTitle); path = "whole node (depth-1)";
+    } else {
+      // v26: live shape first, stored lengths as fallback, then fetchCount
+      const sl = truth ? appShapeLen([truth.raw], leaf.fullTitle) : null;
       if (sl) { appLen = sl; path = "shapeLen"; }
+      else if (leaf.lengths && leaf.lengths[0]) { appLen = leaf.lengths[0]; path = "lengths[0]"; }
+      else if (opts.fetchCountFallback) { appLen = await appFetchCount(leaf.fullTitle); path = "fetchCount"; }
+      else path = "fetchCount (not simulated)";
     }
-    if (appLen == null && opts.fetchCountFallback) { appLen = await appFetchCount(leaf.fullTitle); path = "fetchCount"; }
-    else if (appLen == null) path = "fetchCount (not simulated)";
 
     const gridBad = !(appLen != null && trueLen != null && Number(appLen) === Number(trueLen));
     if (gridBad) issues.push({ kind:"grid", node:leaf.fullTitle, depth:leaf.depth,
@@ -248,7 +264,7 @@ async function auditBook(title, opts){
       }
     }
   }
-  return { issues, nodes: ls.length, sectionsChecked };
+  return { issues, nodes: ls.length, sectionsChecked, talmudSkipped };
 }
 
 function issueRows(bookTitle, issues){
@@ -270,7 +286,7 @@ function issueRows(bookTitle, issues){
 
 // ---- audit one category ----------------------------------------------------
 async function auditCategory(cat){
-  rep("=== v4 audit: " + cat + (document.getElementById("exhaustive").checked ? " (exhaustive)" : " (sampled)") + " ===");
+  rep("=== v5 (app v26) audit: " + cat + (document.getElementById("exhaustive").checked ? " (exhaustive)" : " (sampled)") + " ===");
   log("<div class='sec'>Auditing " + esc(cat) + "\u2026</div>");
 
   // the exact book list the app's Browse shows, from the same TOC endpoint
@@ -293,10 +309,10 @@ async function auditCategory(cat){
     progPrefix: "[" + cat + "]"
   };
 
-  let totalIssues = 0, cleanBooks = 0, done = 0, totalSections = 0;
+  let totalIssues = 0, cleanBooks = 0, done = 0, totalSections = 0, talmudNodes = 0;
   await mapPool(books, async (title) => {
     const res = await auditBook(title, opts);
-    done++; totalSections += res.sectionsChecked;
+    done++; totalSections += res.sectionsChecked; talmudNodes += (res.talmudSkipped || 0);
     prog("[" + cat + "] " + done + " / " + books.length + " books  (" + REQS + " requests)");
     if (res.issues.length) { totalIssues += res.issues.length; log(issueRows(title, res.issues)); }
     else cleanBooks++;
@@ -304,7 +320,9 @@ async function auditCategory(cat){
 
   const summary = cat + ": " + books.length + " books, " + cleanBooks + " fully clean, " +
     totalIssues + " issues found across " + (books.length - cleanBooks) + " books; " +
-    totalSections + " sections verified" + (STOP ? " [STOPPED EARLY — incomplete]" : "") + ".";
+    totalSections + " sections verified" +
+    (talmudNodes ? "; " + talmudNodes + " Talmud-addressed nodes skipped (outside v26 scope)" : "") +
+    (STOP ? " [STOPPED EARLY — incomplete]" : "") + ".";
   rep("SUMMARY | " + summary);
   log("<p><b>" + esc(summary) + "</b></p>");
 }
@@ -330,7 +348,7 @@ async function runBookBtn(){
   const title = val();
   if (!title) return;
   STOP = false; REQS = 0; PROBES = 0;
-  REPORT = ["=== v4 single book: " + title + " ==="];
+  REPORT = ["=== v5 (app v26) single book: " + title + " ==="];
   out.innerHTML = ""; running(true);
   const res = await auditBook(title, {
     exhaustive: true, fetchCountFallback: true, maxProbes: 8, progPrefix: ""
