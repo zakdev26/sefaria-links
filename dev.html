@@ -386,7 +386,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 25;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 26;   // bump when deploying, shows in footer + built books
 // Known risk: Send-to-Kindle's EPUB→KFX conversion sometimes degrades noteref/
 // footnote to a plain jump-link, varying by device; if reported, set this false.
 const RTS_POPUPS = true;  // EPUB popup footnotes for Rashi/Tosafot/Steinsaltz
@@ -867,7 +867,7 @@ async function fetchLinksBySegments(ref) {
   setStatus("Reading " + ref + "…");
   let n = 0;
   try {
-    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
     if (r.ok) {
       const j = await r.json();
       const arr = (j.he && j.he.length) ? j.he : j.text;
@@ -899,7 +899,7 @@ async function expandRangedRef(ref) {
   const t = String(ref).trim();
   const fetchJson = async (r) => {
     try {
-      const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0");
+      const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0&pad=0");
       if (!res.ok) return null;
       const j = await res.json();
       return j.error ? null : j;
@@ -1069,7 +1069,7 @@ async function fetchLinks() {
       SRC = preSrc;
     } else {
       try {
-        const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+        const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
         if (r.ok) {
           const t = await r.json();
           if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
@@ -3037,6 +3037,11 @@ function renderSchemaNodes(title, node, prefix) {
 function renderJagged(prefix, node) {
   const addr = (node.addressTypes && node.addressTypes[0]) || "Integer";
   const sname = (node.sectionNames && node.sectionNames[0]) || "section";
+  // A depth-1 node (an introduction, a prayer, a letter…) is a single run of
+  // paragraphs. Sefaria's own contents lists it as one entry, so fetch the
+  // whole node — a paragraph grid here would only ever reach paragraph 1.
+  const jdepth = node.depth || (node.sectionNames || []).length || 1;
+  if (jdepth === 1) { commitRef(prefix); return; }
   navBody().innerHTML = "";
 
   if (addr === "Talmud") {
@@ -3069,12 +3074,12 @@ function renderJagged(prefix, node) {
     navBody().appendChild(grid);
   };
   const n0 = node.lengths && node.lengths[0];
-  if (n0) draw(n0);
-  else {
-    navLoading();
-    shapeLen(prefix).then(len => { if (len) draw(len); else fetchCount(prefix).then(c => c ? draw(c) : commitRef(prefix)); })
-      .catch(() => commitRef(prefix));
-  }
+  navLoading();
+  shapeLen(prefix).then(len => {
+    if (len) draw(len);                 // live shape — matches the Sefaria site
+    else if (n0) draw(n0);              // stored lengths (can be stale)
+    else fetchCount(prefix).then(c => c ? draw(c) : commitRef(prefix));
+  }).catch(() => { if (n0) draw(n0); else commitRef(prefix); });
 }
 
 function pickNumber(prefix, node, sections) {
@@ -3111,13 +3116,25 @@ async function shapeLen(title) {
     const r = await fetch(SHAPE_API + encodeURIComponent(title));
     if (!r.ok) return null;
     const j = await r.json();
-    const first = Array.isArray(j) ? j[0] : j;
-    return first && (first.length || (first.chapters && first.chapters.length)) || null;
+    let first = Array.isArray(j) ? j[0] : j;
+    if (!first) return null;
+    // Collapsed complex-book record: chapters holds one shape per leaf node.
+    // The default node's leaf carries the bare book title, so matching by
+    // title finds the right node for both the main text and named nodes.
+    if (first.isComplex && Array.isArray(first.chapters)) {
+      const leaf = first.chapters.find(c => c && c.title === title);
+      if (!leaf) return null;
+      first = leaf;
+    }
+    // Depth-1 node (an introduction, a prayer…): "chapters" IS the paragraph
+    // count, and "length" is a meaningless 1.
+    if (typeof first.chapters === "number") return first.chapters || null;
+    return first.length || (Array.isArray(first.chapters) ? first.chapters.length : null) || null;
   } catch (e) { return null; }
 }
 async function fetchCount(ref) {
   try {
-    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
     if (!r.ok) return null;
     const j = await r.json();
     const arr = (j.he && j.he.length) ? j.he : j.text;
