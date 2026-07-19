@@ -286,7 +286,7 @@
   <p class="sub">Enter a reference and press Enter (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
 
   <div class="card">
-    <label for="ref">Reference</label>
+    <label for="ref">Find a reference in Sefaria's library</label>
     <div class="refwrap">
       <input type="text" id="ref" placeholder="Type and press Enter… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
       <div class="ac" id="ac"></div>
@@ -386,7 +386,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 25;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 27;   // bump when deploying, shows in footer + built books
 // Known risk: Send-to-Kindle's EPUB→KFX conversion sometimes degrades noteref/
 // footnote to a plain jump-link, varying by device; if reported, set this false.
 const RTS_POPUPS = true;  // EPUB popup footnotes for Rashi/Tosafot/Steinsaltz
@@ -860,6 +860,44 @@ async function linksForSegs(segs) {
   return [].concat.apply([], chunks);
 }
 
+// ---------------------------------------------------------------------------
+// Canonical per-section counts from the shape API. Sefaria's plain texts API
+// serves the default edition, whose segmentation can be SHORTER than the
+// canonical one the site uses and links are anchored against (e.g. Kalach
+// Pitchei Chokhmah 3 is 3:1-7 on the site, but the default edition has only
+// 4 segments). Walking just the edition's segments would silently skip links
+// anchored beyond it, so section walks take the larger of the two counts.
+// Shape responses are cached per book/node title for the session.
+// ---------------------------------------------------------------------------
+const SHAPE_COUNTS = {};   // base title -> per-section counts array, or null
+async function shapeSecCounts(base) {
+  if (base in SHAPE_COUNTS) return SHAPE_COUNTS[base];
+  let out = null;
+  try {
+    const r = await fetch(SHAPE_API + encodeURIComponent(base));
+    if (r.ok) {
+      const j = await r.json();
+      const first = Array.isArray(j) ? j[0] : j;
+      if (first && Array.isArray(first.chapters)) {
+        out = first.chapters.map(c => Array.isArray(c) ? c.length : (typeof c === "number" ? c : 0));
+      }
+    }
+  } catch (e) {}
+  SHAPE_COUNTS[base] = out;
+  return out;
+}
+// The canonical count for one "Base N" section ref; null when the ref has no
+// plain trailing section number (dapim, deeper refs, bare titles) or the
+// shape is unavailable.
+async function shapeCountFor(ref) {
+  const m = String(ref).trim().match(/^(.*\S)\s+(\d+)$/);
+  if (!m) return null;
+  const counts = await shapeSecCounts(m[1]);
+  if (!counts) return null;
+  const idx = parseInt(m[2], 10) - 1;
+  return (idx >= 0 && idx < counts.length) ? (counts[idx] || null) : null;
+}
+
 // A whole chapter/section: Sefaria's links API doesn't reliably return the
 // linked *text* for a multi-segment ref, so walk it segment-by-segment and
 // merge. Each per-segment call does return text, which is what we need.
@@ -867,13 +905,18 @@ async function fetchLinksBySegments(ref) {
   setStatus("Reading " + ref + "…");
   let n = 0;
   try {
-    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
     if (r.ok) {
       const j = await r.json();
-      const arr = (j.he && j.he.length) ? j.he : j.text;
-      if (Array.isArray(arr)) n = arr.length;
+      // union of both languages — one edition can be shorter than the other
+      const nHe = Array.isArray(j.he) ? j.he.length : 0;
+      const nEn = Array.isArray(j.text) ? j.text.length : 0;
+      n = Math.max(nHe, nEn);
     }
   } catch (e) {}
+  // …and never fewer than the canonical segmentation links are anchored to
+  const nShape = await shapeCountFor(ref);
+  if (nShape && nShape > n) n = nShape;
   if (!n) {   // couldn't expand — fall back to a single call
     const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -899,7 +942,7 @@ async function expandRangedRef(ref) {
   const t = String(ref).trim();
   const fetchJson = async (r) => {
     try {
-      const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0");
+      const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0&pad=0");
       if (!res.ok) return null;
       const j = await res.json();
       return j.error ? null : j;
@@ -1069,7 +1112,7 @@ async function fetchLinks() {
       SRC = preSrc;
     } else {
       try {
-        const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
+        const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
         if (r.ok) {
           const t = await r.json();
           if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
@@ -3037,6 +3080,11 @@ function renderSchemaNodes(title, node, prefix) {
 function renderJagged(prefix, node) {
   const addr = (node.addressTypes && node.addressTypes[0]) || "Integer";
   const sname = (node.sectionNames && node.sectionNames[0]) || "section";
+  // A depth-1 node (an introduction, a prayer, a letter…) is a single run of
+  // paragraphs. Sefaria's own contents lists it as one entry, so fetch the
+  // whole node — a paragraph grid here would only ever reach paragraph 1.
+  const jdepth = node.depth || (node.sectionNames || []).length || 1;
+  if (jdepth === 1) { commitRef(prefix); return; }
   navBody().innerHTML = "";
 
   if (addr === "Talmud") {
@@ -3069,12 +3117,12 @@ function renderJagged(prefix, node) {
     navBody().appendChild(grid);
   };
   const n0 = node.lengths && node.lengths[0];
-  if (n0) draw(n0);
-  else {
-    navLoading();
-    shapeLen(prefix).then(len => { if (len) draw(len); else fetchCount(prefix).then(c => c ? draw(c) : commitRef(prefix)); })
-      .catch(() => commitRef(prefix));
-  }
+  navLoading();
+  shapeLen(prefix).then(len => {
+    if (len) draw(len);                 // live shape — matches the Sefaria site
+    else if (n0) draw(n0);              // stored lengths (can be stale)
+    else fetchCount(prefix).then(c => c ? draw(c) : commitRef(prefix));
+  }).catch(() => { if (n0) draw(n0); else commitRef(prefix); });
 }
 
 function pickNumber(prefix, node, sections) {
@@ -3111,18 +3159,36 @@ async function shapeLen(title) {
     const r = await fetch(SHAPE_API + encodeURIComponent(title));
     if (!r.ok) return null;
     const j = await r.json();
-    const first = Array.isArray(j) ? j[0] : j;
-    return first && (first.length || (first.chapters && first.chapters.length)) || null;
+    let first = Array.isArray(j) ? j[0] : j;
+    if (!first) return null;
+    // Collapsed complex-book record: chapters holds one shape per leaf node.
+    // The default node's leaf carries the bare book title, so matching by
+    // title finds the right node for both the main text and named nodes.
+    if (first.isComplex && Array.isArray(first.chapters)) {
+      const leaf = first.chapters.find(c => c && c.title === title);
+      if (!leaf) return null;
+      first = leaf;
+    }
+    // Depth-1 node (an introduction, a prayer…): "chapters" IS the paragraph
+    // count, and "length" is a meaningless 1.
+    if (typeof first.chapters === "number") return first.chapters || null;
+    return first.length || (Array.isArray(first.chapters) ? first.chapters.length : null) || null;
   } catch (e) { return null; }
 }
 async function fetchCount(ref) {
+  let n = 0;
   try {
-    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0");
-    if (!r.ok) return null;
-    const j = await r.json();
-    const arr = (j.he && j.he.length) ? j.he : j.text;
-    return Array.isArray(arr) ? arr.length : null;
-  } catch (e) { return null; }
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
+    if (r.ok) {
+      const j = await r.json();
+      const nHe = Array.isArray(j.he) ? j.he.length : 0;
+      const nEn = Array.isArray(j.text) ? j.text.length : 0;
+      n = Math.max(nHe, nEn);
+    }
+  } catch (e) {}
+  const nShape = await shapeCountFor(ref);
+  if (nShape && nShape > n) n = nShape;
+  return n || null;
 }
 
 // ===========================================================================
