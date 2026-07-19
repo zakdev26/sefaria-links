@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sefaria Links — contents auditor v5 (app v26)</title>
+<title>Sefaria Links — contents auditor v6 (app v27)</title>
 <style>
   body { font-family: Georgia, serif; background:#f4f1ea; color:#2b2620; margin:0; line-height:1.5; }
   .wrap { max-width: 820px; margin: 0 auto; padding: 20px 14px 60px; }
@@ -27,7 +27,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Contents auditor v5 — for app v26</h1>
+  <h1>Contents auditor v6 — for app v27</h1>
   <p class="muted">Exhaustively audits a whole category: every book Sefaria lists, every node of every book, every grid count the app's Browse would draw, and per-section chapter counts — against Sefaria's own shape data. Tap <b>Copy report</b> when done and paste it into the chat (it contains only the problems, so it stays short).</p>
 
   <div class="card">
@@ -153,12 +153,39 @@ function appShapeLen(shapeJson, title){
   if (typeof first.chapters === "number") return first.chapters || null;
   return first.length || (Array.isArray(first.chapters) ? first.chapters.length : null) || null;
 }
+const SHAPE_COUNTS = {};
+async function shapeSecCounts(base){
+  if (base in SHAPE_COUNTS) return SHAPE_COUNTS[base];
+  let out = null;
+  try {
+    const j = await getJson(SHAPE_API + encodeURIComponent(base));
+    const first = Array.isArray(j) ? j[0] : j;
+    if (first && Array.isArray(first.chapters)) {
+      out = first.chapters.map(c => Array.isArray(c) ? c.length : (typeof c === "number" ? c : 0));
+    }
+  } catch(e){}
+  SHAPE_COUNTS[base] = out;
+  return out;
+}
+async function shapeCountFor(ref){
+  const m = String(ref).trim().match(/^(.*\S)\s+(\d+)$/);
+  if (!m) return null;
+  const counts = await shapeSecCounts(m[1]);
+  if (!counts) return null;
+  const idx = parseInt(m[2], 10) - 1;
+  return (idx >= 0 && idx < counts.length) ? (counts[idx] || null) : null;
+}
 async function appFetchCount(ref){
+  let n = 0;
   try {
     const j = await getJson(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
-    const arr = (j.he && j.he.length) ? j.he : j.text;
-    return Array.isArray(arr) ? arr.length : null;
-  } catch(e){ return null; }
+    const nHe = Array.isArray(j.he) ? j.he.length : 0;
+    const nEn = Array.isArray(j.text) ? j.text.length : 0;
+    n = Math.max(nHe, nEn);
+  } catch(e){}
+  const nShape = await shapeCountFor(ref);
+  if (nShape && nShape > n) n = nShape;
+  return n || null;
 }
 
 // ---- truth: shape queried per node (deployed API resolves node titles) -----
@@ -286,7 +313,7 @@ function issueRows(bookTitle, issues){
 
 // ---- audit one category ----------------------------------------------------
 async function auditCategory(cat){
-  rep("=== v5 (app v26) audit: " + cat + (document.getElementById("exhaustive").checked ? " (exhaustive)" : " (sampled)") + " ===");
+  rep("=== v6 (app v27) audit: " + cat + (document.getElementById("exhaustive").checked ? " (exhaustive)" : " (sampled)") + " ===");
   log("<div class='sec'>Auditing " + esc(cat) + "\u2026</div>");
 
   // the exact book list the app's Browse shows, from the same TOC endpoint
@@ -348,7 +375,7 @@ async function runBookBtn(){
   const title = val();
   if (!title) return;
   STOP = false; REQS = 0; PROBES = 0;
-  REPORT = ["=== v5 (app v26) single book: " + title + " ==="];
+  REPORT = ["=== v6 (app v27) single book: " + title + " ==="];
   out.innerHTML = ""; running(true);
   const res = await auditBook(title, {
     exhaustive: true, fetchCountFallback: true, maxProbes: 8, progPrefix: ""
