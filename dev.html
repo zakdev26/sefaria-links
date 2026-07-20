@@ -386,10 +386,11 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 27;   // bump when deploying, shows in footer + built books
-// Known risk: Send-to-Kindle's EPUB→KFX conversion sometimes degrades noteref/
-// footnote to a plain jump-link, varying by device; if reported, set this false.
-const RTS_POPUPS = true;  // EPUB popup footnotes for Rashi/Tosafot/Steinsaltz
+const APP_VERSION = 28;   // bump when deploying, shows in footer + built books
+// Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
+// each source segment jumping to the pieces in place, and a back-link under
+// each piece. Plain internal links — survives Kindle's KFX conversion.
+const RTS_POPUPS = true;
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
 const TEXTS_API = "https://www.sefaria.org/api/texts/";
@@ -1387,12 +1388,19 @@ function gatherContent() {
     if (nt && !notedone.has(key)) { notedone.add(key); blocks.push({ type: "note", text: nt, date: _noteDate }); }
   };
 
-  // Selected Rashi / Tosafot / Steinsaltz links of one section, prepared as
-  // popup-footnote data: { marks: [{letter, comm, id}], notes: [{id, letter,
-  // comm, pieces}] }. Returns null when the flag is off or nothing selected
-  // in this section qualifies. Shared by Section mode (marker row after the
-  // section's source line) and Category mode (marker row after each verse of
-  // the whole Source section).
+  // Anchors for individual linked texts, assigned lazily: the marker row
+  // after a source segment is emitted BEFORE the pieces it points to, so the
+  // anchor is reserved here and reused when the piece itself is emitted.
+  const linkAnchor = {};
+  const anchorForLink = (l) => linkAnchor[l._i] || (linkAnchor[l._i] = nextId());
+  // Per-verse anchors inside the whole Source section (Category mode), so a
+  // piece's back-link lands on its own verse rather than the top of Source.
+  const segSrcAnchor = {};
+
+  // Selected Rashi / Tosafot / Steinsaltz links of one section, as direct
+  // jump-marks: { marks: [{ name, target }] } where target is the anchor the
+  // commentator's first piece will carry in this document. Returns null when
+  // the flag is off or nothing selected in this section qualifies.
   const rtsFor = (seg) => {
     if (!RTS_POPUPS || !SEG_TREE[seg]) return null;
     const segLinks = [];
@@ -1401,23 +1409,7 @@ function gatherContent() {
       .filter(([name]) => commRank(name) <= 2)
       .sort((a, b) => commRank(a[0]) - commRank(b[0]));
     if (!groups.length) return null;
-    const letters = ["R", "T", "S"];
-    const marks = [], notes = [];
-    groups.forEach(([name, links]) => {
-      const letter = letters[commRank(name)];
-      const id = "fn" + nextId();
-      marks.push({ letter, comm: name, id });
-      notes.push({
-        id, letter, comm: name,
-        pieces: links.map(l => ({
-          ref: l.sourceRef || l.ref || "",
-          he: incHe ? stripHtml(asText(l.he)) : "",
-          en: incEn ? stripHtml(asText(l.text)) : "",
-          ai: (TRANS[canonicalRef(l)] && TRANS[canonicalRef(l)].text) || ""
-        }))
-      });
-    });
-    return { marks, notes };
+    return { marks: groups.map(([name, links]) => ({ name, target: anchorForLink(links[0]) })) };
   };
 
   const emitWholeSource = () => {
@@ -1431,28 +1423,22 @@ function gatherContent() {
       const si = srcIdxFor(s);
       if (si >= 0) segForIdx[si] = s;
     }
-    const allNotes = [];
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
-      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
-      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
       const seg = segForIdx[i];
+      let vAnchor = null;
+      if (seg) { vAnchor = nextId(); segSrcAnchor[seg] = vAnchor; }
+      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) { blocks.push({ type: "he", text: he, anchor: vAnchor }); vAnchor = null; } }
+      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) { blocks.push({ type: "en", text: en, anchor: vAnchor }); vAnchor = null; } }
       if (seg) {
         const rts = rtsFor(seg);
-        if (rts) {
-          blocks.push({ type: "rtsrow", marks: rts.marks });
-          for (const nt of rts.notes) allNotes.push(nt);
-        }
+        if (rts) blocks.push({ type: "rtsrow", marks: rts.marks });
       }
     }
     emitNote("__src__");
     // notes written on individual sections of the source (in Section mode)
     // shouldn't vanish just because the build happens in Category mode
     for (const s of SEG_ORDER) emitNote("S:" + s);
-    // all the source's popup-footnote asides live at the end of the Source
-    // section (popup renderers open them in place; fallback renderers show
-    // them as a notes block between the source and the first category)
-    if (allNotes.length) blocks.push({ type: "rtsnotes", notes: allNotes });
   };
 
   // ---------------- section mode ----------------
@@ -1497,24 +1483,27 @@ function gatherContent() {
         for (const [comm, links] of groupByComm(arr)) {
           const single = links.length === 1;
           const h3text = single ? (links[0].sourceRef || links[0].ref || comm) : comm;
-          const a3 = nextId();
+          // a lone piece's h3 IS the piece heading — give it the piece's own
+          // anchor so the marker row above lands exactly here
+          const a3 = single ? anchorForLink(links[0]) : nextId();
           toc.push({ level: 3, text: h3text, anchor: a3 });
           blocks.push({ type: "h3", text: h3text, anchor: a3 });
           for (const l of links) {
             if (!single) {   // the h3 already names a lone link, so skip its ref line
               const enRef = l.sourceRef || l.ref || "";
               const heRef = l.sourceHeRef || "";
-              blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
+              blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : ""), anchor: anchorForLink(l) });
             }
             if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
             if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
             emitAiBlock(blocks, canonicalRef(l));
             emitNote("L" + l._i);   // this text's own note, right beneath it
+            if (wantSrc && commRank(commName(l)) <= 2)
+              blocks.push({ type: "backlink", text: seg, anchor: anchor });
             written++;
           }
         }
       }
-      if (rts) blocks.push({ type: "rtsnotes", notes: rts.notes });
     }
     return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
   }
@@ -1545,11 +1534,14 @@ function gatherContent() {
       for (const l of links) {
         const enRef = l.sourceRef || l.ref || "";
         const heRef = l.sourceHeRef || "";
-        blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : "") });
+        blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : ""), anchor: anchorForLink(l) });
         if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
         if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
         emitAiBlock(blocks, canonicalRef(l));
         emitNote("L" + l._i);   // this text's own note, right beneath it
+        const bseg = segRefOf(l);
+        if (haveSrc && commRank(comm) <= 2 && segSrcAnchor[bseg])
+          blocks.push({ type: "backlink", text: bseg, anchor: segSrcAnchor[bseg] });
         written++;
       }
     }
@@ -2291,26 +2283,16 @@ function epubBody(content) {
       if (kids.length || curH1 || srcLink) s += `<p class="secnav">${up}${kids.length ? " · " + menu(kids) : ""}${srcLink}</p>\n`;
     }
     else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
-    else if (b.type === "ref") s += `<p class="ref">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "ref") s += `<p class="ref"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "note") s += `<p class="usernote">${xmlEsc(b.text)}</p>\n<p class="usernote-date">${xmlEsc(b.date || "")}</p>\n`;
     else if (b.type === "ai") s += `<p class="ai-label">AI translation (${xmlEsc(b.lang)})</p>\n<p class="ai">${xmlEsc(b.text)}</p>\n`;
-    else if (b.type === "he") s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
-    else if (b.type === "en") s += `<p class="en">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "he") s += `<p class="he"${b.anchor ? ` id="${b.anchor}"` : ""} dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "en") s += `<p class="en"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "rtsrow") {
-      s += `<p class="rtsrow">` + b.marks.map(m => `<a class="rts" epub:type="noteref" href="#${m.id}" title="${xmlEsc(m.comm)}">${xmlEsc(m.letter)}</a>`).join(" ") + `</p>\n`;
+      s += `<p class="rtsrow">` + b.marks.map(m => `<a class="rts" href="#${m.target}">${xmlEsc(m.name)}</a>`).join(" \u00b7 ") + `</p>\n`;
     }
-    else if (b.type === "rtsnotes") {
-      for (const note of b.notes) {
-        s += `<aside epub:type="footnote" id="${note.id}" class="fnaside">\n`;
-        s += `<p class="fnhead">${xmlEsc(note.letter)} \u00b7 ${xmlEsc(note.comm)}</p>\n`;
-        for (const piece of note.pieces) {
-          s += `<p class="ref">${xmlEsc(piece.ref)}</p>\n`;
-          if (piece.he) s += `<p class="he" dir="rtl" lang="he" xml:lang="he">${xmlEsc(piece.he)}</p>\n`;
-          if (piece.en) s += `<p class="en">${xmlEsc(piece.en)}</p>\n`;
-          if (piece.ai) s += `<p class="ai-label">AI translation</p>\n<p class="ai">${xmlEsc(piece.ai)}</p>\n`;
-        }
-        s += `</aside>\n`;
-      }
+    else if (b.type === "backlink") {
+      s += `<p class="backlink"><a href="#${b.anchor}">\u25c4 ${xmlEsc(b.text)}</a></p>\n`;
     }
   }
   return s;
@@ -2423,10 +2405,10 @@ ol.ctoc-works a { color: #6b5329; }
 p.secnav { font-size: .8em; color: #6f675a; margin: 0 0 .6em; }
 p.secnav a { color: #6b5329; text-decoration: none; }
 nav ol { list-style: none; }
-p.rtsrow { font-size: .8em; margin: .2em 0 .6em; }
-a.rts { display: inline-block; padding: .05em .5em; margin-right: .3em; border: 1px solid #ddd5c7; border-radius: .8em; color: #6b5329; text-decoration: none; font-size: .95em; vertical-align: super; }
-aside.fnaside { border-top: 1px solid #ddd5c7; margin: .8em 0; padding-top: .5em; font-size: .92em; }
-p.fnhead { font-weight: bold; font-size: .95em; margin: 0 0 .3em; }
+p.rtsrow { font-size: .7em; color: #6f675a; margin: .1em 0 .7em; }
+a.rts { color: #6b5329; text-decoration: none; }
+p.backlink { font-size: .7em; margin: .2em 0 .8em; }
+p.backlink a { color: #6b5329; text-decoration: none; }
 `;
 
   const textXhtml =
