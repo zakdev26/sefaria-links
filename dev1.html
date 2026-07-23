@@ -1,0 +1,3206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sefaria Links → Kindle / Word / PDF</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --card: #fffdf8;
+    --ink: #2b2620;
+    --muted: #6f675a;
+    --line: #ddd5c7;
+    --accent: #8a6d3b;
+    --accent-dark: #6b5329;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Georgia, 'Times New Roman', serif;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 18px 64px; }
+  h1 { font-size: 22px; margin: 8px 0 4px; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .refwrap { position: relative; }
+  input[type=text] {
+    width: 100%; padding: 12px; font-size: 16px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  .ac {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
+    background: #fff; border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.08); overflow: hidden; display: none;
+  }
+  .ac .item { padding: 10px 12px; font-size: 15px; cursor: pointer; border-bottom: 1px solid var(--line); }
+  .ac .item:last-child { border-bottom: none; }
+  .ac .item:hover, .ac .item.active { background: #f2ecdd; }
+  button {
+    font-family: inherit; font-size: 16px; cursor: pointer;
+    border: none; border-radius: 8px; padding: 12px 16px;
+    background: var(--accent); color: #fff; width: 100%; margin-top: 12px;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.secondary:hover { background: #f2ecdd; }
+  .preview { }
+  .pv-controls { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; font-size: 14px; }
+  .pv-controls label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--ink); }
+  .pv-controls .pv-links { margin-left: auto; font-size: 13px; }
+  .pv-controls .pv-links a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .pv-cat { font-size: 18px; margin: 20px 0 8px; border-bottom: 2px solid var(--line); padding-bottom: 4px; }
+  .pv-comm { font-size: 16px; margin: 16px 0 4px; color: var(--accent-dark); }
+  .pv-item { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 0; }
+  .pv-item-src { background: #fbf8f0; }
+  .pv-ref { font-size: 12px; color: var(--muted); margin: 0; cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+  .pv-caret { font-size: 10px; transition: transform .15s; }
+  .pv-item.collapsed .pv-caret { transform: rotate(-90deg); }
+  .pv-item.collapsed .pv-body { display: none; }
+  .pv-body { margin-top: 6px; }
+  .pv-he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre', 'David Libre', 'Times New Roman', serif; font-size: 20px; line-height: 1.9; margin: 2px 0 6px; }
+  .pv-en { font-size: 15px; line-height: 1.65; margin: 2px 0 6px; }
+  .preview.hide-he .pv-he { display: none; }
+  .preview.hide-en .pv-en { display: none; }
+  .pv-count { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+
+  /* ---- preview: collapsible category / commentator groups (Section mode) ---- */
+  .pv-grp { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; overflow: hidden; }
+  .pv-grp-head {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    background: #f2ecdd; cursor: pointer; font-size: 15px; user-select: none;
+  }
+  .pv-grp-head.top { background: #ece3d0; font-size: 16px; font-weight: bold; }
+  .pv-grp-head.sub { background: #fbf8f0; font-size: 14px; color: var(--accent-dark); }
+  .pv-grp-head .pv-caret { transition: transform .15s; }
+  .pv-grp.collapsed > .pv-grp-head .pv-caret { transform: rotate(-90deg); }
+  .pv-grp-count { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .pv-grp-body { padding: 4px 10px 8px; }
+  .pv-grp.collapsed > .pv-grp-body { display: none; }
+
+  .status { font-size: 14px; color: var(--muted); min-height: 20px; margin-top: 10px; }
+  .status.err { color: #a23b2c; }
+  .toggles { display: flex; gap: 18px; margin: 14px 0 0; }
+  .toggles label { display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink); margin: 0; }
+  .tree { display: none; }
+  .cat { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px; overflow: hidden; }
+  .cat-head {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    background: #f2ecdd; cursor: pointer; font-size: 15px;
+  }
+  .cat-head .caret { transition: transform .15s; font-size: 12px; color: var(--muted); }
+  .cat.collapsed .caret { transform: rotate(-90deg); }
+  .cat-head .count { color: var(--muted); font-size: 13px; }
+  .comm-list { padding: 4px 12px 8px; }
+  .cat.collapsed .comm-list { display: none; }
+  .comm {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 15px; margin: 0;
+  }
+  .comm:last-child { border-bottom: none; }
+  .comm .count { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .globaltoggle { font-size: 13px; color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .treehead { display: flex; align-items: center; margin-bottom: 10px; }
+  .treehead strong { font-size: 15px; }
+  .treehead .globaltoggle { margin-left: auto; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 14px; }
+  .hint a { color: var(--accent); }
+  .donate-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: var(--card); border-top: 1px solid var(--line);
+    text-align: center; padding: 10px 12px; font-size: 13px;
+  }
+  .donate-bar a { color: var(--accent); font-weight: bold; text-decoration: none; }
+  .donate-bar a:hover { text-decoration: underline; }
+  .cat-head .catbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .srcrow .cat-head { cursor: default; }
+  .srcrow .srcbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+
+  /* ---- section-grouped tree: three checkbox levels ---- */
+  .cat-head .segbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .commgrp { border-bottom: 1px solid var(--line); }
+  .commgrp:last-child { border-bottom: none; }
+  .comm.commhead { cursor: pointer; border-bottom: none; user-select: none; }
+  .comm.commhead .commbox2 { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .comm .caret2 { font-size: 10px; color: var(--muted); transition: transform .15s; }
+  .commgrp.collapsed .caret2 { transform: rotate(-90deg); }
+  .commgrp.collapsed .linklist { display: none; }
+  .linklist { padding: 0 0 6px 26px; }
+  .linkrow { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13.5px; color: var(--muted); margin: 0; }
+  .linkrow input { margin: 0; flex: none; }
+
+  /* ---- section mode: category → commentator sub-group ----- */
+  .catgrp { border-bottom: 1px solid var(--line); }
+  .catgrp:last-child { border-bottom: none; }
+  .catgrp-head { cursor: pointer; }
+  .catgrp-head .catbox2 { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .catcaret { font-size: 10px; color: var(--muted); transition: transform .15s; }
+  .catgrp.collapsed .catcaret { transform: rotate(-90deg); }
+  .catgrp.collapsed .catgrp-body { display: none; }
+  .catgrp-body { padding-left: 14px; }
+
+  /* ---- section mode: per-section original text ---- */
+  .srcgrp .commhead { color: var(--accent-dark); }
+  .srcbody { padding: 6px 10px; margin: 2px 0 8px 12px; background: #fbf8f0; border: 1px solid var(--line); border-radius: 6px; }
+  .srcbody .pv-he { font-size: 17px; line-height: 1.75; margin: 2px 0; }
+  .srcbody .pv-en { font-size: 14px; line-height: 1.6; margin: 2px 0; }
+  .srcgrp.collapsed .srcbody { display: none; }
+  /* the Hebrew / English toggles also govern the source snippets in the tree */
+  #tree.hide-he .srcbody .pv-he { display: none; }
+  #tree.hide-en .srcbody .pv-en { display: none; }
+
+  /* ---- user notes: a pencil button beside each preview text's share button,
+         an inline editor beneath that text ---- */
+  .pv-notebtn {
+    width: auto; margin: 0; padding: 3px 9px; line-height: 1.2; font-size: 14px;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none;
+  }
+  .pv-notebtn:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .pv-notebtn.has-note { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .pv-notebtn.has-note:hover { background: var(--accent-dark); }
+  .notebox { display: none; padding: 6px 0 2px; }
+  .notebox textarea {
+    width: 100%; min-height: 54px; box-sizing: border-box; resize: vertical;
+    font-family: inherit; font-size: 14px; padding: 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+
+  /* ---- reference builder: mode switch + browse navigator ----- */
+  .modeseg { display: flex; gap: 6px; margin: 12px 0 0; }
+  .modeseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .modeseg button:hover { background: #ece3d0; }
+  .modeseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .navpanel { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: #fbf8f0; }
+  .crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 8px; font-size: 13px; min-height: 20px; }
+  .crumb { color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .crumb.here { color: var(--muted); cursor: default; text-decoration: none; }
+  .crumbsep { color: var(--muted); }
+  .navlist { display: flex; flex-direction: column; }
+  .navrow { display: flex; align-items: center; gap: 8px; padding: 11px 8px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 15px; }
+  .navrow:last-child { border-bottom: none; }
+  .navrow:hover { background: #f2ecdd; }
+  .navrow .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; color: var(--muted); font-size: 15px; direction: rtl; }
+  .navrow .chev { color: var(--muted); font-size: 13px; margin-left: 6px; }
+  .navrow .he + .chev { margin-left: 6px; }
+  .navgrid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .navgrid button { width: auto; min-width: 44px; margin: 0; padding: 9px 10px; font-size: 14px; background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .navgrid button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .navnote { font-size: 12px; color: var(--muted); margin: 8px 2px 2px; }
+  .navwhole { margin: 2px 0 6px; }
+  .navwhole button { margin: 0; }
+  .navloading { font-size: 13px; color: var(--muted); padding: 8px 2px; }
+  .naverr { font-size: 13px; color: #a23b2c; padding: 8px 2px; }
+
+  /* small "clear" link, sized like the select-all / none toggle */
+  .clearrow { text-align: right; margin-top: 8px; }
+  .sharehint { text-align: center; margin-top: 6px; font-size: 13px; }
+
+  /* ---- output-format selector (also reused for the Group-by selector) ---- */
+  .fmtlabel { font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  .fmtseg { display: flex; gap: 6px; }
+  .fmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .fmtseg button:hover { background: #ece3d0; }
+  .fmtseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ---- per-text copy button (preview) ---- */
+  .pv-ref { justify-content: space-between; }
+  .pv-ref .pv-reflabel { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+  .pv-copy {
+    width: auto; margin: 0; padding: 4px 8px; line-height: 0;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none; display: inline-flex; align-items: center;
+  }
+  .pv-copy:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .pv-copy svg { display: block; }
+  /* copy + note buttons belong to the open text only — a collapsed
+     text shows just its reference line */
+  .pv-item.collapsed .pv-copy,
+  .pv-item.collapsed .pv-notebtn { display: none; }
+
+  /* ---- AI translation helper ---- */
+  .aipanel { margin-top: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbf8f0; }
+  .aipanel label { margin-bottom: 4px; }
+  .ai-row { margin-bottom: 12px; }
+  .ai-row:last-child { margin-bottom: 0; }
+  .aipanel textarea {
+    width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical;
+    font-family: inherit; font-size: 14px; padding: 8px; margin-top: 8px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+  .ai-report { font-size: 13px; color: var(--muted); margin-top: 8px; white-space: pre-wrap; }
+  .ai-report.err { color: #a23b2c; }
+  .ai-backup-row { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+
+  /* per-text AI translation shown in the preview, beneath he/en, above notes */
+  .aitransbox { padding: 8px 10px; margin: 6px 0; background: #fbf8f0; border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; }
+  .aitransbox .ai-label { font-size: 12px; font-style: italic; color: var(--accent-dark); margin: 0 0 4px; }
+  .aitransbox textarea.aitrans {
+    width: 100%; min-height: 50px; box-sizing: border-box; resize: vertical;
+    font-family: inherit; font-size: 14px; padding: 6px;
+    border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+  }
+
+  /* ---- AI batch board ---- */
+  .batchboard { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .batchboard .batchbtn {
+    width: 46px; margin: 0; padding: 10px 0; font-size: 15px; font-weight: bold;
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  .batchbtn.st-todo { background: #f2ecdd; color: var(--accent-dark); }
+  .batchbtn.st-todo:hover { background: #ece3d0; }
+  .batchbtn.st-sent { background: #e8c877; color: #5a4310; border-color: #cfa84e; }
+  .batchbtn.st-sent:hover { background: #dfba5e; }
+  .batchbtn.st-done { background: #4a7c59; color: #fff; border-color: #3d684a; }
+  .batchbtn.st-done:hover { background: #3d684a; }
+  .batchbtn.st-warn { background: #a23b2c; color: #fff; border-color: #872f23; }
+  .batchbtn.st-warn:hover { background: #872f23; }
+  .batchempty { font-size: 13px; color: var(--muted); padding: 6px 2px; }
+  .batchlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .bl-item { display: inline-flex; align-items: center; gap: 5px; }
+  .bl-dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; border: 1px solid var(--line); }
+  .bl-dot.bl-todo { background: #f2ecdd; }
+  .bl-dot.bl-sent { background: #e8c877; }
+  .bl-dot.bl-done { background: #4a7c59; }
+  .bl-dot.bl-warn { background: #a23b2c; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Sefaria Links → Kindle / Word / PDF</h1>
+  <p class="sub">Enter a reference and press Enter (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
+
+  <div class="card">
+    <label for="ref">Find a reference in Sefaria's library</label>
+    <div class="refwrap">
+      <input type="text" id="ref" placeholder="Type and press Enter… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+      <div class="ac" id="ac"></div>
+    </div>
+
+    <div class="modeseg">
+      <button type="button" data-mode="type" class="on">Type</button>
+      <button type="button" data-mode="browse">Browse</button>
+    </div>
+
+    <div class="navpanel" id="browsePanel" style="display:none">
+      <div class="crumbs" id="crumbs"></div>
+      <div id="navBody"></div>
+    </div>
+
+    <div class="toggles">
+      <label><input type="checkbox" id="incHe" checked> Hebrew</label>
+      <label><input type="checkbox" id="incEn" checked> English</label>
+    </div>
+
+    <div class="clearrow"><span class="globaltoggle" id="clearBtn">clear</span></div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card tree" id="treeCard">
+    <div class="fmtlabel" style="margin-top:0">Group by</div>
+    <div class="fmtseg grpseg">
+      <button type="button" data-grp="cat" class="on">Category</button>
+      <button type="button" data-grp="seg">Section</button>
+    </div>
+
+    <div class="treehead" style="margin-top:16px">
+      <strong>Choose sources</strong>
+      <span class="globaltoggle" id="toggleAll">select all / none</span>
+    </div>
+    <div id="tree"></div>
+    <button id="aiHelperBtn" class="secondary" type="button">AI translation helper</button>
+    <p class="hint" style="margin:8px 2px 0">Translating? First tick <em>only</em> the texts you want translated, then open the helper. Once the translations are in, tick everything you want in the finished document and carry on below.</p>
+
+    <div class="aipanel" id="aiPanel" style="display:none">
+      <div class="ai-row">
+        <label for="aiLang">Translate into</label>
+        <input type="text" id="aiLang" value="English" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="ai-row">
+        <label for="aiBatchSize">Batch size (Hebrew characters per batch)</label>
+        <input type="text" id="aiBatchSize" value="5000" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false">
+      </div>
+      <div class="ai-row">
+        <label>Batches — tap one to copy it for the AI, then use Paste reply</label>
+        <div class="batchboard" id="batchBoard"></div>
+        <div class="batchlegend" id="batchLegend" style="display:none">
+          <span class="bl-item"><span class="bl-dot bl-todo"></span>not sent</span>
+          <span class="bl-item"><span class="bl-dot bl-sent"></span>awaiting reply</span>
+          <span class="bl-item"><span class="bl-dot bl-done"></span>done</span>
+          <span class="bl-item"><span class="bl-dot bl-warn"></span>needs attention — tap to re-copy</span>
+        </div>
+        <div class="clearrow" id="aiRebuildRow" style="display:none; text-align:left"><span class="globaltoggle" id="aiRebuildBatches">rebuild batches</span></div>
+      </div>
+      <div class="ai-report" id="aiReport"></div>
+      <div class="ai-backup-row">
+        <span class="globaltoggle" id="aiSaveBackup">save backup in this browser</span>
+        <span class="globaltoggle" id="aiRestoreBackup" style="display:none">restore backup</span>
+        <span class="globaltoggle" id="aiDeleteBackup" style="display:none">delete backup</span>
+      </div>
+    </div>
+
+    <button id="previewBtn">Preview selected texts</button>
+
+    <div class="fmtlabel">Format</div>
+    <div class="fmtseg">
+      <button type="button" data-fmt="kindle" class="on">Kindle (EPUB)</button>
+      <button type="button" data-fmt="word">Word</button>
+      <button type="button" data-fmt="pdf">PDF</button>
+    </div>
+    <div id="shareBar" style="display:none">
+      <button id="shareBtn">📤 Share file…</button>
+      <div class="sharehint"><span class="globaltoggle" id="saveInstead">save to downloads instead</span></div>
+    </div>
+  </div>
+
+  <div class="card" id="previewCard" style="display:none">
+    <div class="pv-count" id="previewCount"></div>
+    <div class="pv-controls">
+      <label><input type="checkbox" id="pvHe" checked> Hebrew</label>
+      <label><input type="checkbox" id="pvEn" checked> English</label>
+      <span class="pv-links"><a id="pvExpandAll">expand all</a> · <a id="pvCollapseAll">collapse all</a></span>
+    </div>
+    <div class="preview" id="preview"></div>
+  </div>
+
+  <p class="hint">Runs entirely in your browser — nothing is sent anywhere except Sefaria. On mobile: build the file, then use the share sheet → <em>Send to Kindle</em> (EPUB and Word both work; EPUB gives the richer Go&nbsp;To menu).</p>
+  <p class="hint" id="verHint">Texts and links from Sefaria's open library.</p>
+</div>
+
+<div class="donate-bar"><a href="https://www.sefaria.org.il/ways-to-give" target="_blank" rel="noopener">♥ Donate to Sefaria</a></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const APP_VERSION = 29;   // bump when deploying, shows in footer + built books
+// Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
+// each source segment jumping to the pieces in place, and a back-link under
+// each piece. Plain internal links — survives Kindle's KFX conversion.
+const RTS_POPUPS = true;
+const NAME_API = "https://www.sefaria.org/api/name/";
+const LINKS_API = "https://www.sefaria.org/api/links/";
+const TEXTS_API = "https://www.sefaria.org/api/texts/";
+let LINKS = [];      // link objects with text (each gets a stable index l._i)
+let TREE = {};       // category -> { commentator -> [links] }
+let CAT_ORDER = [];  // categories, most links first
+let SEG_TREE = {};   // segment ref -> { category -> [links] }
+let SEG_ORDER = [];  // segment refs, in textual order
+let GROUPMODE = "cat"; // "cat" | "seg"
+let SRC = null;      // { ref, heRef, he:[segments], text:[segments], segMap? } base source text
+                     // segMap (ranged refs only): segment ref -> index into he/text
+
+// ---------------------------------------------------------------------------
+// Selection state — the single source of truth for BOTH grouping modes.
+// SEL holds the _i indices of the individual texts currently selected;
+// SRC_ON is one global flag for the original text. Every checkbox in either
+// tree is just a view onto this state, so a toggle made anywhere (a category
+// in one section, a commentator in Category mode, the source text…) is
+// automatically mirrored everywhere else, and survives switching Group by.
+// ---------------------------------------------------------------------------
+let SEL = new Set();
+let SRC_ON = false;
+
+// User notes, written in the preview on individual texts (the most granular
+// level). Keys: "L" + link index for a linked text (stable across grouping
+// modes, so a note follows its text between Category and Section views);
+// "S:" + segment for one section's slice of the original text; "__src__" for
+// the whole original text in Category mode. Each note is printed in the
+// built file directly beneath its own text. Notes are cleared when a new
+// reference is fetched (they belong to the old one).
+let NOTES = {};
+
+// AI translation helper state.
+// TRANS: canonical ref -> { text, lang } — the current (possibly edited)
+// translation for a linked text. Keyed by canonical ref (l.sourceRef || l.ref),
+// never by l._i, since indices are only stable within one fetch.
+// SENTMAP / SENTORDER describe the most recent copy batch, used to match the
+// AI's reply back to the right text (direct match, or positional fallback).
+// SENTHE keeps each batched ref's Hebrew, so a batch can be re-copied.
+let TRANS = {};
+let SENTMAP = {};
+let SENTORDER = [];
+let SENTLEN = {};
+let SENTHE = {};
+// Batch board. null until built (panel first opened, or rebuilt). Each batch
+// owns an ordered list of canonical refs. SENTMAP / SENTORDER / SENTLEN /
+// SENTHE cover the WHOLE board, so one universal Paste can match a reply to
+// any batch, in any order.
+let BATCHES = null;   // [{ refs: [...], status: "todo"|"sent"|"done"|"warn", short: [] }]
+
+function canonicalRef(l) { return l.sourceRef || l.ref || ""; }
+
+function srcAvailable() { return !!(SRC && (SRC.he.length || SRC.text.length)); }
+
+function noteOf(key) { return (NOTES[key] || "").trim(); }
+function pvNoteBtnHtml(key) {
+  const k = encodeURIComponent(key);
+  return `<button type="button" class="pv-notebtn${noteOf(key) ? " has-note" : ""}" data-key="${k}" title="Add a note to this text" aria-label="Add a note to this text">✎</button>`;
+}
+function noteBoxHtml(key) {
+  const k = encodeURIComponent(key);
+  const has = !!noteOf(key);
+  return `<div class="notebox" data-key="${k}"${has ? ' style="display:block"' : ""}><textarea class="notetext" data-key="${k}" placeholder="Your note — printed beneath this text in the built file.">${escapeHtml(NOTES[key] || "")}</textarea></div>`;
+}
+
+// The AI translation shown (and editable) beneath a text's Hebrew/English in
+// the preview. Only rendered when a translation exists for this ref.
+function aiTransBoxHtml(ref) {
+  const t = TRANS[ref];
+  if (!t) return "";
+  const r = encodeURIComponent(ref);
+  return `<div class="aitransbox">
+    <p class="ai-label">AI translation (${escapeHtml(t.lang || "")})</p>
+    <textarea class="aitrans" data-ref="${r}">${escapeHtml(t.text || "")}</textarea>
+  </div>`;
+}
+
+// emitAiBlock: pushed into gatherContent's blocks list right after a link's
+// he/en, before its note — used by both grouping modes.
+function emitAiBlock(blocks, ref) {
+  const t = TRANS[ref];
+  if (t && t.text && t.text.trim()) blocks.push({ type: "ai", text: t.text.trim(), lang: t.lang || "" });
+}
+
+function setLinkSel(i, on) {
+  if (on) SEL.add(i); else SEL.delete(i);
+  syncTreeUI();
+}
+// Toggle every text of one (category, commentator) pair — across all sections.
+function setKeySel(cat, comm, on) {
+  const links = (TREE[cat] && TREE[cat][comm]) || [];
+  for (const l of links) { if (on) SEL.add(l._i); else SEL.delete(l._i); }
+  syncTreeUI();
+}
+// Toggle every text of one category — across all sections.
+function setCatSel(cat, on) {
+  for (const arr of Object.values(TREE[cat] || {})) {
+    for (const l of arr) { if (on) SEL.add(l._i); else SEL.delete(l._i); }
+  }
+  syncTreeUI();
+}
+function setSrcSel(on) {
+  SRC_ON = on && srcAvailable();
+  syncTreeUI();
+}
+
+// Repaint every checkbox in the current tree from SEL / SRC_ON.
+function syncTreeUI() {
+  // leaf link checkboxes (Section mode)
+  document.querySelectorAll("#tree .linkbox").forEach(b => {
+    b.checked = SEL.has(parseInt(b.dataset.i, 10));
+  });
+  // commentator groups (Section mode)
+  document.querySelectorAll("#tree .commgrp").forEach(g => {
+    const cb = g.querySelector(".commbox2"); if (!cb) return;
+    const boxes = [...g.querySelectorAll(".linkbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  // category groups (Section mode)
+  document.querySelectorAll("#tree .catgrp").forEach(cg => {
+    const cb = cg.querySelector(".catbox2"); if (!cb) return;
+    const boxes = [...cg.querySelectorAll(".linkbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  // per-section source slices + section checkboxes (Section mode)
+  document.querySelectorAll("#tree .segsrcbox").forEach(b => { b.checked = SRC_ON; });
+  document.querySelectorAll("#tree .cat.seg").forEach(sec => {
+    const sb = sec.querySelector(".segbox"); if (!sb) return;
+    const boxes = [...sec.querySelectorAll(".linkbox")];
+    let on = boxes.filter(b => b.checked).length, total = boxes.length;
+    if (sec.querySelector(".segsrcbox")) { total++; if (SRC_ON) on++; }
+    sb.checked = on > 0; sb.indeterminate = on > 0 && on < total;
+  });
+  // commentator rows (Category mode)
+  document.querySelectorAll("#tree .commbox").forEach(b => {
+    const cat = decodeURIComponent(b.dataset.cat), comm = decodeURIComponent(b.dataset.comm);
+    const links = (TREE[cat] && TREE[cat][comm]) || [];
+    const on = links.filter(l => SEL.has(l._i)).length;
+    b.checked = on > 0; b.indeterminate = on > 0 && on < links.length;
+  });
+  // category headers (Category mode)
+  document.querySelectorAll("#tree .cat[data-cat]").forEach(catEl => {
+    const cb = catEl.querySelector(".catbox"); if (!cb) return;
+    const boxes = [...catEl.querySelectorAll(".commbox")];
+    if (!boxes.length) return;
+    const fullyOn = boxes.filter(b => b.checked && !b.indeterminate).length;
+    const any = boxes.some(b => b.checked);
+    cb.checked = any; cb.indeterminate = any && fullyOn < boxes.length;
+  });
+  // global Original Text row (Category mode)
+  const src = $("srcbox");
+  if (src && !src.disabled) src.checked = SRC_ON;
+
+  refreshAiUI();
+}
+
+// The Hebrew / English toggles also govern the source snippets shown
+// inside the Section-mode tree (not just the output and the preview).
+function applyTreeLang() {
+  $("tree").classList.toggle("hide-he", !$("incHe").checked);
+  $("tree").classList.toggle("hide-en", !$("incEn").checked);
+}
+
+function toArr(v) {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map(x => Array.isArray(x) ? x.map(asText).join(" ") : asText(x));
+  return [asText(v)];
+}
+
+// --- load an external library (with CDN fallback) --------------------------
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error("load failed: " + src));
+    document.head.appendChild(s);
+  });
+}
+async function ensureDocx() {
+  if (window.docx) return window.docx;
+  const cdns = [
+    "https://cdn.jsdelivr.net/npm/docx@9.7.1/dist/index.umd.cjs",
+    "https://unpkg.com/docx@9.7.1/dist/index.umd.cjs"
+  ];
+  for (const url of cdns) {
+    try { await loadScript(url); if (window.docx) return window.docx; } catch (e) {}
+  }
+  return null;
+}
+async function ensureJSZip() {
+  if (window.JSZip) return window.JSZip;
+  const cdns = [
+    "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
+    "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
+  ];
+  for (const url of cdns) {
+    try { await loadScript(url); if (window.JSZip) return window.JSZip; } catch (e) {}
+  }
+  return null;
+}
+
+const statusEl = $("status");
+function setStatus(msg, isErr) {
+  statusEl.textContent = msg;
+  statusEl.className = "status" + (isErr ? " err" : "");
+}
+
+// --- helpers ---------------------------------------------------------------
+function asText(field) {
+  if (!field) return "";
+  if (Array.isArray(field)) return field.map(asText).join(" ");
+  return String(field);
+}
+// Shared clipboard writer: modern async API first, falling back to a hidden
+// textarea + execCommand("copy") for older/unsupporting contexts. Returns
+// true/false rather than throwing, so callers just check the result.
+async function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.top = "-1000px";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+function stripHtml(html) {
+  if (!html) return "";
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  div.querySelectorAll("sup, .footnote, i.footnote, .mam-spi-pe").forEach(n => n.remove());
+  return (div.textContent || "").replace(/\s+/g, " ").trim();
+}
+function commName(l) {
+  return (l.collectiveTitle && l.collectiveTitle.en) || l.index_title || l.category || "Other";
+}
+function catName(l) { return l.category || "Other"; }
+function keyFor(cat, comm) { return cat + "||" + comm; }
+
+// Which segment of the source a link hangs off. Prefer the segment the link
+// was actually fetched for (set during the segment-by-segment walk, and for
+// single-segment fetches); fall back to anchorRef only for refs that couldn't
+// be expanded. A link spanning several segments is filed under the first
+// segment it was seen for, so it appears once.
+function segRefOf(l) {
+  if (l._seg) return l._seg;
+  if (Array.isArray(l.anchorRefExpanded) && l.anchorRefExpanded.length) return l.anchorRefExpanded[0];
+  return l.anchorRef || "";
+}
+function segNum(ref) {
+  const m = String(ref).match(/:(\d+)$/);
+  return m ? parseInt(m[1], 10) : 0;   // whole-page anchors sort first
+}
+// Which slice of the base text belongs to a section. Ranged fetches (a parsha,
+// an aliyah) carry an explicit segment→index map, since their slices don't
+// start at :1 and can cross chapters. When the whole fetch was a single
+// segment (one verse, one mishnah), the source text has exactly one slice —
+// use it — otherwise index by the segment number.
+function srcIdxFor(seg) {
+  if (!srcAvailable()) return -1;
+  if (SRC.segMap) return (seg in SRC.segMap) ? SRC.segMap[seg] : -1;
+  if (SEG_ORDER.length === 1 && Math.max(SRC.he.length, SRC.text.length) === 1) return 0;
+  return segNum(seg) - 1;
+}
+// The opening words of a section's source text, for use in headings —
+// Hebrew if available, else English. Truncated at a word boundary.
+function incipitFor(seg) {
+  if (!srcAvailable()) return "";
+  const idx = srcIdxFor(seg);
+  if (idx < 0) return "";
+  const t = stripHtml(SRC.he[idx] || "") || stripHtml(SRC.text[idx] || "");
+  if (!t) return "";
+  const words = t.split(" ");
+  let out = "";
+  for (const w of words) {
+    if (out && (out.length + 1 + w.length) > 30) break;
+    out += (out ? " " : "") + w;
+    if (out.length >= 30) break;
+  }
+  return out + (out.length < t.length ? "\u2026" : "");
+}
+// Categories present within a segment: fixed category rank, then frequency.
+function segCats(seg) {
+  return Object.keys(SEG_TREE[seg]).sort((a, b) => {
+    const ra = catRank(a), rb = catRank(b);
+    if (ra !== rb) return ra - rb;
+    return SEG_TREE[seg][b].length - SEG_TREE[seg][a].length;
+  });
+}
+// Rashi, Tosafot, Steinsaltz always lead the commentators in a Talmud section.
+function commRank(name) {
+  const lc = String(name).toLowerCase();
+  if (lc.indexOf("rashi") === 0) return 0;
+  if (lc.indexOf("tosafot") === 0 || lc.indexOf("tosfot") === 0) return 1;
+  if (lc.indexOf("steinsaltz") === 0) return 2;
+  return 3;
+}
+// Links inside one section+category, ordered by work then reference so a
+// commentator's own pieces stay together (their names show in each ref).
+function segCatLinks(seg, cat) {
+  return SEG_TREE[seg][cat].slice().sort((a, b) => {
+    const na = commName(a), nb = commName(b);
+    const ra = commRank(na), rb = commRank(nb);
+    if (ra !== rb) return ra - rb;
+    if (na !== nb) return na.localeCompare(nb);
+    return String(a.sourceRef || a.ref || "").localeCompare(String(b.sourceRef || b.ref || ""));
+  });
+}
+// Bucket a list of links by commentator/work (Rashi, Tosafot, Berakhot…),
+// preserving the given order so each work's pieces stay contiguous.
+function groupByComm(links) {
+  const out = [], idx = {};
+  for (const l of links) {
+    const n = commName(l);
+    if (!(n in idx)) { idx[n] = out.length; out.push([n, []]); }
+    out[idx[n]][1].push(l);
+  }
+  return out;
+}
+// Within one section+category, bucket links by commentator, preserving order.
+function segCatComms(seg, cat) {
+  return groupByComm(segCatLinks(seg, cat));
+}
+
+// Fixed section order: Source Text is emitted first separately; then these
+// categories in this order (if present), then everything else by frequency.
+const FIXED_ORDER = [
+  ["commentary"],
+  ["mishnah", "mishna"],
+  ["talmud"],
+  ["halakhah", "halacha", "halakha"],
+  ["tosefta"],
+  ["responsa"]
+];
+function catRank(c) {
+  const lc = String(c).toLowerCase();
+  for (let i = 0; i < FIXED_ORDER.length; i++) if (FIXED_ORDER[i].includes(lc)) return i;
+  return Infinity;   // unranked → placed after the fixed list, by frequency
+}
+
+// ===========================================================================
+// Reference autocomplete (Sefaria's own name API)
+// ===========================================================================
+const acBox = $("ac");
+let acItems = [], acActive = -1, acTimer = null;
+
+function hideAC() { acBox.style.display = "none"; acItems = []; acActive = -1; }
+
+function renderAC(list) {
+  if (!list.length) { hideAC(); return; }
+  acItems = list;
+  acActive = -1;
+  acBox.innerHTML = list.map((s, i) =>
+    `<div class="item" data-i="${i}">${s}</div>`
+  ).join("");
+  acBox.style.display = "block";
+  [...acBox.querySelectorAll(".item")].forEach(el => {
+    el.addEventListener("mousedown", e => {   // mousedown fires before blur
+      e.preventDefault();
+      pickAC(parseInt(el.dataset.i, 10));
+    });
+  });
+}
+// Picking a suggestion that ends in a number / daf is a usable reference —
+// fetch it right away (this is what replaces the old Fetch button). A bare
+// book name means the user is still narrowing down, so keep them typing.
+function pickAC(i) {
+  if (i < 0 || i >= acItems.length) return;
+  const v = acItems[i];
+  hideAC();
+  if (/\d+[ab]?(?::\d+)?$/.test(v.trim())) {
+    $("ref").value = v;
+    fetchLinks();
+  } else {
+    $("ref").value = v + " ";
+    $("ref").focus();
+  }
+}
+async function queryNames(q) {
+  try {
+    const res = await fetch(NAME_API + encodeURIComponent(q) + "?limit=8");
+    if (!res.ok) return;
+    const data = await res.json();
+    const list = Array.isArray(data.completions) ? data.completions.slice(0, 8) : [];
+    renderAC(list);
+  } catch (e) { /* silent: typing still works */ }
+}
+$("ref").addEventListener("input", () => {
+  const q = $("ref").value.trim();
+  clearTimeout(acTimer);
+  if (q.length < 2) { hideAC(); return; }
+  acTimer = setTimeout(() => queryNames(q), 220);
+});
+$("ref").addEventListener("keydown", e => {
+  if (acBox.style.display === "block" && acItems.length) {
+    if (e.key === "ArrowDown") { e.preventDefault(); acActive = (acActive + 1) % acItems.length; }
+    else if (e.key === "ArrowUp") { e.preventDefault(); acActive = (acActive - 1 + acItems.length) % acItems.length; }
+    else if (e.key === "Enter") {
+      if (acActive >= 0) { e.preventDefault(); pickAC(acActive); return; }
+      hideAC(); fetchLinks(); return;
+    }
+    else if (e.key === "Escape") { hideAC(); return; }
+    else return;
+    [...acBox.querySelectorAll(".item")].forEach((el, i) =>
+      el.classList.toggle("active", i === acActive));
+    return;
+  }
+  if (e.key === "Enter") fetchLinks();
+});
+$("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
+
+// ===========================================================================
+// Fetch links + build the source trees (by category, and by section)
+// ===========================================================================
+function isMultiSegmentSection(ref) {
+  if (ref.indexOf(":") >= 0) return false;   // already a specific segment
+  if (/\d+[ab]$/.test(ref)) return true;      // Talmud daf (e.g. 100a) — walk its segments
+  return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
+}
+// A ranged reference (an aliyah, a whole parsha, "Shabbat 100a:1-5"…):
+// verse:verse with a dash somewhere after it.
+function isRangedRef(ref) {
+  return /:\d+\s*[-–]\s*\d/.test(String(ref));
+}
+
+async function mapPool(items, worker, poolSize, onProgress) {
+  const results = new Array(items.length);
+  let idx = 0, done = 0;
+  async function run() {
+    while (idx < items.length) {
+      const my = idx++;
+      results[my] = await worker(items[my], my);
+      done++; if (onProgress) onProgress(done, items.length);
+    }
+  }
+  const runners = [];
+  for (let k = 0; k < Math.min(poolSize, items.length); k++) runners.push(run());
+  await Promise.all(runners);
+  return results;
+}
+
+// Fetch links for an explicit list of segment refs, tagging each link with
+// the segment it was fetched for. This is the ground truth for section
+// grouping — per-segment calls return every category (Tanakh, Talmud,
+// Halakhah…), exactly matching Sefaria's own sidebar, whereas anchorRef on a
+// whole-page call is unreliable outside Commentary.
+async function linksForSegs(segs) {
+  const chunks = await mapPool(segs, async (sref) => {
+    try {
+      const r = await fetch(LINKS_API + encodeURIComponent(sref) + "?with_text=1");
+      if (!r.ok) return [];
+      const d = await r.json();
+      if (!Array.isArray(d)) return [];
+      d.forEach(l => { l._seg = sref; });
+      return d;
+    } catch (e) { return []; }
+  }, 6, (done, total) => setStatus("Fetching links… " + done + " / " + total + " segments"));
+  return [].concat.apply([], chunks);
+}
+
+// ---------------------------------------------------------------------------
+// Canonical per-section counts from the shape API. Sefaria's plain texts API
+// serves the default edition, whose segmentation can be SHORTER than the
+// canonical one the site uses and links are anchored against (e.g. Kalach
+// Pitchei Chokhmah 3 is 3:1-7 on the site, but the default edition has only
+// 4 segments). Walking just the edition's segments would silently skip links
+// anchored beyond it, so section walks take the larger of the two counts.
+// Shape responses are cached per book/node title for the session.
+// ---------------------------------------------------------------------------
+const SHAPE_COUNTS = {};   // base title -> per-section counts array, or null
+async function shapeSecCounts(base) {
+  if (base in SHAPE_COUNTS) return SHAPE_COUNTS[base];
+  let out = null;
+  try {
+    const r = await fetch(SHAPE_API + encodeURIComponent(base));
+    if (r.ok) {
+      const j = await r.json();
+      const first = Array.isArray(j) ? j[0] : j;
+      if (first && Array.isArray(first.chapters)) {
+        out = first.chapters.map(c => Array.isArray(c) ? c.length : (typeof c === "number" ? c : 0));
+      }
+    }
+  } catch (e) {}
+  SHAPE_COUNTS[base] = out;
+  return out;
+}
+// The canonical count for one "Base N" section ref; null when the ref has no
+// plain trailing section number (dapim, deeper refs, bare titles) or the
+// shape is unavailable.
+async function shapeCountFor(ref) {
+  const m = String(ref).trim().match(/^(.*\S)\s+(\d+)$/);
+  if (!m) return null;
+  const counts = await shapeSecCounts(m[1]);
+  if (!counts) return null;
+  const idx = parseInt(m[2], 10) - 1;
+  return (idx >= 0 && idx < counts.length) ? (counts[idx] || null) : null;
+}
+
+// A whole chapter/section: Sefaria's links API doesn't reliably return the
+// linked *text* for a multi-segment ref, so walk it segment-by-segment and
+// merge. Each per-segment call does return text, which is what we need.
+async function fetchLinksBySegments(ref) {
+  setStatus("Reading " + ref + "…");
+  let n = 0;
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
+    if (r.ok) {
+      const j = await r.json();
+      // union of both languages — one edition can be shorter than the other
+      const nHe = Array.isArray(j.he) ? j.he.length : 0;
+      const nEn = Array.isArray(j.text) ? j.text.length : 0;
+      n = Math.max(nHe, nEn);
+    }
+  } catch (e) {}
+  // …and never fewer than the canonical segmentation links are anchored to
+  const nShape = await shapeCountFor(ref);
+  if (nShape && nShape > n) n = nShape;
+  if (!n) {   // couldn't expand — fall back to a single call
+    const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return await res.json();
+  }
+  const segs = [];
+  for (let i = 1; i <= n; i++) segs.push(ref + ":" + i);
+  return await linksForSegs(segs);
+}
+
+// Expand a ranged reference (an aliyah, a whole parsha) into its individual
+// segment refs, together with each segment's own Hebrew / English text.
+// A range within one section ("Shabbat 100a:1-5", "Genesis 24:10-26") is a
+// single fetch — those responses are dependably flat. A numeric range across
+// chapters ("Genesis 2:4-3:21", a whole parsha) is expanded by fetching each
+// chapter WHOLE and slicing it: whole-chapter responses are flat, parallel
+// he/text arrays, whereas the shape of Sefaria's spanning-ref response varies
+// (nested per chapter, sometimes differently per language), and rebuilding
+// verse numbers from that shape produced phantom sections like "Genesis 4:1"
+// for an aliyah. Anything odder (a cross-daf range…) returns null and the
+// caller falls back.
+async function expandRangedRef(ref) {
+  const t = String(ref).trim();
+  const fetchJson = async (r) => {
+    try {
+      const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0&pad=0");
+      if (!res.ok) return null;
+      const j = await res.json();
+      return j.error ? null : j;
+    } catch (e) { return null; }
+  };
+
+  // -- a range within one section: "Book 2:4-19", "Shabbat 100a:1-5" --------
+  let m = t.match(/^(.+?):(\d+)\s*[-\u2013]\s*(\d+)$/);
+  if (m && +m[3] >= +m[2]) {
+    const base = m[1], start = +m[2];
+    const j = await fetchJson(t);
+    if (!j) return null;
+    const heArr = Array.isArray(j.he) ? j.he : [];
+    const enArr = Array.isArray(j.text) ? j.text : [];
+    const n = Math.max(heArr.length, enArr.length);
+    if (!n) return null;
+    const out = [];
+    for (let i = 0; i < n; i++)
+      out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
+    return { ref: j.ref || t, heRef: j.heRef || "", segs: out };
+  }
+
+  // -- a numeric range across chapters: "Genesis 2:4-3:21", a parsha --------
+  m = t.match(/^(.+?)\s(\d+):(\d+)\s*[-\u2013]\s*(\d+):(\d+)$/);
+  if (!m) return null;
+  const book = m[1], c1 = +m[2], v1 = +m[3], c2 = +m[4], v2 = +m[5];
+  if (c2 < c1 || (c2 === c1 && v2 < v1)) return null;
+
+  // canonical English + Hebrew names of the range, for the source heading
+  let refName = t, heRef = "";
+  const meta = await fetchJson(t);
+  if (meta) { refName = meta.ref || t; heRef = meta.heRef || ""; }
+
+  const out = [];
+  for (let c = c1; c <= c2; c++) {
+    const j = await fetchJson(book + " " + c);
+    if (!j) return null;
+    const heArr = Array.isArray(j.he) ? j.he : [];
+    const enArr = Array.isArray(j.text) ? j.text : [];
+    const n = Math.max(heArr.length, enArr.length);
+    if (!n) return null;
+    const from = (c === c1) ? v1 : 1;
+    const to = (c === c2) ? Math.min(v2, n) : n;
+    if (from > to) return null;
+    for (let v = from; v <= to; v++)
+      out.push({ ref: book + " " + c + ":" + v, he: asText(heArr[v - 1]), en: asText(enArr[v - 1]) });
+  }
+  if (!out.length) return null;
+  return { ref: refName, heRef: heRef, segs: out };
+}
+
+// Ranged ref → links (segment by segment, so section grouping works) plus a
+// ready-made source-text object whose segMap aligns each section with its own
+// slice of the text — even across chapter boundaries.
+async function fetchRangeData(ref) {
+  setStatus("Reading " + ref + "…");
+  const exp = await expandRangedRef(ref);
+  if (!exp) return null;
+  const links = await linksForSegs(exp.segs.map(s => s.ref));
+  const segMap = {};
+  exp.segs.forEach((s, i) => { segMap[s.ref] = i; });
+  const src = {
+    ref: exp.ref, heRef: exp.heRef,
+    he: exp.segs.map(s => s.he), text: exp.segs.map(s => s.en),
+    segMap
+  };
+  return { links, src };
+}
+
+let FETCHING = false;
+async function fetchLinks() {
+  if (FETCHING) return;
+  const ref = $("ref").value.trim();
+  if (!ref) { setStatus("Enter a reference and press Enter, or switch to Browse.", true); return; }
+
+  if (!confirmDiscardTranslations()) return;
+
+  FETCHING = true;
+  $("treeCard").style.display = "none";
+  $("previewCard").style.display = "none";
+  hideShareBar();
+  setStatus("Fetching…");
+
+  try {
+    let data;
+    let preSrc = null;   // source text prepared by the range walk, if any
+    if (isRangedRef(ref)) {
+      const rd = await fetchRangeData(ref);
+      if (rd) { data = rd.links; preSrc = rd.src; }
+      else {
+        // range we couldn't parse (e.g. cross-daf) — single call, best effort
+        const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        data = await res.json();
+        if (data && data.error) throw new Error(data.error);
+      }
+    } else if (isMultiSegmentSection(ref)) {
+      data = await fetchLinksBySegments(ref);
+    } else {
+      const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      data = await res.json();
+      if (data && data.error) throw new Error(data.error);
+      // A single specific segment (one verse, one mishnah, one line of a daf):
+      // everything the API returns belongs to that segment, so file it all
+      // there. Without this, links anchored to ranges (a commentary on
+      // 9:1-10:29, or on 2:1-3) would surface under the range's first segment,
+      // making e.g. "I Kings 9:10" show sections for 9:1, 9:9 and even 1:1.
+      if (Array.isArray(data) && /:\d+$/.test(ref)) data.forEach(l => { l._seg = ref; });
+    }
+    if (!Array.isArray(data) || data.length === 0) {
+      setStatus("No links found for that reference.", true);
+      return;
+    }
+
+    // keep only links with text, and dedupe (a ranged link can come back once
+    // per segment when a chapter is fetched segment-by-segment)
+    const seen = new Set();
+    LINKS = data.filter(l => {
+      if (!(asText(l.he) || asText(l.text))) return false;
+      const id = l._id || (commName(l) + "|" + (l.sourceRef || l.ref || "") + "|" + (l.anchorRef || ""));
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+    LINKS.forEach((l, i) => l._i = i);   // stable index for per-link checkboxes
+
+    // group: category -> commentator -> links
+    TREE = {};
+    for (const l of LINKS) {
+      const c = catName(l), n = commName(l);
+      (TREE[c] = TREE[c] || {});
+      (TREE[c][n] = TREE[c][n] || []).push(l);
+    }
+    const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
+    CAT_ORDER = Object.keys(TREE).sort((a, b) => {
+      const ra = catRank(a), rb = catRank(b);
+      if (ra !== rb) return ra - rb;            // fixed order wins
+      return catCount(b) - catCount(a);         // else frequency, descending
+    });
+
+    // group: section (anchor segment) -> category -> links
+    SEG_TREE = {};
+    for (const l of LINKS) {
+      const s = segRefOf(l) || "(whole page)";
+      const c = catName(l);
+      (SEG_TREE[s] = SEG_TREE[s] || {});
+      (SEG_TREE[s][c] = SEG_TREE[s][c] || []).push(l);
+    }
+    // Ranged fetches order sections by their place in the range (segment
+    // numbers restart in each chapter, so numeric sorting would shuffle a
+    // parsha); everything else sorts by segment number as before.
+    SEG_ORDER = Object.keys(SEG_TREE).sort((a, b) => {
+      if (preSrc && preSrc.segMap) {
+        const ia = (a in preSrc.segMap) ? preSrc.segMap[a] : Infinity;
+        const ib = (b in preSrc.segMap) ? preSrc.segMap[b] : Infinity;
+        if (ia !== ib) return ia - ib;
+      }
+      return segNum(a) - segNum(b) || a.localeCompare(b);
+    });
+
+    // the reference's own text, so "Original Text" can head the list. A range
+    // walk already built it (with per-section alignment); otherwise fetch it
+    // now (non-fatal).
+    SRC = null;
+    if (preSrc) {
+      SRC = preSrc;
+    } else {
+      try {
+        const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
+        if (r.ok) {
+          const t = await r.json();
+          if (!t.error) SRC = { ref: t.ref || ref, heRef: t.heRef || "", he: toArr(t.he), text: toArr(t.text) };
+        }
+      } catch (e) { /* silent: source text just won't be available */ }
+    }
+
+    // fresh selection: everything on; notes belonged to the previous reference
+    SEL = new Set(LINKS.map(l => l._i));
+    SRC_ON = srcAvailable();
+    NOTES = {};
+    TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {}; BATCHES = null;
+    refreshAiUI();
+
+    renderTree();
+    setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
+  } catch (e) {
+    setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
+  } finally {
+    FETCHING = false;
+  }
+}
+
+// ===========================================================================
+// Tree rendering — dispatches on the grouping mode. Checkboxes carry no state
+// of their own: after rendering, syncTreeUI() paints them from SEL / SRC_ON,
+// so the same selection carries across Category ↔ Section switches.
+// ===========================================================================
+function renderTree() {
+  if (GROUPMODE === "seg") renderSegTree();
+  else renderCatTree();
+  syncTreeUI();
+  applyTreeLang();
+}
+
+function srcRowHtml(subtitle) {
+  const avail = srcAvailable();
+  return `<div class="cat srcrow">
+      <div class="cat-head">
+        <input type="checkbox" class="srcbox" id="srcbox" ${avail ? "" : "disabled"}>
+        <span class="caret" style="visibility:hidden">▾</span>
+        <strong>Original Text</strong>
+        <span class="count">${avail ? subtitle : "not available"}</span>
+      </div>
+    </div>`;
+}
+
+// The relevant slice of the base text for one section, as an expandable,
+// checkable group placed at the top of that section's menu (Section mode).
+function segSrcGroupHtml(seg) {
+  const idx = srcIdxFor(seg);
+  if (idx < 0) return "";   // no source, or the "(whole page)" bucket
+  const he = stripHtml(SRC.he[idx] || "");
+  const en = stripHtml(SRC.text[idx] || "");
+  if (!he && !en) return "";
+  const body =
+    (he ? `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>` : "") +
+    (en ? `<p class="pv-en">${escapeHtml(en)}</p>` : "");
+  return `<div class="commgrp srcgrp">
+    <div class="comm commhead">
+      <input type="checkbox" class="segsrcbox" data-idx="${idx}">
+      <span class="caret2">▾</span>
+      <span>Original text</span>
+    </div>
+    <div class="srcbody">${body}</div>
+  </div>`;
+}
+
+function renderCatTree() {
+  const catCount = c => Object.values(TREE[c]).reduce((s, arr) => s + arr.length, 0);
+
+  const catsHtml = CAT_ORDER.map(cat => {
+    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+    const rows = comms.map(comm => {
+      const n = TREE[cat][comm].length;
+      return `<label class="comm">
+        <input type="checkbox" class="commbox" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
+        <span>${comm}</span><span class="count">${n}</span>
+      </label>`;
+    }).join("");
+    return `<div class="cat collapsed" data-cat="${encodeURIComponent(cat)}">
+      <div class="cat-head">
+        <input type="checkbox" class="catbox">
+        <span class="caret">▾</span>
+        <strong>${cat}</strong><span class="count">${catCount(cat)}</span>
+      </div>
+      <div class="comm-list">${rows}</div>
+    </div>`;
+  }).join("");
+  $("tree").innerHTML = srcRowHtml("the passage itself") + catsHtml;
+
+  const srcbox = $("srcbox");
+  if (srcbox && !srcbox.disabled) {
+    srcbox.addEventListener("change", () => setSrcSel(srcbox.checked));
+  }
+
+  [...$("tree").querySelectorAll(".cat:not(.srcrow)")].forEach(catEl => {
+    const head = catEl.querySelector(".cat-head");
+    const catbox = catEl.querySelector(".catbox");
+    const cat = decodeURIComponent(catEl.dataset.cat);
+
+    // click the header to drill in / collapse (but not when hitting the checkbox)
+    head.addEventListener("click", e => {
+      if (e.target === catbox) return;
+      catEl.classList.toggle("collapsed");
+    });
+    // the category checkbox selects / clears every text in the category
+    catbox.addEventListener("change", () => setCatSel(cat, catbox.checked));
+    // commentator rows toggle every text of that commentator
+    [...catEl.querySelectorAll(".commbox")].forEach(b =>
+      b.addEventListener("change", () =>
+        setKeySel(decodeURIComponent(b.dataset.cat), decodeURIComponent(b.dataset.comm), b.checked)));
+  });
+
+  $("treeCard").style.display = "block";
+}
+
+// Section mode: section (segment of the page) → category → commentator →
+// individual texts, with a checkbox at every level. Category, commentator,
+// and original-text toggles operate on the shared selection, so ticking or
+// unticking one is instantly mirrored in every other section. Only the
+// section header's own checkbox is limited to that section's texts.
+function renderSegTree() {
+  const segsHtml = SEG_ORDER.map(seg => {
+    const cats = segCats(seg);
+    const total = cats.reduce((s, c) => s + SEG_TREE[seg][c].length, 0);
+    const grps = cats.map(cat => {
+      const commGroups = segCatComms(seg, cat);
+      const catTotal = commGroups.reduce((s, g) => s + g[1].length, 0);
+      const commsHtml = commGroups.map(([comm, links]) => {
+        const rows = links.map(l => {
+          const label = l.sourceRef || l.ref || "(untitled)";
+          return `<label class="linkrow">
+            <input type="checkbox" class="linkbox" data-i="${l._i}">
+            <span>${escapeHtml(label)}</span>
+          </label>`;
+        }).join("");
+        return `<div class="commgrp collapsed" data-cat="${encodeURIComponent(cat)}" data-comm="${encodeURIComponent(comm)}">
+          <div class="comm commhead">
+            <input type="checkbox" class="commbox2">
+            <span class="caret2">▾</span>
+            <span>${escapeHtml(comm)}</span><span class="count">${links.length}</span>
+          </div>
+          <div class="linklist">${rows}</div>
+        </div>`;
+      }).join("");
+      return `<div class="catgrp collapsed" data-cat="${encodeURIComponent(cat)}">
+        <div class="comm catgrp-head">
+          <input type="checkbox" class="catbox2">
+          <span class="caret2 catcaret">▾</span>
+          <span>${escapeHtml(cat)}</span><span class="count">${catTotal}</span>
+        </div>
+        <div class="catgrp-body">${commsHtml}</div>
+      </div>`;
+    }).join("");
+    return `<div class="cat seg collapsed">
+      <div class="cat-head">
+        <input type="checkbox" class="segbox">
+        <span class="caret">▾</span>
+        <strong>${escapeHtml(seg)}</strong><span class="count">${total}</span>
+      </div>
+      <div class="comm-list">${segSrcGroupHtml(seg)}${grps}</div>
+    </div>`;
+  }).join("");
+  $("tree").innerHTML = segsHtml;
+
+  [...$("tree").querySelectorAll(".cat.seg")].forEach(section => {
+    const head = section.querySelector(".cat-head");
+    const segbox = section.querySelector(".segbox");
+
+    head.addEventListener("click", e => {
+      if (e.target === segbox) return;
+      section.classList.toggle("collapsed");
+    });
+
+    // per-section original-text group: one global on/off, mirrored everywhere
+    [...section.querySelectorAll(".srcgrp")].forEach(sg => {
+      const shead = sg.querySelector(".commhead");
+      const sbox = sg.querySelector(".segsrcbox");
+      shead.addEventListener("click", e => {
+        if (e.target === sbox) return;
+        sg.classList.toggle("collapsed");
+      });
+      sbox.addEventListener("change", () => setSrcSel(sbox.checked));
+    });
+
+    [...section.querySelectorAll(".catgrp")].forEach(cg => {
+      const chead = cg.querySelector(".catgrp-head");
+      const cbox = cg.querySelector(".catbox2");
+      const cat = decodeURIComponent(cg.dataset.cat || "");
+
+      chead.addEventListener("click", e => {
+        if (e.target === cbox) return;
+        cg.classList.toggle("collapsed");
+      });
+      // toggles the whole category — in every section
+      cbox.addEventListener("change", () => setCatSel(cat, cbox.checked));
+
+      [...cg.querySelectorAll(".commgrp")].forEach(g => {
+        const ghead = g.querySelector(".commhead");
+        const gbox = g.querySelector(".commbox2");
+        const comm = decodeURIComponent(g.dataset.comm || "");
+        ghead.addEventListener("click", e => {
+          if (e.target === gbox) return;
+          g.classList.toggle("collapsed");
+        });
+        // toggles this commentator — in every section
+        gbox.addEventListener("change", () => setKeySel(cat, comm, gbox.checked));
+        [...g.querySelectorAll(".linkbox")].forEach(b =>
+          b.addEventListener("change", () => setLinkSel(parseInt(b.dataset.i, 10), b.checked)));
+      });
+    });
+
+    // the section checkbox selects / clears just this section's texts
+    // (plus the original text, whose state is global and so mirrors)
+    segbox.addEventListener("change", () => {
+      const on = segbox.checked;
+      [...section.querySelectorAll(".linkbox")].forEach(b => {
+        const i = parseInt(b.dataset.i, 10);
+        if (on) SEL.add(i); else SEL.delete(i);
+      });
+      if (section.querySelector(".segsrcbox")) SRC_ON = on && srcAvailable();
+      syncTreeUI();
+    });
+  });
+
+  $("treeCard").style.display = "block";
+}
+
+$("toggleAll").onclick = () => {
+  const allOn = LINKS.length && SEL.size === LINKS.length && (!srcAvailable() || SRC_ON);
+  if (allOn) { SEL = new Set(); SRC_ON = false; }
+  else { SEL = new Set(LINKS.map(l => l._i)); SRC_ON = srcAvailable(); }
+  syncTreeUI();
+};
+
+// ===========================================================================
+// Gather the selected texts into a format-neutral structure.
+// Every builder (Word / EPUB / PDF) consumes this same shape, and both
+// grouping modes read from the same SEL / SRC_ON selection, so the built
+// document contains exactly what's ticked — nothing more.
+//   blocks: ordered [{type:"h1"|"h2"|"h3"|"ref"|"note"|"he"|"en", text, anchor?, first?}]
+//   toc:    [{level:1|2|3, text, anchor}]
+// Notes are per-text: each one is printed directly beneath its own text
+// (a "L"+index note under its linked text, a "S:"+segment note under that
+// section's slice of the source, "__src__" under the whole source). The
+// notedone set guarantees a note is never printed twice.
+// ===========================================================================
+function gatherContent() {
+  const incHe = $("incHe").checked;
+  const incEn = $("incEn").checked;
+  const haveSrc = SRC_ON && srcAvailable();
+
+  if (!incHe && !incEn) return { error: "Pick Hebrew, English, or both." };
+
+  const ref = $("ref").value.trim();
+  const blocks = [];
+  const toc = [];
+  let bmId = 0;
+  const nextId = () => "sec" + (bmId++);
+  let written = 0;
+  const notedone = new Set();
+  const _noteDate = (function() {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const yyyy = d.getFullYear();
+    return dd + "/" + mm + "/" + yyyy;
+  })();
+  const emitNote = (key) => {
+    const nt = noteOf(key);
+    if (nt && !notedone.has(key)) { notedone.add(key); blocks.push({ type: "note", text: nt, date: _noteDate }); }
+  };
+
+  // Anchors for individual linked texts, assigned lazily: the marker row
+  // after a source segment is emitted BEFORE the pieces it points to, so the
+  // anchor is reserved here and reused when the piece itself is emitted.
+  const linkAnchor = {};
+  const anchorForLink = (l) => linkAnchor[l._i] || (linkAnchor[l._i] = nextId());
+  // Per-verse anchors inside the whole Source section (Category mode), so a
+  // piece's back-link lands on its own verse rather than the top of Source.
+  const segSrcAnchor = {};
+
+  // Selected Rashi / Tosafot / Steinsaltz links of one section, as direct
+  // jump-marks: { marks: [{ name, target }] } where target is the anchor the
+  // commentator's first piece will carry in this document. Returns null when
+  // the flag is off or nothing selected in this section qualifies.
+  const rtsFor = (seg) => {
+    if (!RTS_POPUPS || !SEG_TREE[seg]) return null;
+    const segLinks = [];
+    for (const c of segCats(seg)) for (const l of segCatLinks(seg, c)) if (SEL.has(l._i)) segLinks.push(l);
+    const groups = groupByComm(segLinks)
+      .filter(([name]) => commRank(name) <= 2)
+      .sort((a, b) => commRank(a[0]) - commRank(b[0]));
+    if (!groups.length) return null;
+    const LETTERS = ["\u24C7", "\u24C9", "\u24C8"];   // Ⓡ Ⓣ Ⓢ, indexed by commRank
+    return { marks: groups.map(([name, links]) => ({ name, letter: LETTERS[commRank(name)], target: anchorForLink(links[0]) })) };
+  };
+
+  const emitWholeSource = () => {
+    const srcLabel = SRC.heRef || SRC.ref || ref;
+    const anchor = nextId();
+    toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
+    blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true, pb: true });
+    // which source slice belongs to which section, for per-verse R/T/S markers
+    const segForIdx = {};
+    for (const s of SEG_ORDER) {
+      const si = srcIdxFor(s);
+      if (si >= 0) segForIdx[si] = s;
+    }
+    const n = Math.max(SRC.he.length, SRC.text.length);
+    for (let i = 0; i < n; i++) {
+      const seg = segForIdx[i];
+      let vAnchor = null;
+      if (seg) { vAnchor = nextId(); segSrcAnchor[seg] = vAnchor; }
+      if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) { blocks.push({ type: "he", text: he, anchor: vAnchor }); vAnchor = null; } }
+      if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) { blocks.push({ type: "en", text: en, anchor: vAnchor }); vAnchor = null; } }
+      if (seg) {
+        const rts = rtsFor(seg);
+        if (rts) blocks.push({ type: "rtsrow", marks: rts.marks });
+      }
+    }
+    emitNote("__src__");
+    // notes written on individual sections of the source (in Section mode)
+    // shouldn't vanish just because the build happens in Category mode
+    for (const s of SEG_ORDER) emitNote("S:" + s);
+  };
+
+  // ---------------- section mode ----------------
+  if (GROUPMODE === "seg") {
+    if (!SEL.size && !haveSrc) return { error: "Select at least one text, or the original text." };
+
+    for (const seg of SEG_ORDER) {
+      const cats = segCats(seg);
+      const sel = cats
+        .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
+        .filter(p => p[1].length);
+      const idx = haveSrc ? srcIdxFor(seg) : -1;
+      const segHe = (haveSrc && idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
+      const segEn = (haveSrc && idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
+      const wantSrc = haveSrc && idx >= 0 && (segHe || segEn);
+      if (!sel.length && !wantSrc) continue;   // nothing chosen in this section
+
+      const rts = wantSrc ? rtsFor(seg) : null;
+
+      const anchor = nextId();
+      const inc = incipitFor(seg);
+      const h1text = seg + (inc ? " \u2014 " + inc : "");
+      toc.push({ level: 1, text: h1text, anchor });
+      blocks.push({ type: "h1", text: h1text, anchor, first: blocks.length === 0, pb: true });
+
+      // the section's own text first, if the original text is on
+      if (wantSrc) {
+        if (incHe && segHe) blocks.push({ type: "he", text: segHe });
+        if (incEn && segEn) blocks.push({ type: "en", text: segEn });
+        if (rts) blocks.push({ type: "rtsrow", marks: rts.marks });
+        emitNote("S:" + seg);
+        emitNote("__src__");   // a whole-source note (from Category mode) prints once, here
+      }
+
+      for (const [cat, arr] of sel) {
+        const a2 = nextId();
+        toc.push({ level: 2, text: cat, anchor: a2 });
+        blocks.push({ type: "h2", text: cat, anchor: a2 });
+        // one navigable sub-heading per work/commentator (Commentary → Rashi,
+        // Talmud → Berakhot 9b). A lone link is labelled by its own reference
+        // so a single parallel reads e.g. "Berakhot 9b:2" rather than "Berakhot".
+        for (const [comm, links] of groupByComm(arr)) {
+          const single = links.length === 1;
+          const h3text = single ? (links[0].sourceRef || links[0].ref || comm) : comm;
+          // a lone piece's h3 IS the piece heading — give it the piece's own
+          // anchor so the marker row above lands exactly here
+          const a3 = single ? anchorForLink(links[0]) : nextId();
+          const back = { anchor: anchor, text: seg };   // this section's heading
+          toc.push({ level: 3, text: h3text, anchor: a3 });
+          blocks.push({ type: "h3", text: h3text, anchor: a3, pb: true, back });
+          for (const l of links) {
+            if (!single) {   // the h3 already names a lone link, so skip its ref line
+              const enRef = l.sourceRef || l.ref || "";
+              const heRef = l.sourceHeRef || "";
+              blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : ""), anchor: anchorForLink(l), back });
+            }
+            if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
+            if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+            emitAiBlock(blocks, canonicalRef(l));
+            emitNote("L" + l._i);   // this text's own note, right beneath it
+            written++;
+          }
+        }
+      }
+    }
+    return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
+  }
+
+  // ---------------- category mode ----------------
+  if (!SEL.size && !haveSrc) return { error: "Select at least one source, or include the source text." };
+
+  // ---- source text first, for context ----
+  if (haveSrc) emitWholeSource();
+
+  // ---- selected categories / commentators / texts ----
+  for (const cat of CAT_ORDER) {
+    const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+    const groups = comms
+      .map(comm => [comm, TREE[cat][comm].filter(l => SEL.has(l._i))])
+      .filter(p => p[1].length);
+    if (!groups.length) continue;
+
+    const catAnchor = nextId();
+    toc.push({ level: 1, text: cat, anchor: catAnchor });
+    blocks.push({ type: "h1", text: cat, anchor: catAnchor, pb: true });
+
+    for (const [comm, links] of groups) {
+      const commAnchor = nextId();
+      toc.push({ level: 2, text: comm, anchor: commAnchor });
+      blocks.push({ type: "h2", text: comm, anchor: commAnchor, pb: true });
+
+      for (const l of links) {
+        const enRef = l.sourceRef || l.ref || "";
+        const heRef = l.sourceHeRef || "";
+        const bseg = segRefOf(l);
+        const back = (haveSrc && segSrcAnchor[bseg]) ? { anchor: segSrcAnchor[bseg], text: bseg } : null;
+        blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : ""), anchor: anchorForLink(l), back });
+        if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
+        if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
+        emitAiBlock(blocks, canonicalRef(l));
+        emitNote("L" + l._i);   // this text's own note, right beneath it
+        written++;
+      }
+    }
+  }
+
+  return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
+}
+
+// ===========================================================================
+// AI translation helper
+// Round-trips Hebrew through an external AI chat via the clipboard: copy a
+// batch of untranslated selected texts (with instructions + @@REF@@ headers),
+// the user pastes the AI's reply back, and each translated block is matched
+// to its text by canonical ref (l.sourceRef || l.ref) and stored in TRANS.
+// ===========================================================================
+const AI_BATCH_CHAR_LIMIT = 5000;
+const AI_BACKUP_KEY = "sefariaLinksTransBackup";
+const BATCH_SIZE_KEY = "sefariaLinksBatchSize";
+
+// Eligible = ticked (SEL), has Hebrew, not yet translated — in the same
+// order gatherContent would emit them for the current GROUPMODE, so a copy
+// matches what the user sees in the preview/output.
+function eligibleLinksInOrder() {
+  const out = [];
+  const seenRefs = new Set();
+  const pushIfEligible = (l) => {
+    if (!SEL.has(l._i)) return;
+    const ref = canonicalRef(l);
+    if (!ref || TRANS[ref] || seenRefs.has(ref)) return;
+    const he = stripHtml(asText(l.he));
+    if (!he) return;
+    seenRefs.add(ref);
+    out.push(l);
+  };
+  if (GROUPMODE === "seg") {
+    for (const seg of SEG_ORDER) for (const cat of segCats(seg)) for (const l of segCatLinks(seg, cat)) pushIfEligible(l);
+  } else {
+    for (const cat of CAT_ORDER) {
+      const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+      for (const comm of comms) for (const l of TREE[cat][comm]) pushIfEligible(l);
+    }
+  }
+  return out;
+}
+
+function normalizeSlug(s) { return String(s == null ? "" : s).toLowerCase().replace(/[^a-z0-9:]/g, ""); }
+
+// The copied batch prompt itself contains @@ref@@ headers followed by the
+// original Hebrew, and its REPLY FORMAT example contains a bare @@DONE@@ line
+// — so a stale clipboard (tapping a batch again without having copied the
+// AI's reply) used to parse as a perfect "reply" and store the original
+// Hebrew as its own translation. Two guards prevent that:
+//   looksLikePrompt — recognises the batch prompt by its fixed marker lines;
+//   looksHebrew     — recognises a block body that is still (mostly) Hebrew.
+function looksLikePrompt(s) {
+  return /PASSAGES TO TRANSLATE:/.test(String(s || "")) ||
+         /RULES \u2014 follow all of them exactly/.test(String(s || ""));
+}
+function looksHebrew(s) {
+  const letters = String(s || "").match(/[A-Za-z\u0590-\u05FF]/g) || [];
+  if (letters.length < 10) return false;
+  let he = 0;
+  for (const ch of letters) if (ch >= "\u0590" && ch <= "\u05FF") he++;
+  return he / letters.length > 0.6;
+}
+function langWantsHebrew(lang) { return /hebrew|ivrit|\u05e2\u05d1\u05e8\u05d9\u05ea/i.test(String(lang || "")); }
+
+function aiPromptHeader(ref) { return "@@" + String(ref).trim().replace(/\s+/g, "_") + "@@"; }
+
+function buildAiPrompt(lang, passages) {
+  return `You are translating Hebrew/Aramaic passages from classical Jewish texts (Talmud, Rishonim, etc.).
+
+Translate each passage below into ${lang}.
+
+RULES — follow all of them exactly:
+1. Translate literally and precisely. No paraphrase, no bracketed explanations, no added interpretation. Translate what is written; never invent or expand.
+2. Your entire reply must consist ONLY of blocks in the format shown below. No introduction, no closing remarks, no commentary between blocks, no markdown code fences, no headings.
+3. Each passage begins with a header line like @@Example_Header@@. Copy every header line back EXACTLY, character for character. Never translate, reword, reformat, or decorate a header line.
+4. Keep the blocks in the same order as given.
+5. Include a block for every passage. If you cannot translate one, output its header followed by: [unable to translate]
+6. After the final block, output one last line containing exactly: @@DONE@@
+
+REPLY FORMAT:
+
+@@Header_1@@
+translation of passage 1
+@@Header_2@@
+translation of passage 2
+@@DONE@@
+
+PASSAGES TO TRANSLATE:
+
+${passages}`;
+}
+
+// Repaint the batch board and backup links from current state. Called from
+// syncTreeUI on every selection change — it never rebuilds the board (that is
+// explicit, via buildBatches), it only repaints and surfaces the rebuild hint.
+function refreshAiUI() {
+  renderBatchBoard();
+}
+
+function batchSizeSetting() {
+  let v = parseInt(($("aiBatchSize").value || "").replace(/[^0-9]/g, ""), 10);
+  if (!v || v < 500) v = 5000;
+  if (v > 100000) v = 100000;
+  $("aiBatchSize").value = String(v);
+  try { localStorage.setItem(BATCH_SIZE_KEY, String(v)); } catch (e) {}
+  return v;
+}
+
+// (Re)build the batch board from the currently eligible texts. Refs that
+// already have a translation are excluded (eligibleLinksInOrder does that),
+// so rebuilding mid-job never loses finished work — it only re-batches what
+// is still untranslated.
+function buildBatches() {
+  const limit = batchSizeSetting();
+  const list = eligibleLinksInOrder();
+  SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {};
+  BATCHES = [];
+  let cur = null, curLen = 0;
+  for (const l of list) {
+    const ref = canonicalRef(l);
+    const he = stripHtml(asText(l.he));
+    SENTMAP[normalizeSlug(aiPromptHeader(ref))] = ref;
+    SENTORDER.push(ref);
+    SENTLEN[ref] = he.length;
+    SENTHE[ref] = he;
+    if (!cur || (cur.refs.length && curLen + he.length > limit)) {
+      cur = { refs: [], status: "todo", short: [] };
+      BATCHES.push(cur);
+      curLen = 0;
+    }
+    cur.refs.push(ref);
+    curLen += he.length;
+  }
+  renderBatchBoard();
+}
+
+const BATCH_ST_LABEL = { todo: "not sent", sent: "awaiting reply", done: "done", warn: "needs attention" };
+
+function renderBatchBoard() {
+  const board = $("batchBoard");
+  if (!board) return;
+  if (!BATCHES) {
+    board.innerHTML = "";
+    $("batchLegend").style.display = "none";
+    $("aiRebuildRow").style.display = "none";
+    updateBackupLinkVisibility();
+    return;
+  }
+  if (!BATCHES.length) {
+    board.innerHTML = '<div class="batchempty">All selected texts are translated.</div>';
+    $("batchLegend").style.display = "none";
+  } else {
+    board.innerHTML = BATCHES.map((b, i) =>
+      `<button type="button" class="batchbtn st-${b.status}" data-b="${i}" title="Batch ${i + 1}: ${b.refs.length} text${b.refs.length === 1 ? "" : "s"} \u2014 ${BATCH_ST_LABEL[b.status]}">${i + 1}</button>`
+    ).join("");
+    $("batchLegend").style.display = "";
+  }
+  // texts ticked after the board was built are not in any batch yet
+  const extra = eligibleLinksInOrder().filter(l => !(canonicalRef(l) in SENTLEN)).length;
+  $("aiRebuildRow").style.display = (extra || BATCHES.length) ? "" : "none";
+  $("aiRebuildBatches").textContent = extra
+    ? `rebuild batches (${extra} new text${extra === 1 ? "" : "s"} to include)`
+    : "rebuild batches";
+  updateBackupLinkVisibility();
+}
+
+function loadAiBackup() {
+  try {
+    const raw = localStorage.getItem(AI_BACKUP_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function transEqualsBackup(backup) {
+  if (!backup || !backup.items) return false;
+  const k1 = Object.keys(TRANS), k2 = Object.keys(backup.items);
+  if (k1.length !== k2.length) return false;
+  for (const k of k1) {
+    const a = TRANS[k], b = backup.items[k];
+    if (!b || a.text !== b.text || a.lang !== b.lang) return false;
+  }
+  return true;
+}
+function hasUnsavedTranslations() {
+  if (!Object.keys(TRANS).length) return false;
+  return !transEqualsBackup(loadAiBackup());
+}
+// Guards clearBtn / fetchLinks: warns before discarding un-backed-up
+// translations. Returns true if it's safe to proceed.
+function confirmDiscardTranslations() {
+  if (!hasUnsavedTranslations()) return true;
+  const n = Object.keys(TRANS).length;
+  return confirm(`This will discard ${n} AI translations that aren't backed up. Continue?`);
+}
+function updateBackupLinkVisibility() {
+  const el = $("aiRestoreBackup");
+  const delEl = $("aiDeleteBackup");
+  if (!el) return;
+  let raw = null;
+  try { raw = localStorage.getItem(AI_BACKUP_KEY); } catch (e) {}
+  const backup = loadAiBackup();
+  const n = backup && backup.items ? Object.keys(backup.items).length : 0;
+  if (n) {
+    const d = new Date(backup.savedAt);
+    const when = isNaN(d.getTime()) ? backup.savedAt : d.toLocaleString();
+    const kb = Math.max(1, Math.round((raw ? raw.length : 0) / 1024));
+    el.textContent = `restore backup (${n} texts, ~${kb} KB, ${when})`;
+    el.style.display = "";
+    if (delEl) delEl.style.display = "";
+  } else {
+    el.style.display = "none";
+    if (delEl) delEl.style.display = "none";
+  }
+}
+
+function aiReport(msg, isErr) {
+  const el = $("aiReport");
+  el.textContent = msg;
+  el.className = "ai-report" + (isErr ? " err" : "");
+  setStatus(msg, isErr);
+}
+
+// --- paste parsing -----------------------------------------------------
+// Strip markdown code fences and zero-width/bidi control characters that
+// AI chat UIs sometimes inject when a reply is copied out.
+function aiPreClean(raw) {
+  let s = String(raw || "").replace(/\r\n/g, "\n");
+  s = s.split("\n").filter(line => !/^\s*```/.test(line.trim())).join("\n");
+  s = s.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, "");
+  return s;
+}
+// A header line, after stripping leading/trailing markdown decoration and
+// quote characters, is something wrapped in 1-3 "@" on each side — lenient
+// about inner/outer spacing, curly quotes, and trailing punctuation.
+function aiHeaderBody(line) {
+  let t = line.trim();
+  if (!t) return null;
+  t = t.replace(/^[#>*`\s]+/, "").replace(/[#>*`\s]+$/, "");
+  t = t.replace(/^[\u201C\u201D\u2018\u2019"']+/, "").replace(/[\u201C\u201D\u2018\u2019"']+$/, "");
+  const m = t.match(/^@{1,3}\s*([\s\S]+?)\s*@{1,3}[\s.,:;!?]*$/);
+  return m ? m[1] : null;
+}
+function parseAiBlocks(cleanText) {
+  const lines = cleanText.split("\n");
+  const blocks = [];
+  let current = null;
+  for (const line of lines) {
+    const hb = aiHeaderBody(line);
+    if (hb !== null) {
+      if (current) blocks.push(current);
+      current = { header: hb, bodyLines: [] };
+    } else if (current) {
+      current.bodyLines.push(line);
+    }
+  }
+  if (current) blocks.push(current);
+  return blocks;
+}
+
+async function copyBatch(i) {
+  const b = BATCHES && BATCHES[i];
+  if (!b) return;
+  const missing = b.refs.filter(r => !TRANS[r]);
+  if (!missing.length) {
+    aiReport(`Batch ${i + 1} is fully translated` +
+      (b.short.length ? ` \u2014 unusually short, check: ${b.short.join(", ")}.` : "."));
+    return;
+  }
+  const lang = ($("aiLang").value || "").trim() || "English";
+  const passages = missing.map(r => aiPromptHeader(r) + "\n" + (SENTHE[r] || "")).join("\n\n");
+  const ok = await copyToClipboard(buildAiPrompt(lang, passages));
+  if (ok) {
+    if (b.status !== "done") b.status = "sent";
+    aiReport(`Copied batch ${i + 1} (${missing.length} text${missing.length === 1 ? "" : "s"}). Paste it into an AI chat; when the AI is done, copy its whole reply, come back here, and tap batch ${i + 1} again.`);
+  } else {
+    aiReport("Couldn't copy \u2014 check clipboard permissions.", true);
+  }
+  renderBatchBoard();
+}
+
+// After a paste: recolor every batch from the ground truth (TRANS).
+function updateBatchStatuses(appliedRefs, shortRefs) {
+  if (!BATCHES) return;
+  const applied = new Set(appliedRefs);
+  const shorts = new Set(shortRefs);
+  for (const b of BATCHES) {
+    for (const r of b.refs) if (shorts.has(r) && b.short.indexOf(r) < 0) b.short.push(r);
+    const missing = b.refs.filter(r => !TRANS[r]);
+    const touched = b.refs.some(r => applied.has(r));
+    if (!missing.length) b.status = b.short.length ? "warn" : "done";
+    else if (touched) b.status = "warn";   // a paste reached it but left gaps
+    // batches the paste didn't touch keep their current status
+  }
+}
+
+// One button per batch, two taps. The first tap copies the batch for the AI
+// (button turns amber); the second tap reads the clipboard and applies the
+// AI's reply. Header matching still decides where each block lands, so a
+// reply can be pasted via any amber batch, in any order. If the clipboard
+// turns out to hold the batch prompt itself (a stale clipboard — the old
+// Hebrew-echo bug), nothing is stored and the user is told what to do; if it
+// holds neither a reply nor the prompt, the batch's untranslated texts are
+// simply copied again.
+async function tapBatch(i) {
+  const b = BATCHES && BATCHES[i];
+  if (!b) return;
+  const missing = b.refs.filter(r => !TRANS[r]);
+  if (b.status === "todo" || !missing.length) { await copyBatch(i); return; }
+
+  if (!(navigator.clipboard && navigator.clipboard.readText)) {
+    aiReport("This browser can't read the clipboard \u2014 use Chrome or Safari, or allow clipboard access for this site.", true);
+    return;
+  }
+  let raw = "";
+  try { raw = await navigator.clipboard.readText(); } catch (e) {}
+  if (raw && looksLikePrompt(raw)) {
+    aiReport(`Your clipboard still holds the batch text, not the AI's reply. Paste it into the AI chat, copy the AI's reply, then tap batch ${i + 1} again.`, true);
+    return;
+  }
+  if (raw && raw.trim() && applyReply(raw)) return;
+
+  // nothing usable on the clipboard — re-copy this batch's untranslated texts
+  await copyBatch(i);
+  aiReport(`No AI reply found on the clipboard, so batch ${i + 1} was copied again (${missing.length} untranslated text${missing.length === 1 ? "" : "s"}). Paste it into the AI, copy the reply, then tap the batch.`);
+}
+
+// Returns true when at least one translation was applied. A false return
+// means the caller (tapBatch) should treat the clipboard as not-a-reply.
+function applyReply(raw) {
+  if (looksLikePrompt(raw)) return false;   // stale clipboard: the batch itself
+  const lang = ($("aiLang").value || "").trim() || "English";
+  const r = applyAiPaste(raw, lang);
+  if (r.nothing) return false;
+  updateBatchStatuses(r.appliedRefs, r.short);
+  const done = BATCHES ? BATCHES.filter(b => b.status === "done").length : 0;
+  const totalB = BATCHES ? BATCHES.length : 0;
+  let msg = `Applied ${r.appliedRefs.length} translation${r.appliedRefs.length === 1 ? "" : "s"}.`;
+  if (totalB) msg += ` ${done} of ${totalB} batch${totalB === 1 ? "" : "es"} complete.`;
+  if (r.positional.length) msg += ` Matched by position (check): ${r.positional.join(", ")}.`;
+  if (r.truncated) msg += ` Reply looks cut off \u2014 the last passage (${r.droppedRef || "last block"}) was not saved; its batch stays open, tap it to re-copy what is missing.`;
+  if (r.short.length) msg += ` Unusually short (check these): ${r.short.join(", ")}.`;
+  if (r.unknownHeaders) msg += ` Skipped ${r.unknownHeaders} block${r.unknownHeaders === 1 ? "" : "s"} whose header matched nothing.`;
+  if (r.echoed) msg += ` Skipped ${r.echoed} block${r.echoed === 1 ? "" : "s"} that still contained the original Hebrew instead of a translation.`;
+  aiReport(msg);
+  renderBatchBoard();
+  if ($("previewCard").style.display !== "none") renderPreview();
+  return true;
+}
+
+function applyAiPaste(raw, lang) {
+  if (!SENTORDER.length) return { appliedRefs: [], positional: [], short: [], truncated: false, droppedRef: null, unknownHeaders: 0, echoed: 0, nothing: true };
+  const clean = aiPreClean(raw);
+  let parsed = parseAiBlocks(clean);
+
+  // strip the @@DONE@@ sentinel block(s) before any ref matching or the
+  // positional fallback — they must never be treated as translated text
+  let doneSeen = false;
+  parsed = parsed.filter(b => {
+    if (normalizeSlug(b.header) === "done") { doneSeen = true; return false; }
+    return true;
+  });
+
+  const blocks = parsed.map(b => ({
+    ...b, ref: SENTMAP[normalizeSlug(b.header)] || null, positional: false
+  }));
+
+  // positional fallback for blocks that didn't match directly
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i].ref) continue;
+    let prevRef = null, nextRef = null;
+    for (let j = i - 1; j >= 0; j--) { if (blocks[j].ref) { prevRef = blocks[j].ref; break; } }
+    for (let j = i + 1; j < blocks.length; j++) { if (blocks[j].ref) { nextRef = blocks[j].ref; break; } }
+    if (prevRef && nextRef) {
+      const p = SENTORDER.indexOf(prevRef), q = SENTORDER.indexOf(nextRef);
+      if (p >= 0 && q >= 0 && q - p === 2) { blocks[i].ref = SENTORDER[p + 1]; blocks[i].positional = true; }
+    }
+  }
+
+  // no @@DONE@@ seen + at least one real block parsed → the reply looks
+  // truncated; don't store the final block, it stays open on its batch
+  let droppedRef = null;
+  const truncated = !doneSeen && blocks.length > 0;
+  if (truncated) {
+    const last = blocks.pop();
+    droppedRef = last.ref || null;
+  }
+
+  const appliedRefs = [];
+  const positional = [];
+  const short = [];
+  let unknownHeaders = 0;
+  let echoed = 0;
+  const wantHe = langWantsHebrew(lang);
+  const squash = s => String(s || "").replace(/\s+/g, " ").trim();
+  for (const b of blocks) {
+    if (!b.ref) { unknownHeaders++; continue; }
+    const body = b.bodyLines.join("\n").trim();
+    if (!body) continue;
+    if (/^\[unable to translate\]$/i.test(body)) continue;   // leave untranslated
+    // a body identical to the original Hebrew — or still mostly Hebrew when
+    // the target language isn't Hebrew — is an echo, not a translation
+    if (squash(body) === squash(SENTHE[b.ref])) { echoed++; continue; }
+    if (!wantHe && looksHebrew(body)) { echoed++; continue; }
+    TRANS[b.ref] = { text: body, lang };
+    appliedRefs.push(b.ref);
+    if (b.positional) positional.push(b.ref);
+    if (SENTLEN[b.ref] > 200 && body.length < 0.25 * SENTLEN[b.ref]) short.push(b.ref);
+  }
+  return { appliedRefs, positional, short, truncated, droppedRef, unknownHeaders, echoed, nothing: appliedRefs.length === 0 };
+}
+
+$("aiHelperBtn").onclick = () => {
+  const p = $("aiPanel");
+  const show = p.style.display !== "block";
+  p.style.display = show ? "block" : "none";
+  if (show) {
+    if (BATCHES === null) buildBatches();
+    else renderBatchBoard();
+  }
+};
+
+$("batchBoard").addEventListener("click", e => {
+  const btn = e.target.closest(".batchbtn");
+  if (btn) tapBatch(parseInt(btn.dataset.b, 10));
+});
+
+$("aiRebuildBatches").onclick = () => {
+  buildBatches();
+  aiReport("Batches rebuilt from the current selection.");
+};
+
+$("aiBatchSize").addEventListener("change", () => {
+  if (BATCHES && BATCHES.length) aiReport("Tap rebuild batches to apply the new batch size.");
+});
+
+$("aiSaveBackup").onclick = () => {
+  try {
+    localStorage.setItem(AI_BACKUP_KEY, JSON.stringify({ savedAt: new Date().toISOString(), items: TRANS }));
+    aiReport(`Backup saved (${Object.keys(TRANS).length} translations).`);
+  } catch (e) {
+    aiReport("Couldn't save backup: " + e.message, true);
+  }
+  refreshAiUI();
+};
+
+$("aiRestoreBackup").onclick = () => {
+  const backup = loadAiBackup();
+  if (!backup || !backup.items) { aiReport("No backup found.", true); return; }
+  const curRefs = new Set(LINKS.map(l => canonicalRef(l)));
+  let n = 0;
+  for (const ref of Object.keys(backup.items)) {
+    if (curRefs.has(ref)) { TRANS[ref] = backup.items[ref]; n++; }
+  }
+  updateBatchStatuses([], []);
+  aiReport(`Restored ${n} translations.`);
+  refreshAiUI();
+  if ($("previewCard").style.display !== "none") renderPreview();
+};
+
+$("aiDeleteBackup").onclick = () => {
+  if (!confirm("Delete the saved backup from this browser?")) return;
+  try {
+    localStorage.removeItem(AI_BACKUP_KEY);
+    aiReport("Backup deleted.");
+  } catch (e) {
+    aiReport("Couldn't delete backup: " + e.message, true);
+  }
+  updateBackupLinkVisibility();
+};
+
+// --- shared output helpers -------------------------------------------------
+function download(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function fnameFor(ref) {
+  return ref.replace(/[^\w\u0590-\u05FF]+/g, "_").replace(/^_|_$/g, "") || "sefaria_links";
+}
+function finishStatus(content, ext) {
+  const parts = [];
+  if (content.haveSrc) parts.push("source text");
+  if (content.written) parts.push(content.written + " linked texts");
+  setStatus(`Done — ${parts.join(" + ") || "document"} → ${fnameFor(content.ref)}.${ext}`);
+}
+
+// On phones, hand the finished file straight to the system share sheet
+// (Send to Kindle appears there) instead of burying it in Downloads.
+// The share sheet is attempted immediately after the build: browsers keep the
+// original tap's "user activation" alive for a few seconds, so a quick build
+// usually still counts and the sheet opens by itself. If the browser refuses
+// (activation expired on a slow build), a one-tap Share button appears as a
+// fallback. Desktop and unsupporting browsers keep the normal download.
+let LASTOUT = null;
+function canShareFiles(file) {
+  try { return !!(navigator.canShare && navigator.canShare({ files: [file] })); }
+  catch (e) { return false; }
+}
+async function deliverFile(blob, filename) {
+  let file = null;
+  try { file = new File([blob], filename, { type: blob.type || "application/octet-stream" }); } catch (e) {}
+  if (!(file && canShareFiles(file))) { download(blob, filename); return; }
+
+  LASTOUT = { blob, filename };
+  try {
+    await navigator.share({ files: [file], title: filename });
+    setStatus("Shared.");
+    return;
+  } catch (e) {
+    if (e && e.name === "AbortError") return;   // user closed the sheet — done
+    // activation expired (NotAllowedError) or similar → offer a one-tap button
+  }
+  $("shareBtn").textContent = "📤 Share " + filename;
+  $("shareBar").style.display = "block";
+}
+function hideShareBar() { LASTOUT = null; $("shareBar").style.display = "none"; }
+$("shareBtn").onclick = async () => {
+  if (!LASTOUT) return;
+  const f = new File([LASTOUT.blob], LASTOUT.filename, { type: LASTOUT.blob.type || "application/octet-stream" });
+  try {
+    await navigator.share({ files: [f], title: LASTOUT.filename });
+    setStatus("Shared.");
+  } catch (e) {
+    // user closed the sheet → do nothing; real failure → fall back to download
+    if (!e || e.name !== "AbortError") download(LASTOUT.blob, LASTOUT.filename);
+  }
+};
+$("saveInstead").onclick = () => { if (LASTOUT) download(LASTOUT.blob, LASTOUT.filename); };
+
+// Build a nested TOC tree from the flat list. Supports three levels
+// (section → category → work), and still works for the 2-level category mode.
+function tocTree(toc) {
+  const tree = [];
+  let l1 = null, l2 = null;
+  for (const t of toc) {
+    const node = { text: t.text, anchor: t.anchor, kids: [] };
+    if (t.level === 1) { tree.push(node); l1 = node; l2 = null; }
+    else if (t.level === 2) {
+      if (l1) l1.kids.push(node); else tree.push(node);
+      l2 = node;
+    } else {   // level 3
+      if (l2) l2.kids.push(node);
+      else if (l1) l1.kids.push(node);
+      else tree.push(node);
+    }
+  }
+  return tree;
+}
+
+// ===========================================================================
+// Word (.docx) — clickable Contents; a bookmark named "toc" lets
+// Send-to-Kindle register the Contents page in the Kindle "Go To" menu.
+// ===========================================================================
+async function buildDocx(content) {
+  setStatus("Loading document library…");
+  const d = await ensureDocx();
+  if (!d) { setStatus("Document library failed to load — check your connection and try again.", true); return; }
+
+  const {
+    Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType,
+    Bookmark, InternalHyperlink, PageBreak
+  } = d;
+  setStatus("Building Word document…");
+
+  const heParagraph = (he) => new Paragraph({
+    bidirectional: true, alignment: AlignmentType.JUSTIFIED, spacing: { after: 80 },
+    children: [new TextRun({ text: he, rightToLeft: true, font: "David", size: 26 })]
+  });
+  const enParagraph = (en) => new Paragraph({
+    alignment: AlignmentType.JUSTIFIED, spacing: { after: 120 },
+    children: [new TextRun({ text: en, size: 22 })]
+  });
+
+  const body = [];
+  for (const b of content.blocks) {
+    if (b.type === "h1") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1, spacing: { before: b.first ? 120 : 320, after: 120 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
+    else if (b.type === "h2") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_2, spacing: { before: 220, after: 60 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
+    else if (b.type === "h3") body.push(new Paragraph({
+      heading: HeadingLevel.HEADING_3, spacing: { before: 160, after: 40 },
+      children: [new Bookmark({ id: b.anchor, children: [new TextRun({ text: b.text })] })]
+    }));
+    else if (b.type === "ref") body.push(new Paragraph({
+      spacing: { before: 120, after: 30 },
+      children: [new TextRun({ text: b.text, bold: true, size: 20, color: "6f675a" })]
+    }));
+    else if (b.type === "note") body.push(new Paragraph({
+      spacing: { before: 60, after: 100 },
+      children: [
+        new TextRun({ text: b.text, italics: true, size: 22, color: "6b5329" }),
+        new TextRun({ text: "\n" + (b.date || ""), italics: true, size: 18, color: "6b5329", break: 1 })
+      ]
+    }));
+    else if (b.type === "ai") body.push(new Paragraph({
+      spacing: { before: 60, after: 100 },
+      children: [
+        new TextRun({ text: b.text, italics: true, size: 22 })
+      ]
+    }));
+    else if (b.type === "he") body.push(heParagraph(b.text));
+    else if (b.type === "en") body.push(enParagraph(b.text));
+  }
+
+  const children = [];
+  children.push(new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: content.title })] }));
+
+  if (content.toc.length) {
+    children.push(new Paragraph({
+      heading: HeadingLevel.HEADING_1, spacing: { before: 120, after: 80 },
+      children: [new Bookmark({ id: "toc", children: [new TextRun({ text: "Contents" })] })]
+    }));
+    for (const t of content.toc) {
+      children.push(new Paragraph({
+        spacing: { after: 30 }, indent: t.level === 3 ? { left: 720 } : t.level === 2 ? { left: 360 } : undefined,
+        children: [new InternalHyperlink({
+          anchor: t.anchor, children: [new TextRun({ text: t.text, color: "0563C1", underline: {} })]
+        })]
+      }));
+    }
+    children.push(new Paragraph({ children: [new PageBreak()] }));
+  }
+  for (const p of body) children.push(p);
+
+  const doc = new Document({ sections: [{ properties: {}, children }] });
+  const blob = await Packer.toBlob(doc);
+  await deliverFile(blob, fnameFor(content.ref) + ".docx");
+  finishStatus(content, "docx");
+}
+
+// ===========================================================================
+// Kindle (EPUB) — a real EPUB3 with nav.xhtml + toc.ncx. Send-to-Kindle turns
+// this navigation into the book's own TOC, which appears in the Kindle "Go To"
+// dropdown from any page, hierarchically (category → commentator).
+// ===========================================================================
+function xmlEsc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function uuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0, v = c === "x" ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+function navOl(tree) {
+  let s = "<ol>\n";
+  for (const n of tree) {
+    s += `  <li><a href="text.xhtml#${n.anchor}">${xmlEsc(n.text)}</a>`;
+    if (n.kids && n.kids.length) s += "\n    " + navOl(n.kids) + "\n  ";
+    s += "</li>\n";
+  }
+  return s + "</ol>";
+}
+function ncxMap(tree) {
+  let po = 0;
+  const walk = (nodes) => {
+    let s = "";
+    for (const n of nodes) {
+      po++;
+      s += `<navPoint id="np${po}" playOrder="${po}"><navLabel><text>${xmlEsc(n.text)}</text></navLabel><content src="text.xhtml#${n.anchor}"/>`;
+      if (n.kids && n.kids.length) s += walk(n.kids);
+      s += `</navPoint>\n`;
+    }
+    return s;
+  };
+  return walk(tree);
+}
+// Kindle strips scripts from books, so true expand/collapse is impossible
+// there. Instead the book itself carries tappable drill-down navigation:
+// a master Contents of sections, a menu line under every section heading
+// (its categories), a menu line under every category (its works), and
+// ⌂ / ↑ links to jump back up — open and close, by link.
+function epubBody(content) {
+  const tree = tocTree(content.toc);
+  const node = {};
+  (function walk(ns) { ns.forEach(n => { node[n.anchor] = n; if (n.kids) walk(n.kids); }); })(tree);
+  const menu = kids => kids.map(k => `<a href="#${k.anchor}">${xmlEsc(k.text)}</a>`).join(" · ");
+  // small back-to-source link appended to a piece's heading / ref line
+  const bkHtml = b => b.back ? ` <a class="bk" href="#${b.back.anchor}">\u25c4 ${xmlEsc(b.back.text)}</a>` : "";
+
+  let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
+  if (tree.length) {
+    // "Collapsed" view: section titles only. Tapping one jumps to that
+    // section's expanded block below — the closest a Kindle book can get
+    // to expand/collapse, since Kindle strips all scripting from books.
+    // Sections with nothing beneath them link straight into the text.
+    s += `<div class="contents" id="bookcontents">\n<h2>Contents</h2>\n<ol>\n`;
+    for (const sec of tree) {
+      const kids = sec.kids && sec.kids.length;
+      const target = kids ? "ctoc-" + sec.anchor : sec.anchor;
+      s += `<li><a href="#${target}">${xmlEsc(sec.text)}${kids ? " ›" : ""}</a></li>\n`;
+    }
+    s += `</ol>\n</div>\n`;
+    // "Expanded" view, one block per section: its categories with their
+    // works, a link into the text, and ⌂ to fold back to the section list.
+    for (const sec of tree) {
+      if (!(sec.kids && sec.kids.length)) continue;
+      s += `<div class="ctoc" id="ctoc-${sec.anchor}">\n`;
+      s += `<h3 class="ctoc-h"><a href="#${sec.anchor}">${xmlEsc(sec.text)} — read</a></h3>\n`;
+      s += `<ol class="ctoc-cats">\n`;
+      for (const k of sec.kids) {
+        s += `<li><a href="#${k.anchor}">${xmlEsc(k.text)}</a>`;
+        if (k.kids && k.kids.length) {
+          s += `<ol class="ctoc-works">` +
+               k.kids.map(g => `<li><a href="#${g.anchor}">${xmlEsc(g.text)}</a></li>`).join("") +
+               `</ol>`;
+        }
+        s += `</li>\n`;
+      }
+      s += `</ol>\n<p class="secnav"><a href="#bookcontents">⌂ contents</a></p>\n</div>\n`;
+    }
+  }
+
+  let curH1 = null;
+  let srcAnchor = null;
+  for (const b of content.blocks) {
+    if (b.type === "h1") {
+      curH1 = b.anchor;
+      if (content.haveSrc && srcAnchor === null && b.text.indexOf("Source \u2014 ") === 0) srcAnchor = b.anchor;
+      s += `<h1 id="${b.anchor}"${b.pb ? ' class="pb"' : ""}>${xmlEsc(b.text)}</h1>\n`;
+      const kids = (node[b.anchor] && node[b.anchor].kids) || [];
+      s += `<p class="secnav"><a href="#bookcontents">⌂ contents</a>${kids.length ? " · " + menu(kids) : ""}</p>\n`;
+    }
+    else if (b.type === "h2") {
+      s += `<h2 id="${b.anchor}"${b.pb ? ' class="pb"' : ""}>${xmlEsc(b.text)}</h2>\n`;
+      const kids = (node[b.anchor] && node[b.anchor].kids) || [];
+      const up = curH1 ? `<a href="#${curH1}">↑ section</a>` : `<a href="#bookcontents">⌂ contents</a>`;
+      const srcLink = (srcAnchor && b.anchor !== srcAnchor) ? ` \u00b7 <a href="#${srcAnchor}">\u25c4 source</a>` : "";
+      if (kids.length || curH1 || srcLink) s += `<p class="secnav">${up}${kids.length ? " · " + menu(kids) : ""}${srcLink}</p>\n`;
+    }
+    else if (b.type === "h3") s += `<h3 id="${b.anchor}"${b.pb ? ' class="pb"' : ""}>${xmlEsc(b.text)}${bkHtml(b)}</h3>\n`;
+    else if (b.type === "ref") s += `<p class="ref"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}${bkHtml(b)}</p>\n`;
+    else if (b.type === "note") s += `<p class="usernote">${xmlEsc(b.text)}</p>\n<p class="usernote-date">${xmlEsc(b.date || "")}</p>\n`;
+    else if (b.type === "ai") s += `<p class="ai">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "he") s += `<p class="he"${b.anchor ? ` id="${b.anchor}"` : ""} dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "en") s += `<p class="en"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "rtsrow") {
+      s += `<p class="rtsrow">` + b.marks.map(m => `<a class="rts" href="#${m.target}" title="${xmlEsc(m.name)}">${xmlEsc(m.letter)}</a>`).join(" ") + `</p>\n`;
+    }
+  }
+  return s;
+}
+async function buildEpub(content) {
+  setStatus("Loading e-book library…");
+  const JSZip = await ensureJSZip();
+  if (!JSZip) { setStatus("E-book library failed to load — check your connection and try again.", true); return; }
+  setStatus("Building Kindle (EPUB) document…");
+
+  const id = "urn:uuid:" + uuid();
+  const title = content.title;
+  const tree = tocTree(content.toc);
+  const modified = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  const bookLang = content.incEn ? "en" : "he";
+
+  const containerXml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>
+`;
+
+  const opf =
+`<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="${bookLang}">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">${xmlEsc(id)}</dc:identifier>
+    <dc:title>${xmlEsc(title)}</dc:title>
+    <dc:language>${bookLang}</dc:language>
+    <dc:creator>Sefaria</dc:creator>
+    <meta property="dcterms:modified">${modified}</meta>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+    <item id="css" href="style.css" media-type="text/css"/>
+    <item id="text" href="text.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine toc="ncx">
+    <itemref idref="text"/>
+  </spine>
+  <guide>
+    <reference type="toc" title="Contents" href="text.xhtml#bookcontents"/>
+    <reference type="text" title="Start" href="text.xhtml#bookcontents"/>
+  </guide>
+</package>
+`;
+
+  const navXhtml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
+<head><meta charset="utf-8"/><title>Contents</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body>
+<nav epub:type="toc" id="toc">
+<h1>Contents</h1>
+${navOl(tree)}
+</nav>
+<nav epub:type="landmarks" hidden="hidden">
+<ol>
+<li><a epub:type="toc" href="text.xhtml#bookcontents">Table of Contents</a></li>
+<li><a epub:type="bodymatter" href="text.xhtml#bookcontents">Start</a></li>
+</ol>
+</nav>
+</body>
+</html>
+`;
+
+  const ncx =
+`<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="en">
+<head>
+<meta name="dtb:uid" content="${xmlEsc(id)}"/>
+<meta name="dtb:depth" content="3"/>
+<meta name="dtb:totalPageCount" content="0"/>
+<meta name="dtb:maxPageNumber" content="0"/>
+</head>
+<docTitle><text>${xmlEsc(title)}</text></docTitle>
+<navMap>
+${ncxMap(tree)}</navMap>
+</ncx>
+`;
+
+  const css =
+`body { font-family: serif; line-height: 1.5; margin: 1em; }
+h1 { font-size: 1.4em; margin: 1em 0 .4em; }
+h2 { font-size: 1.15em; color: #6b5329; margin: .8em 0 .3em; }
+h3 { font-size: 1.02em; color: #8a6d3b; margin: .6em 0 .2em; }
+h1.doctitle { text-align: center; font-size: 1.6em; }
+p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
+p.usernote { font-style: italic; color: #6b5329; margin: .4em 0 .2em; }
+p.usernote-date { font-style: italic; color: #6b5329; font-size: .8em; margin: 0 0 .6em; }
+p.ai { font-style: italic; line-height: 1.6; margin: 0 0 .6em; }
+p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
+p.en { line-height: 1.6; }
+div.contents ol { list-style: none; padding-left: 0; }
+div.contents li { margin: .5em 0; }
+div.ctoc { margin: 1.1em 0 1.4em; }
+div.ctoc h3.ctoc-h { margin: .2em 0 .3em; font-size: 1.05em; }
+ol.ctoc-cats { list-style: none; padding-left: 1em; margin: .2em 0; }
+ol.ctoc-cats li { margin: .3em 0; }
+ol.ctoc-works { list-style: none; padding-left: 1.2em; font-size: .9em; margin: .15em 0; }
+ol.ctoc-works li { margin: .2em 0; }
+div.ctoc a { text-decoration: none; color: inherit; }
+ol.ctoc-works a { color: #6b5329; }
+p.secnav { font-size: .8em; color: #6f675a; margin: 0 0 .6em; }
+p.secnav a { color: #6b5329; text-decoration: none; }
+nav ol { list-style: none; }
+p.rtsrow { font-size: .95em; margin: .1em 0 .7em; }
+a.rts { color: #6b5329; text-decoration: none; margin-right: .35em; }
+a.bk { font-size: .72em; font-weight: normal; color: #6b5329; text-decoration: none; white-space: nowrap; }
+h1.pb, h2.pb, h3.pb { page-break-before: always; }
+`;
+
+  const textXhtml =
+`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en">
+<head><meta charset="utf-8"/><title>${xmlEsc(title)}</title><link rel="stylesheet" type="text/css" href="style.css"/></head>
+<body>
+${epubBody(content)}</body>
+</html>
+`;
+
+  const zip = new JSZip();
+  // mimetype must be first and uncompressed
+  zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+  zip.file("META-INF/container.xml", containerXml);
+  const oebps = zip.folder("OEBPS");
+  oebps.file("content.opf", opf);
+  oebps.file("nav.xhtml", navXhtml);
+  oebps.file("toc.ncx", ncx);
+  oebps.file("style.css", css);
+  oebps.file("text.xhtml", textXhtml);
+
+  const blob = await zip.generateAsync({ type: "blob", mimeType: "application/epub+zip", compression: "DEFLATE" });
+  await deliverFile(blob, fnameFor(content.ref) + ".epub");
+  finishStatus(content, "epub");
+}
+
+// ===========================================================================
+// PDF — opens a print-ready view; the reader chooses "Save as PDF".
+// Print-to-PDF is used deliberately: it renders Hebrew RTL correctly (client-
+// side PDF libraries mangle mixed Hebrew/English) and keeps the Contents links
+// clickable. Note: PDFs are fixed-layout, so Kindle won't give a Go To dropdown
+// for them — use Kindle (EPUB) for that.
+// ===========================================================================
+function buildPdf(content) {
+  const w = window.open("", "_blank");
+  if (!w) { setStatus("Pop-up blocked — allow pop-ups for this site, then try PDF again.", true); return; }
+
+  const tree = tocTree(content.toc);
+  const tocOl = (nodes, top) => {
+    let s = top ? "<ol class='toc'>" : "<ol>";
+    for (const n of nodes) {
+      s += `<li><a href="#${n.anchor}">${escapeHtml(n.text)}</a>`;
+      if (n.kids && n.kids.length) s += tocOl(n.kids, false);
+      s += "</li>";
+    }
+    return s + "</ol>";
+  };
+  const tocHtml = tocOl(tree, true);
+
+  let bodyHtml = "";
+  for (const b of content.blocks) {
+    if (b.type === "h1") bodyHtml += `<h1 id="${b.anchor}">${escapeHtml(b.text)}</h1>`;
+    else if (b.type === "h2") bodyHtml += `<h2 id="${b.anchor}">${escapeHtml(b.text)}</h2>`;
+    else if (b.type === "h3") bodyHtml += `<h3 id="${b.anchor}">${escapeHtml(b.text)}</h3>`;
+    else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "note") bodyHtml += `<p class="usernote">${escapeHtml(b.text)}</p><p class="usernote-date">${escapeHtml(b.date || "")}</p>`;
+    else if (b.type === "ai") bodyHtml += `<p class="ai">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
+  }
+
+  const doc =
+`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(content.title)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { font-family: Georgia,'Times New Roman',serif; line-height: 1.5; color: #2b2620; margin: 40px; }
+  h1 { font-size: 20px; margin: 22px 0 8px; }
+  h2 { font-size: 16px; color: #6b5329; margin: 16px 0 4px; }
+  h3 { font-size: 14px; color: #8a6d3b; margin: 12px 0 2px; }
+  h1.title { font-size: 24px; text-align: center; margin: 0 0 6px; }
+  p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
+  p.usernote { font-style: italic; color: #6b5329; font-size: 13px; margin: 4px 0 2px; }
+  p.usernote-date { font-style: italic; color: #6b5329; font-size: 11px; margin: 0 0 8px; }
+  p.ai { font-style: italic; font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
+  p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
+  p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
+  .contents-h { font-size: 18px; margin: 18px 0 8px; }
+  .toc { list-style: none; padding-left: 0; }
+  .toc ol { list-style: none; padding-left: 18px; }
+  .toc a { color: #0563C1; text-decoration: none; }
+  .toc li { margin: 3px 0; }
+  .note { font-size: 12px; color: #6f675a; margin: 0 0 16px; padding: 8px 10px; border: 1px solid #ddd5c7; border-radius: 6px; background: #fbf8f0; }
+  @media print { .note { display: none; } .pagebreak { page-break-before: always; } a { color: #0563C1; } }
+</style></head><body>
+<p class="note">Use your browser's print dialog and choose &ldquo;Save as PDF&rdquo;. The Contents links below stay clickable in the saved PDF.</p>
+<h1 class="title">${escapeHtml(content.title)}</h1>
+<div class="contents-h">Contents</div>
+${tocHtml}
+<div class="pagebreak"></div>
+${bodyHtml}
+</body></html>`;
+
+  w.document.open();
+  w.document.write(doc);
+  w.document.close();
+
+  const go = () => { try { w.focus(); w.print(); } catch (e) {} };
+  if (w.document.fonts && w.document.fonts.ready) w.document.fonts.ready.then(() => setTimeout(go, 150));
+  else setTimeout(go, 600);
+
+  finishStatus(content, "pdf (print view)");
+  setStatus("Opened a print view — choose \u201cSave as PDF\u201d.");
+}
+
+// ===========================================================================
+// Format selector + dispatch — choosing a format now triggers the full
+// build → deliver (download or share) flow directly.
+// ===========================================================================
+let OUTFMT = "kindle";
+function setFmt(f) {
+  OUTFMT = f;
+  document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
+}
+
+// Group-by selector: re-renders the tree in the chosen grouping. The selection
+// itself lives in SEL / SRC_ON, so it carries across unchanged — anything
+// ticked in Category mode is still ticked in Section mode, and vice versa.
+function setGrp(g) {
+  if (g === GROUPMODE) return;
+  GROUPMODE = g;
+  document.querySelectorAll(".grpseg button").forEach(b => b.classList.toggle("on", b.dataset.grp === g));
+  if (LINKS.length) {
+    renderTree();
+    $("previewCard").style.display = "none";
+    hideShareBar();
+  }
+}
+
+async function buildOutput() {
+  const content = gatherContent();
+  if (content.error) { setStatus(content.error, true); return; }
+
+  const fmtBtns = [...document.querySelectorAll(".fmtseg:not(.grpseg) button")];
+  fmtBtns.forEach(b => b.disabled = true);
+  hideShareBar();
+  try {
+    if (OUTFMT === "word") await buildDocx(content);
+    else if (OUTFMT === "pdf") buildPdf(content);
+    else await buildEpub(content);
+  } catch (e) {
+    setStatus("Failed to build: " + e.message, true);
+  } finally {
+    fmtBtns.forEach(b => b.disabled = false);
+  }
+}
+
+// ===========================================================================
+// On-page preview of the selected texts
+// ===========================================================================
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+// Texts shown in the current preview, indexed for the per-item copy button.
+// (The name predates the share→copy change; it's referenced in renderPreview
+// too, so it keeps its name to keep that function untouched.)
+let PV_SHARE_TEXTS = [];
+
+// The two-rectangles copy glyph, drawn inline so it inherits the button's
+// (muted, cream-friendly) colour — plus a checkmark shown briefly after a
+// successful copy.
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="9" y="9" width="11" height="11" rx="2"/>' +
+  '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+const COPIED_ICON =
+  '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"' +
+  ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="20 6 9 17 4 12"/></svg>';
+
+function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef) {
+  const idx = PV_SHARE_TEXTS.length;
+  PV_SHARE_TEXTS.push({ label, he, en });
+  let body = "";
+  if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
+  if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
+  if (transRef && TRANS[transRef]) body += aiTransBoxHtml(transRef);
+  if (noteKey) body += noteBoxHtml(noteKey);   // the note lives beneath its text
+  const collapsed = startCollapsed && !(noteKey && noteOf(noteKey)) && !(transRef && TRANS[transRef]);
+  return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${collapsed ? " collapsed" : ""}">
+    <div class="pv-ref">
+      <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
+      ${noteKey ? pvNoteBtnHtml(noteKey) : ""}
+      <button type="button" class="pv-copy" data-idx="${idx}" title="Copy this text" aria-label="Copy this text">${COPY_ICON}</button>
+    </div>
+    <div class="pv-body">${body}</div>
+  </div>`;
+}
+
+// A collapsible group wrapper for the preview: a section, a category, or a
+// commentator. level picks the header style ("top" | "" | "sub");
+// collapsed sets the starting state.
+function pvGrp(title, n, body, level, collapsed) {
+  return `<div class="pv-grp${collapsed ? " collapsed" : ""}">
+    <div class="pv-grp-head${level ? " " + level : ""}"><span class="pv-caret">▾</span><span>${escapeHtml(title)}</span><span class="pv-grp-count">${n}</span></div>
+    <div class="pv-grp-body">${body}</div>
+  </div>`;
+}
+
+function applyPvLang() {
+  const pv = $("preview");
+  pv.classList.toggle("hide-he", !$("pvHe").checked);
+  pv.classList.toggle("hide-en", !$("pvEn").checked);
+}
+
+function wholeSrcPvItem(ref) {
+  const n = Math.max(SRC.he.length, SRC.text.length);
+  let he = "", en = "";
+  for (let i = 0; i < n; i++) {
+    const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
+    const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
+  }
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__");
+}
+
+// Copy a single preview item's text to the clipboard — respects the
+// Hebrew / English toggles currently shown in the preview. btn is the tapped
+// button; on success its icon flashes to a checkmark for a moment.
+async function copyPvItem(idx, btn) {
+  const item = PV_SHARE_TEXTS[idx];
+  if (!item) return;
+  const showHe = $("pvHe").checked, showEn = $("pvEn").checked;
+  let text = item.label;
+  if (showHe && item.he) text += "\n\n" + item.he;
+  if (showEn && item.en) text += "\n\n" + item.en;
+  text = text.trim();
+  if (!text) return;
+
+  const ok = await copyToClipboard(text);
+  if (ok) {
+    setStatus("Copied to clipboard.");
+    if (btn) {
+      btn.innerHTML = COPIED_ICON;
+      setTimeout(() => { btn.innerHTML = COPY_ICON; }, 1200);
+    }
+  } else {
+    setStatus("Couldn't copy — select the text manually.", true);
+  }
+}
+
+function renderPreview() {
+  PV_SHARE_TEXTS = [];
+  const haveSrc = SRC_ON && srcAvailable();
+  const ref = $("ref").value.trim();
+  let html = "", count = 0, sections = 0;
+
+  if (GROUPMODE === "seg") {
+    // ---------------- section mode ----------------
+    // Only the selected texts appear. Every level is a collapsible group:
+    // section → category → commentator → individual texts, so "collapse all"
+    // folds the whole preview to its section headings and the reader drills
+    // back down level by level.
+    if (!SEL.size && !haveSrc) { setStatus("Select at least one text, or the original text.", true); return; }
+
+    for (const seg of SEG_ORDER) {
+      const cats = segCats(seg);
+      const sel = cats
+        .map(c => [c, segCatLinks(seg, c).filter(l => SEL.has(l._i))])
+        .filter(p => p[1].length);
+      const idx = haveSrc ? srcIdxFor(seg) : -1;
+      const he = (idx >= 0) ? stripHtml(SRC.he[idx] || "") : "";
+      const en = (idx >= 0) ? stripHtml(SRC.text[idx] || "") : "";
+      const wantSrc = haveSrc && idx >= 0 && (he || en);
+      if (!sel.length && !wantSrc) continue;
+      sections++;
+      let secBody = "", secN = 0;
+      if (wantSrc) {
+        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg);
+        secN++;
+      }
+      for (const [cat, arr] of sel) {
+        let catBody = "";
+        for (const [comm, links] of groupByComm(arr)) {
+          let items = "";
+          for (const l of links) {
+            const enRef = l.sourceRef || l.ref || "";
+            const heRef = l.sourceHeRef || "";
+            const label = enRef + (heRef ? "  \u2014  " + heRef : "");
+            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i, canonicalRef(l));
+            count++;
+          }
+          catBody += pvGrp(comm, links.length, items, "sub", true);
+        }
+        secBody += pvGrp(cat, arr.length, catBody, "", true);
+        secN += arr.length;
+      }
+      const incTitle = seg + (incipitFor(seg) ? " \u2014 " + incipitFor(seg) : "");
+      html += pvGrp(incTitle, secN, secBody, "top", false);
+    }
+  } else {
+    // ---------------- category mode ----------------
+    // category → commentator → individual texts, each level collapsible.
+    if (!SEL.size && !haveSrc) { setStatus("Select at least one source, or include the Original Text.", true); return; }
+
+    if (haveSrc) {
+      html += wholeSrcPvItem(ref);
+    }
+
+    for (const cat of CAT_ORDER) {
+      const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
+      const groups = comms
+        .map(comm => [comm, TREE[cat][comm].filter(l => SEL.has(l._i))])
+        .filter(p => p[1].length);
+      if (!groups.length) continue;
+      let catBody = "", catN = 0;
+      for (const [comm, links] of groups) {
+        let items = "";
+        for (const l of links) {
+          const enRef = l.sourceRef || l.ref || "";
+          const heRef = l.sourceHeRef || "";
+          const label = enRef + (heRef ? "  \u2014  " + heRef : "");
+          items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i, canonicalRef(l));
+          count++;
+        }
+        catBody += pvGrp(comm, links.length, items, "sub", false);
+        catN += links.length;
+      }
+      html += pvGrp(cat, catN, catBody, "top", false);
+    }
+  }
+
+  $("preview").innerHTML = html || "<p class='pv-en'>Nothing to show.</p>";
+
+  // start the preview language toggles from the document settings
+  $("pvHe").checked = $("incHe").checked;
+  $("pvEn").checked = $("incEn").checked;
+  applyPvLang();
+
+  const bits = [];
+  if (GROUPMODE === "seg") {
+    if (sections) bits.push(sections + " section" + (sections === 1 ? "" : "s"));
+    if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
+    if (!count && sections) bits.push("original text only");
+  } else {
+    if (haveSrc) bits.push("Original Text");
+    if (count) bits.push(count + " linked text" + (count === 1 ? "" : "s"));
+  }
+  $("previewCount").textContent = "Showing " + (bits.join(" \u00b7 ") || "nothing") +
+    " \u2014 tap a group or heading to open and close it";
+  $("previewCard").style.display = "block";
+  setStatus("");
+  $("previewCard").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// per-item collapse + group drill-down (event delegation), copy button,
+// note (pencil) button, language toggles, expand/collapse all
+$("preview").addEventListener("click", e => {
+  const copyBtn = e.target.closest(".pv-copy");
+  if (copyBtn) {
+    e.stopPropagation();
+    copyPvItem(parseInt(copyBtn.dataset.idx, 10), copyBtn);
+    return;
+  }
+  const noteBtn = e.target.closest(".pv-notebtn");
+  if (noteBtn) {
+    e.stopPropagation();
+    const item = noteBtn.closest(".pv-item");
+    const box = item && item.querySelector(".notebox");
+    if (box) {
+      const show = box.style.display !== "block";
+      box.style.display = show ? "block" : "none";
+      if (show) {
+        item.classList.remove("collapsed");   // the editor lives in the body
+        const ta = box.querySelector("textarea");
+        if (ta) ta.focus();
+      }
+    }
+    return;
+  }
+  if (e.target.closest(".notebox")) return;   // typing in the note — nothing to toggle
+  if (e.target.closest(".aitrans")) return;   // typing in the AI translation — nothing to toggle
+  const gh = e.target.closest(".pv-grp-head");
+  if (gh) { gh.parentElement.classList.toggle("collapsed"); return; }
+  const t = e.target.closest(".pv-toggle");
+  if (t) t.parentElement.parentElement.classList.toggle("collapsed");
+});
+// save notes as they're typed; the pencil lights up when its text has a note
+$("preview").addEventListener("input", e => {
+  const ta = e.target.closest(".notetext");
+  if (ta) {
+    const key = decodeURIComponent(ta.dataset.key);
+    if (ta.value.trim()) NOTES[key] = ta.value; else delete NOTES[key];
+    const item = ta.closest(".pv-item");
+    const btn = item && item.querySelector(".pv-notebtn");
+    if (btn) btn.classList.toggle("has-note", !!ta.value.trim());
+    return;
+  }
+  const at = e.target.closest(".aitrans");
+  if (at) {
+    const ref = decodeURIComponent(at.dataset.ref);
+    if (TRANS[ref]) TRANS[ref].text = at.value;
+  }
+});
+$("pvHe").onchange = applyPvLang;
+$("pvEn").onchange = applyPvLang;
+$("pvExpandAll").onclick = () =>
+  [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.remove("collapsed"));
+$("pvCollapseAll").onclick = () =>
+  [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.add("collapsed"));
+
+// ===========================================================================
+// Reference builder — Browse (category drill-down)
+// Selecting a reference fills the box and fetches its links automatically.
+// ===========================================================================
+const TOC_API = "https://www.sefaria.org/api/index";
+const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
+const RAW_INDEX_API = "https://www.sefaria.org/api/v2/raw/index/";
+const SHAPE_API = "https://www.sefaria.org/api/shape/";
+
+const CORPORA = [
+  { label: "Tanakh",   he: "תנ״ך",   match: ["tanakh", "tanach"] },
+  { label: "Mishnah",  he: "משנה",   match: ["mishnah"] },
+  { label: "Talmud",   he: "תלמוד",  match: ["talmud"] },
+  { label: "Halakhah", he: "הלכה",   match: ["halakhah", "halacha"] },
+  { label: "Midrash",  he: "מדרש",   match: ["midrash"] },
+  { label: "Kabbalah", he: "קבלה",   match: ["kabbalah", "kabbala"] },
+  { label: "Chasidut", he: "חסידות", match: ["chasidut", "chassidut", "hasidut"] }
+];
+
+let TOC = null;
+let backStack = [];
+
+function setMode(m) {
+  document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  $("browsePanel").style.display = m === "browse" ? "block" : "none";
+  if (m === "browse" && backStack.length === 0) startBrowse();
+}
+
+function commitRef(ref) {
+  $("ref").value = ref;
+  setMode("type");
+  fetchLinks();
+}
+
+function mk(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
+function navBody() { return $("navBody"); }
+function navLoading(msg) { navBody().innerHTML = '<div class="navloading">' + (msg || "Loading…") + '</div>'; }
+function navError(msg) { navBody().innerHTML = '<div class="naverr">' + msg + '</div>'; }
+
+function nodeHe(n) {
+  if (n.heTitle) return n.heTitle;
+  if (n.heCategory) return n.heCategory;
+  if (Array.isArray(n.titles)) { const t = n.titles.find(x => x.lang === "he" && x.primary) || n.titles.find(x => x.lang === "he"); if (t) return t.text; }
+  return "";
+}
+function nodeEn(n) {
+  if (n.title) return n.title;
+  if (n.category) return n.category;
+  if (Array.isArray(n.titles)) { const t = n.titles.find(x => x.lang === "en" && x.primary) || n.titles.find(x => x.lang === "en"); if (t) return t.text; }
+  if (n.key) return n.key;
+  return "section";
+}
+
+function rowList(items, onPick) {
+  const wrap = document.createElement("div"); wrap.className = "navlist";
+  items.forEach(it => {
+    const r = document.createElement("div"); r.className = "navrow";
+    const name = document.createElement("span"); name.textContent = it.label; r.appendChild(name);
+    if (it.he) { const h = document.createElement("span"); h.className = "he"; h.textContent = it.he; r.appendChild(h); }
+    const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "›"; r.appendChild(chev);
+    r.onclick = () => onPick(it);
+    wrap.appendChild(r);
+  });
+  return wrap;
+}
+
+function renderCrumbs() {
+  const c = $("crumbs"); c.innerHTML = "";
+  backStack.forEach((f, i) => {
+    if (i) { const s = document.createElement("span"); s.className = "crumbsep"; s.textContent = "›"; c.appendChild(s); }
+    const span = document.createElement("span"); span.textContent = f.label;
+    if (i === backStack.length - 1) { span.className = "crumb here"; }
+    else { span.className = "crumb"; span.onclick = () => { backStack = backStack.slice(0, i + 1); renderCrumbs(); backStack[i].render(); }; }
+    c.appendChild(span);
+  });
+}
+function pushView(label, render) { backStack.push({ label, render }); renderCrumbs(); render(); }
+
+async function ensureToc() {
+  if (TOC) return TOC;
+  const res = await fetch(TOC_API);
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  TOC = await res.json();
+  return TOC;
+}
+
+function startBrowse() { backStack = []; pushView("Texts", renderCorpora); }
+
+function renderCorpora() {
+  navLoading();
+  ensureToc().then(toc => {
+    const items = [];
+    CORPORA.forEach(c => {
+      const node = toc.find(n => n.category && c.match.includes(String(n.category).toLowerCase()));
+      if (node) items.push({ label: c.label, he: c.he, node });
+    });
+    if (!items.length) { navError("Couldn't find the expected categories in the library index."); return; }
+    navBody().innerHTML = "";
+    navBody().appendChild(rowList(items, it => pushView(it.label, () => renderToc(it.node))));
+  }).catch(e => navError("Couldn't load the library index: " + e.message));
+}
+
+function renderToc(node) {
+  const items = (node.contents || []).map(ch => {
+    if (ch.contents) return { type: "cat", label: nodeEn(ch), he: nodeHe(ch), node: ch };
+    if (ch.title) return { type: "book", label: ch.title, he: ch.heTitle || "", title: ch.title };
+    return null;
+  }).filter(Boolean);
+  if (!items.length) { navError("Nothing to browse here."); return; }
+  // Inside Midrash, the aggadic subcategory reads above the halakhic one.
+  if (String(node.category || "").toLowerCase() === "midrash") {
+    const ai = items.findIndex(it => /aggad/i.test(it.label));
+    const hi = items.findIndex(it => /hala[ck]h/i.test(it.label));
+    if (ai > -1 && hi > -1 && hi < ai) {
+      const moved = items.splice(ai, 1)[0];
+      items.splice(hi, 0, moved);
+    }
+  }
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    if (it.type === "cat") pushView(it.label, () => renderToc(it.node));
+    else pushView(it.label, () => openBook(it.title));
+  }));
+}
+
+async function openBook(title) {
+  navLoading('Loading "' + title + '"…');
+  let rec;
+  try {
+    const res = await fetch(BOOK_INDEX_API + encodeURIComponent(title));
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    rec = await res.json();
+  } catch (e) {
+    navError('Couldn\u2019t load the structure of "' + title + '". Filling the box so you can type the rest.');
+    setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
+    return;
+  }
+  // Torah books also carry Sefaria's Parasha structure (each parsha with its
+  // seven aliyot) — offer it alongside the plain chapter grid.
+  const parshiot = await parshaStructOf(title, rec);
+  if (parshiot) { renderBookWithParshiot(title, rec, parshiot); return; }
+
+  const schema = rec.schema;
+  if (!schema) { commitRef(title); return; }
+  if (schema.nodes) renderSchemaNodes(title, schema, title);
+  else renderJagged(title, schema);
+}
+
+// ---- Parasha browsing (Torah books) ---------------------------------------
+// Sefaria's index records for the Chumash carry an alternate "Parasha"
+// structure: one node per parsha, with wholeRef (the full range) and refs
+// (the seven aliyah ranges). Some API variants expose it as alt_structs,
+// others as alts; the v2 raw index always has it, so that's the fallback.
+function parshaNodesFrom(rec) {
+  const alts = rec && (rec.alt_structs || rec.alts);
+  const p = alts && (alts.Parasha || alts.Parsha || alts.parasha);
+  return (p && Array.isArray(p.nodes) && p.nodes.length) ? p.nodes : null;
+}
+async function parshaStructOf(title, rec) {
+  let nodes = parshaNodesFrom(rec);
+  if (nodes) return nodes;
+  const isTorah = Array.isArray(rec && rec.categories) && rec.categories.indexOf("Torah") >= 0;
+  if (!isTorah) return null;   // don't waste a request on non-Torah books
+  try {
+    const r = await fetch(RAW_INDEX_API + encodeURIComponent(title));
+    if (!r.ok) return null;
+    const j = await r.json();
+    return parshaNodesFrom(j);
+  } catch (e) { return null; }
+}
+
+const ALIYOT = ["Rishon", "Sheni", "Shlishi", "Revi'i", "Chamishi", "Shishi", "Shevi'i"];
+const HE_ALIYOT = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שביעי"];
+
+function renderBookWithParshiot(title, rec, parshiot) {
+  const items = [
+    { label: "By chapter", he: "לפי פרק", kind: "chap" },
+    { label: "By parasha", he: "לפי פרשה", kind: "par" }
+  ];
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    if (it.kind === "chap") {
+      pushView("chapters", () => {
+        const schema = rec.schema;
+        if (schema && schema.nodes) renderSchemaNodes(title, schema, title);
+        else if (schema) renderJagged(title, schema);
+        else commitRef(title);
+      });
+    } else {
+      pushView("parasha", () => renderParshiot(parshiot));
+    }
+  }));
+}
+
+function renderParshiot(parshiot) {
+  const items = parshiot.map(n => ({ label: nodeEn(n), he: nodeHe(n), node: n }));
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => pushView(it.label, () => renderAliyot(it.node))));
+}
+
+function renderAliyot(node) {
+  navBody().innerHTML = "";
+  const whole = node.wholeRef || "";
+  if (whole) {
+    const w = document.createElement("div"); w.className = "navwhole";
+    const b = document.createElement("button"); b.className = "secondary";
+    b.textContent = "Whole parasha — " + whole;
+    b.onclick = () => commitRef(whole);
+    w.appendChild(b); navBody().appendChild(w);
+    navBody().appendChild(mk('<div class="navnote">A whole parasha fetches every verse\u2019s links — it can take a while.</div>'));
+  }
+  const refs = Array.isArray(node.refs) ? node.refs : [];
+  if (!refs.length) {
+    if (!whole) navError("This parasha has no reference data.");
+    else navBody().appendChild(mk('<div class="navnote">No aliyah breakdown is available for this parasha.</div>'));
+    return;
+  }
+  navBody().appendChild(mk('<div class="navnote">\u2026or a single aliyah:</div>'));
+  const items = refs.map((r, i) => ({
+    label: (ALIYOT[i] || ("Aliyah " + (i + 1))) + " \u00b7 " + r,
+    he: HE_ALIYOT[i] || "",
+    ref: r
+  }));
+  navBody().appendChild(rowList(items, it => commitRef(it.ref)));
+}
+
+function renderSchemaNodes(title, node, prefix) {
+  const items = (node.nodes || []).map(ch => ({
+    label: ch.default ? "(main text)" : nodeEn(ch),
+    he: ch.default ? "" : nodeHe(ch),
+    ch
+  }));
+  if (!items.length) { commitRef(prefix); return; }
+  navBody().innerHTML = "";
+  navBody().appendChild(rowList(items, it => {
+    const ch = it.ch;
+    const childPrefix = ch.default ? prefix : (prefix + ", " + nodeEn(ch));
+    const crumb = ch.default ? "main" : nodeEn(ch);
+    if (ch.nodes) pushView(crumb, () => renderSchemaNodes(title, ch, childPrefix));
+    else pushView(crumb, () => renderJagged(childPrefix, ch));
+  }));
+}
+
+function renderJagged(prefix, node) {
+  const addr = (node.addressTypes && node.addressTypes[0]) || "Integer";
+  const sname = (node.sectionNames && node.sectionNames[0]) || "section";
+  // A depth-1 node (an introduction, a prayer, a letter…) is a single run of
+  // paragraphs. Sefaria's own contents lists it as one entry, so fetch the
+  // whole node — a paragraph grid here would only ever reach paragraph 1.
+  const jdepth = node.depth || (node.sectionNames || []).length || 1;
+  if (jdepth === 1) { commitRef(prefix); return; }
+  navBody().innerHTML = "";
+
+  if (addr === "Talmud") {
+    const build = (amudim) => {
+      navBody().innerHTML = "";
+      navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back.</div>'));
+      const grid = document.createElement("div"); grid.className = "navgrid";
+      for (let i = 0; i < amudim; i++) {
+        const b = document.createElement("button"); b.textContent = dafLabel(i);
+        b.onclick = () => commitRef(prefix + " " + dafLabel(i));
+        grid.appendChild(b);
+      }
+      navBody().appendChild(grid);
+    };
+    const n0 = node.lengths && node.lengths[0];
+    if (n0) build(n0);
+    else { navLoading(); shapeLen(prefix).then(len => build(len ? len * 2 : 180)).catch(() => build(180)); }
+    return;
+  }
+
+  const draw = (count) => {
+    navBody().innerHTML = "";
+    navBody().appendChild(mk('<div class="navnote">Pick a ' + String(sname).toLowerCase() + '.</div>'));
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    for (let i = 1; i <= count; i++) {
+      const b = document.createElement("button"); b.textContent = i;
+      b.onclick = () => pickNumber(prefix, node, [i]);
+      grid.appendChild(b);
+    }
+    navBody().appendChild(grid);
+  };
+  const n0 = node.lengths && node.lengths[0];
+  navLoading();
+  shapeLen(prefix).then(len => {
+    if (len) draw(len);                 // live shape — matches the Sefaria site
+    else if (n0) draw(n0);              // stored lengths (can be stale)
+    else fetchCount(prefix).then(c => c ? draw(c) : commitRef(prefix));
+  }).catch(() => { if (n0) draw(n0); else commitRef(prefix); });
+}
+
+function pickNumber(prefix, node, sections) {
+  const depth = (node.sectionNames || []).length || 1;
+  if (sections.length >= depth) { commitRef(refJoin(prefix, sections)); return; }
+  const cur = refJoin(prefix, sections);
+  const nextName = (node.sectionNames && node.sectionNames[sections.length]) || "part";
+  navBody().innerHTML = "";
+  const whole = document.createElement("div"); whole.className = "navwhole";
+  const wb = document.createElement("button"); wb.className = "secondary"; wb.textContent = "Use all of " + cur;
+  wb.onclick = () => commitRef(cur); whole.appendChild(wb);
+  navBody().appendChild(whole);
+  navBody().appendChild(mk('<div class="navnote">\u2026or narrow to a ' + String(nextName).toLowerCase() + ':</div>'));
+  const holder = document.createElement("div"); holder.innerHTML = '<div class="navloading">Loading\u2026</div>';
+  navBody().appendChild(holder);
+  fetchCount(cur).then(c => {
+    holder.innerHTML = "";
+    if (!c) { holder.appendChild(mk('<div class="navnote">Couldn\u2019t list these \u2014 use the button above, or type it.</div>')); return; }
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    for (let i = 1; i <= c; i++) {
+      const b = document.createElement("button"); b.textContent = i;
+      b.onclick = () => pickNumber(prefix, node, [...sections, i]);
+      grid.appendChild(b);
+    }
+    holder.appendChild(grid);
+  });
+}
+
+function refJoin(prefix, sections) { return prefix + " " + sections.join(":"); }
+function dafLabel(i) { const d = 2 + Math.floor(i / 2); return d + (i % 2 === 0 ? "a" : "b"); }
+
+async function shapeLen(title) {
+  try {
+    const r = await fetch(SHAPE_API + encodeURIComponent(title));
+    if (!r.ok) return null;
+    const j = await r.json();
+    let first = Array.isArray(j) ? j[0] : j;
+    if (!first) return null;
+    // Collapsed complex-book record: chapters holds one shape per leaf node.
+    // The default node's leaf carries the bare book title, so matching by
+    // title finds the right node for both the main text and named nodes.
+    if (first.isComplex && Array.isArray(first.chapters)) {
+      const leaf = first.chapters.find(c => c && c.title === title);
+      if (!leaf) return null;
+      first = leaf;
+    }
+    // Depth-1 node (an introduction, a prayer…): "chapters" IS the paragraph
+    // count, and "length" is a meaningless 1.
+    if (typeof first.chapters === "number") return first.chapters || null;
+    return first.length || (Array.isArray(first.chapters) ? first.chapters.length : null) || null;
+  } catch (e) { return null; }
+}
+async function fetchCount(ref) {
+  let n = 0;
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
+    if (r.ok) {
+      const j = await r.json();
+      const nHe = Array.isArray(j.he) ? j.he.length : 0;
+      const nEn = Array.isArray(j.text) ? j.text.length : 0;
+      n = Math.max(nHe, nEn);
+    }
+  } catch (e) {}
+  const nShape = await shapeCountFor(ref);
+  if (nShape && nShape > n) n = nShape;
+  return n || null;
+}
+
+// ===========================================================================
+// Wiring
+// ===========================================================================
+document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
+document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
+
+$("incHe").addEventListener("change", applyTreeLang);
+$("incEn").addEventListener("change", applyTreeLang);
+
+$("clearBtn").onclick = () => {
+  if (!confirmDiscardTranslations()) return;
+  $("ref").value = "";
+  LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
+  SEL = new Set(); SRC_ON = false; NOTES = {};
+  TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {}; BATCHES = null;
+  refreshAiUI();
+  $("treeCard").style.display = "none";
+  $("previewCard").style.display = "none";
+  hideShareBar();
+  $("tree").innerHTML = "";
+  $("preview").innerHTML = "";
+  setStatus("");
+  backStack = [];
+  if ($("browsePanel").style.display !== "none") startBrowse();
+  $("ref").focus();
+};
+
+$("previewBtn").onclick = renderPreview;
+
+$("verHint").textContent += " \u00b7 app v" + APP_VERSION;
+try { const bs = localStorage.getItem(BATCH_SIZE_KEY); if (bs) $("aiBatchSize").value = bs; } catch (e) {}
+setFmt("kindle");
+</script>
+</body>
+</html>
