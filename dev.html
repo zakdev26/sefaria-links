@@ -386,7 +386,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 30;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 31;   // bump when deploying, shows in footer + built books
 // Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
 // each source segment jumping to the pieces in place, and a back-link under
 // each piece. Plain internal links — survives Kindle's KFX conversion.
@@ -2823,6 +2823,7 @@ $("pvCollapseAll").onclick = () =>
 const TOC_API = "https://www.sefaria.org/api/index";
 const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
 const RAW_INDEX_API = "https://www.sefaria.org/api/v2/raw/index/";
+const V2_INDEX_API = "https://www.sefaria.org/api/v2/index/";
 const SHAPE_API = "https://www.sefaria.org/api/shape/";
 
 const CORPORA = [
@@ -2953,10 +2954,11 @@ async function openBook(title) {
     setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
     return;
   }
-  // Torah books also carry Sefaria's Parasha structure (each parsha with its
-  // seven aliyot) — offer it alongside the plain chapter grid.
-  const parshiot = await parshaStructOf(title, rec);
-  if (parshiot) { renderBookWithParshiot(title, rec, parshiot); return; }
+  // Sefaria surfaces alternate structures for many books — the Chumash's
+  // parashot, the Zohar's Vilna dapim and essays, Tikkunei Zohar's tikkunim,
+  // Pardes Rimmonim's gates. Offer the same choice the site does.
+  const structs = await altStructsOf(title, rec);
+  if (structs) { renderStructChooser(title, rec, structs); return; }
 
   const schema = rec.schema;
   if (!schema) { commitRef(title); return; }
@@ -2964,82 +2966,210 @@ async function openBook(title) {
   else renderJagged(title, schema);
 }
 
-// ---- Parasha browsing (Torah books) ---------------------------------------
-// Sefaria's index records for the Chumash carry an alternate "Parasha"
-// structure: one node per parsha, with wholeRef (the full range) and refs
-// (the seven aliyah ranges). Some API variants expose it as alt_structs,
-// others as alts; the v2 raw index always has it, so that's the fallback.
-function parshaNodesFrom(rec) {
+// ---- Alternate structures (parashot, dapim, tikkunim, gates…) -------------
+// Sefaria's index records can carry alternate structures alongside a book's
+// own schema: the Chumash has "Parasha" (each parsha with its seven aliyot),
+// the Zohar has "Daf" (Vilna pagination) and "Essay", Tikkunei Zohar has
+// "Tikkunim", Pardes Rimmonim has "Gate". Some API variants expose these as
+// alt_structs, others as alts.
+//
+// The fallback fetch uses the v2 NON-raw index. It returns the same structure
+// as the raw endpoint PLUS two fields the raw one omits: "startingAddress"
+// (the real daf/amud a node opens on, e.g. "15a") and "offset". Those are
+// Sefaria's own precomputed values, and they are the only reliable source of
+// Zohar-family daf labels — the raw endpoint reports index_offsets_by_depth
+// as null throughout, and the labels cannot be derived by counting, because a
+// parasha's main text and its Tosefta / Sitrei Torah / Midrash HaNe'elam /
+// Ra'ya Mehemna passages share the same physical dapim.
+function altStructsFrom(rec) {
   const alts = rec && (rec.alt_structs || rec.alts);
-  const p = alts && (alts.Parasha || alts.Parsha || alts.parasha);
-  return (p && Array.isArray(p.nodes) && p.nodes.length) ? p.nodes : null;
+  if (!alts || typeof alts !== "object") return null;
+  const out = [];
+  for (const name of Object.keys(alts)) {
+    const s = alts[name];
+    const nodes = (s && Array.isArray(s.nodes)) ? s.nodes : null;
+    if (nodes && nodes.length) out.push({ name, nodes });
+  }
+  return out.length ? out : null;
 }
-async function parshaStructOf(title, rec) {
-  let nodes = parshaNodesFrom(rec);
-  if (nodes) return nodes;
-  const isTorah = Array.isArray(rec && rec.categories) && rec.categories.indexOf("Torah") >= 0;
-  if (!isTorah) return null;   // don't waste a request on non-Torah books
+// True when some daf-addressed node carries no startingAddress — i.e. this
+// record came from an endpoint that omits the precomputed labels, so it is
+// worth re-fetching from the v2 non-raw index before rendering a daf grid.
+function altStructsNeedDafUpgrade(structs) {
+  const walk = (nodes) => {
+    for (const n of (nodes || [])) {
+      if (!n) continue;
+      const at = Array.isArray(n.addressTypes) ? n.addressTypes : [];
+      if ((at.indexOf("Talmud") >= 0 || at.indexOf("Folio") >= 0) && !n.startingAddress) return true;
+      if (Array.isArray(n.nodes) && walk(n.nodes)) return true;
+    }
+    return false;
+  };
+  return structs.some(s => walk(s.nodes));
+}
+async function altStructsOf(title, rec) {
+  const structs = altStructsFrom(rec);
+  if (structs && !altStructsNeedDafUpgrade(structs)) return structs;
   try {
-    const r = await fetch(RAW_INDEX_API + encodeURIComponent(title));
-    if (!r.ok) return null;
+    const r = await fetch(V2_INDEX_API + encodeURIComponent(title));
+    if (!r.ok) return structs;
     const j = await r.json();
-    return parshaNodesFrom(j);
-  } catch (e) { return null; }
+    return altStructsFrom(j) || structs;
+  } catch (e) { return structs; }
 }
 
 const ALIYOT = ["Rishon", "Sheni", "Shlishi", "Revi'i", "Chamishi", "Shishi", "Shevi'i"];
 const HE_ALIYOT = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שביעי"];
 
-function renderBookWithParshiot(title, rec, parshiot) {
-  const items = [
-    { label: "By chapter", he: "לפי פרק", kind: "chap" },
-    { label: "By parasha", he: "לפי פרשה", kind: "par" }
-  ];
+// Hebrew captions for the structure chooser. Unknown structures simply show
+// no Hebrew rather than a guessed transliteration.
+const STRUCT_HE = {
+  parasha: "לפי פרשה", parshiot: "לפי פרשה", daf: "לפי דף", essay: "לפי מאמר",
+  tikkunim: "לפי תיקון", gate: "לפי שער", topic: "לפי נושא", chapters: "לפי פרק"
+};
+const SECNAME_HE = {
+  chapter: "לפי פרק", perek: "לפי פרק", daf: "לפי דף", siman: "לפי סימן",
+  mishnah: "לפי משנה", halakhah: "לפי הלכה", volume: "לפי כרך",
+  paragraph: "לפי פסקה", verse: "לפי פסוק", section: "לפי חלק"
+};
+function structLabel(name) {
+  const n = String(name || "").trim();
+  return n ? "By " + n.toLowerCase() : "Alternate structure";
+}
+// The book's own schema, captioned from its top section name — "By chapter",
+// "By daf", "By siman" — so the row reads the way Sefaria's own tab does.
+function defaultStructRow(rec) {
+  const schema = rec && rec.schema;
+  const sn = (schema && Array.isArray(schema.sectionNames) && schema.sectionNames[0]) || "";
+  const key = String(sn).toLowerCase();
+  return { label: sn ? "By " + key : "Contents", he: SECNAME_HE[key] || "", kind: "schema" };
+}
+function altNodeEn(n) {
+  if (n && n.default) return "(main text)";
+  const t = nodeEn(n);
+  return (t && t !== "section") ? t : "(main text)";
+}
+function altNodeHe(n) { return (n && n.default) ? "" : nodeHe(n); }
+
+// One row for the book's own schema plus one per alternate structure, with
+// Sefaria's default_struct listed first. exclude_structs lets a book hide its
+// bare schema (the Zohar shows only "Daf" and "Essay"), matching the site.
+function renderStructChooser(title, rec, structs) {
+  const ex = Array.isArray(rec && rec.exclude_structs)
+    ? rec.exclude_structs.map(s => String(s).toLowerCase()) : [];
+  const rows = [];
+  if (ex.indexOf("schema") < 0) rows.push(defaultStructRow(rec));
+  for (const s of structs) {
+    rows.push({
+      label: structLabel(s.name),
+      he: STRUCT_HE[String(s.name).toLowerCase()] || "",
+      kind: "alt", struct: s
+    });
+  }
+  if (!rows.length) { renderDefaultSchema(title, rec); return; }
+  const ds = rec && rec.default_struct;
+  if (ds) {
+    const i = rows.findIndex(r => r.kind === "alt" && String(r.struct.name) === String(ds));
+    if (i > 0) rows.unshift(rows.splice(i, 1)[0]);
+  }
+  if (rows.length === 1) {   // nothing to choose between — go straight in
+    if (rows[0].kind === "schema") renderDefaultSchema(title, rec);
+    else renderAltNodes(title, rows[0].struct.nodes, rows[0].struct.name);
+    return;
+  }
   navBody().innerHTML = "";
-  navBody().appendChild(rowList(items, it => {
-    if (it.kind === "chap") {
-      pushView("chapters", () => {
-        const schema = rec.schema;
-        if (schema && schema.nodes) renderSchemaNodes(title, schema, title);
-        else if (schema) renderJagged(title, schema);
-        else commitRef(title);
-      });
-    } else {
-      pushView("parasha", () => renderParshiot(parshiot));
-    }
+  navBody().appendChild(rowList(rows, it => {
+    if (it.kind === "schema") pushView(it.label, () => renderDefaultSchema(title, rec));
+    else pushView(it.label, () => renderAltNodes(title, it.struct.nodes, it.struct.name));
   }));
 }
 
-function renderParshiot(parshiot) {
-  const items = parshiot.map(n => ({ label: nodeEn(n), he: nodeHe(n), node: n }));
-  navBody().innerHTML = "";
-  navBody().appendChild(rowList(items, it => pushView(it.label, () => renderAliyot(it.node))));
+function renderDefaultSchema(title, rec) {
+  const schema = rec && rec.schema;
+  if (schema && schema.nodes) renderSchemaNodes(title, schema, title);
+  else if (schema) renderJagged(title, schema);
+  else commitRef(title);
 }
 
-function renderAliyot(node) {
+// One level of an alternate structure. A level can hold a default node (the
+// section's own pages) alongside named siblings — the Zohar's Bereshit owns a
+// daf run AND a Tosefta, and Sefaria lists both — so the default node's grid
+// is drawn inline and the named siblings follow as rows.
+function renderAltNodes(title, nodes, structName) {
   navBody().innerHTML = "";
+  const list = Array.isArray(nodes) ? nodes : [];
+  const def = list.find(n => n && n.default && (Array.isArray(n.refs) || n.wholeRef));
+  const named = list.filter(n => n && n !== def);
+  if (def) appendAltLeaf(title, def, structName);
+  const items = named.map(n => ({ label: altNodeEn(n), he: altNodeHe(n), n }));
+  if (items.length) {
+    if (def) navBody().appendChild(mk('<div class="navnote">\u2026or a named section:</div>'));
+    navBody().appendChild(rowList(items, it => {
+      const n = it.n;
+      if (Array.isArray(n.nodes) && n.nodes.length) {
+        pushView(it.label, () => renderAltNodes(title, n.nodes, structName));
+      } else {
+        pushView(it.label, () => { navBody().innerHTML = ""; appendAltLeaf(title, n, structName); });
+      }
+    }));
+  }
+  if (!def && !items.length) navError("Nothing to browse here.");
+}
+
+// A leaf of an alternate structure: its whole-range button, then either a daf
+// grid (labelled from Sefaria's own startingAddress) or a list of its refs.
+function appendAltLeaf(title, node, structName) {
   const whole = node.wholeRef || "";
   if (whole) {
     const w = document.createElement("div"); w.className = "navwhole";
     const b = document.createElement("button"); b.className = "secondary";
-    b.textContent = "Whole parasha — " + whole;
+    const nm = altNodeEn(node);
+    b.textContent = "Whole " + (nm === "(main text)" ? String(structName || "section").toLowerCase() : nm) + " \u2014 " + whole;
     b.onclick = () => commitRef(whole);
     w.appendChild(b); navBody().appendChild(w);
-    navBody().appendChild(mk('<div class="navnote">A whole parasha fetches every verse\u2019s links — it can take a while.</div>'));
+    navBody().appendChild(mk('<div class="navnote">A whole section fetches every segment\u2019s links \u2014 it can take a while.</div>'));
   }
   const refs = Array.isArray(node.refs) ? node.refs : [];
   if (!refs.length) {
-    if (!whole) navError("This parasha has no reference data.");
-    else navBody().appendChild(mk('<div class="navnote">No aliyah breakdown is available for this parasha.</div>'));
+    if (!whole) navError("This section has no reference data.");
     return;
   }
-  navBody().appendChild(mk('<div class="navnote">\u2026or a single aliyah:</div>'));
+
+  // Daf-addressed leaf: each ref is one amud, and Sefaria supplies the real
+  // opening page in startingAddress, so the grid is labelled from there —
+  // never from a fixed 2a start, and never by counting preceding nodes.
+  if (node.startingAddress) {
+    navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back.</div>'));
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    refs.forEach((r, i) => {
+      const b = document.createElement("button");
+      b.textContent = dafLabelFrom(node.startingAddress, i);
+      b.onclick = () => commitRef(r);
+      grid.appendChild(b);
+    });
+    navBody().appendChild(grid);
+    return;
+  }
+
+  // Torah aliyot keep their traditional names (v30 behaviour).
+  const isAliyot = refs.length === 7 && /^parash/i.test(String(structName || ""));
+  navBody().appendChild(mk('<div class="navnote">' +
+    (isAliyot ? "\u2026or a single aliyah:" : "\u2026or a single section:") + '</div>'));
   const items = refs.map((r, i) => ({
-    label: (ALIYOT[i] || ("Aliyah " + (i + 1))) + " \u00b7 " + r,
-    he: HE_ALIYOT[i] || "",
+    label: isAliyot ? ((ALIYOT[i] || ("Aliyah " + (i + 1))) + " \u00b7 " + r) : r,
+    he: isAliyot ? (HE_ALIYOT[i] || "") : "",
     ref: r
   }));
   navBody().appendChild(rowList(items, it => commitRef(it.ref)));
+}
+
+// "15a" + 3 → "16b". A node's pages run consecutively from its own opening
+// amud; startingAddress is that opening amud, straight from Sefaria.
+function dafLabelFrom(start, i) {
+  const m = String(start).match(/^(\d+)\s*([ab])$/);
+  if (!m) return dafLabel(i, 2);
+  const sides = parseInt(m[1], 10) * 2 + (m[2] === "b" ? 1 : 0) + i;
+  return Math.floor(sides / 2) + (sides % 2 === 0 ? "a" : "b");
 }
 
 function renderSchemaNodes(title, node, prefix) {
