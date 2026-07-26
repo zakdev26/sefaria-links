@@ -207,6 +207,34 @@
   .navloading { font-size: 13px; color: var(--muted); padding: 8px 2px; }
   .naverr { font-size: 13px; color: #a23b2c; padding: 8px 2px; }
 
+  /* ---- search: query row, mode switch, and results by category ---- */
+  .searchrow { display: flex; gap: 6px; }
+  .searchrow input[type=text] { flex: 1; min-width: 0; }
+  .searchrow button { width: auto; margin: 0; padding: 12px 16px; flex: none; }
+  /* deliberately NOT .fmtseg — the format selector wires every .fmtseg
+     button to buildOutput(), which would fire a document build here */
+  .srchseg { display: flex; gap: 6px; margin-top: 8px; }
+  .srchseg button { flex: 1; width: auto; margin: 0; font-size: 13px; padding: 8px 6px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .srchseg button:hover { background: #ece3d0; }
+  .srchseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .searchmeta { font-size: 12px; color: var(--muted); margin: 8px 2px; min-height: 16px; }
+  .searchmeta.err { color: #a23b2c; }
+  .srch-grp { border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; overflow: hidden; background: #fff; }
+  .srch-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; font-size: 15px; }
+  .srch-head.top { background: #ece3d0; font-weight: bold; }
+  .srch-head.sub { background: #f2ecdd; font-size: 14px; color: var(--accent-dark); }
+  .srch-count { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: normal; }
+  .srch-grp.collapsed > .srch-head .pv-caret { transform: rotate(-90deg); }
+  .srch-grp.collapsed > .srch-body { display: none; }
+  .srch-body { padding: 4px 8px 6px; }
+  .srch-hit { padding: 8px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .srch-hit:last-child { border-bottom: none; }
+  .srch-hit:hover { background: #fbf8f0; }
+  .srch-ref { font-size: 13px; font-weight: bold; color: var(--accent-dark); }
+  .srch-heref { font-family: 'Frank Ruhl Libre', serif; font-weight: normal; color: var(--muted); }
+  .srch-snip { font-size: 13.5px; line-height: 1.55; margin-top: 3px; }
+  .srch-snip b { background: #f6e7c0; }
+
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
   .sharehint { text-align: center; margin-top: 6px; font-size: 13px; }
@@ -283,7 +311,7 @@
 <body>
 <div class="wrap">
   <h1>Sefaria Links → Kindle / Word / PDF</h1>
-  <p class="sub">Enter a reference and press Enter (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
+  <p class="sub">Enter a reference and press Enter — or search Sefaria's library, or browse to one — then choose which commentaries you want and get a Kindle (EPUB), Word, or PDF file.</p>
 
   <div class="card">
     <label for="ref">Find a reference in Sefaria's library</label>
@@ -293,8 +321,21 @@
     </div>
 
     <div class="modeseg">
-      <button type="button" data-mode="type" class="on">Type</button>
+      <button type="button" data-mode="search" class="on">Search</button>
       <button type="button" data-mode="browse">Browse</button>
+    </div>
+
+    <div class="navpanel" id="searchPanel">
+      <div class="searchrow">
+        <input type="text" id="searchQ" placeholder="Search the library — e.g. נר חנוכה" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+        <button type="button" id="searchGo">Search</button>
+      </div>
+      <div class="srchseg">
+        <button type="button" data-smode="loose" class="on">Related words</button>
+        <button type="button" data-smode="exact">Exact phrase</button>
+      </div>
+      <div class="searchmeta" id="searchMeta"></div>
+      <div id="searchBody"></div>
     </div>
 
     <div class="navpanel" id="browsePanel" style="display:none">
@@ -386,7 +427,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 32;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 33;   // bump when deploying, shows in footer + built books
 // Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
 // each source segment jumping to the pieces in place, and a back-link under
 // each piece. Plain internal links — survives Kindle's KFX conversion.
@@ -2817,6 +2858,224 @@ $("pvCollapseAll").onclick = () =>
   [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.add("collapsed"));
 
 // ===========================================================================
+// Reference builder — Search (Sefaria's own search API)
+// POSTs to /api/search-wrapper, the endpoint behind the search box on the
+// Sefaria site, and groups the results the way Sefaria groups them: every hit
+// carries a "path", which IS that book's place in Sefaria's table of contents
+// ("Talmud/Bavli/Seder Moed/Shabbat"). The first element of the path is the
+// top-level category and the rest identifies the book, so results are drawn
+// as category → book → hits. Tapping a hit hands its ref to commitRef, just
+// as Browse does, and the rest of the app carries on unchanged.
+// ===========================================================================
+const SEARCH_API = "https://www.sefaria.org/api/search-wrapper";
+const SEARCH_PAGE = 50;                       // hits fetched per request
+const SEARCH_PROJ = ["ref", "heRef", "categories", "path", "version", "lang", "exact"];
+let SEARCH_Q = "";          // the query the current results belong to
+let SEARCH_RAW = [];        // normalised hits, in the order Sefaria ranked them
+let SEARCH_TOTAL = 0;       // total matching segments reported by the API
+let SEARCH_REL = "eq";      // "gte" when that total is a floor (ES caps at 10000)
+let SEARCH_FIELD = "naive_lemmatizer";   // "exact" for a strict phrase match
+let SEARCHING = false;
+
+function searchMsg(msg, isErr) {
+  const el = $("searchMeta");
+  el.textContent = msg || "";
+  el.className = "searchmeta" + (isErr ? " err" : "");
+}
+
+// One POST. Content-Type text/plain is deliberate: it keeps the request in the
+// CORS "simple request" class, so the browser sends it straight through with
+// no preflight — Sefaria reads the raw request body, so the content type makes
+// no difference to how the query is parsed. If that ever stops working, the
+// documented application/json header is tried next (which needs Sefaria to
+// answer the preflight OPTIONS).
+async function searchFetch(from, fullSource) {
+  const body = {
+    query: SEARCH_Q,
+    type: "text",
+    field: SEARCH_FIELD,
+    source_proj: fullSource ? true : SEARCH_PROJ,
+    size: SEARCH_PAGE,
+    start: from,
+    sort_method: "score",
+    sort_fields: ["pagesheetrank"],
+    sort_score_missing: 0.04
+  };
+  if (SEARCH_FIELD === "naive_lemmatizer") body.slop = 10;
+  const payload = JSON.stringify(body);
+  const tries = ["text/plain;charset=UTF-8", "application/json"];
+  let lastErr = null;
+  for (const ct of tries) {
+    try {
+      const r = await fetch(SEARCH_API, { method: "POST", headers: { "Content-Type": ct }, body: payload });
+      if (!r.ok) { lastErr = new Error("HTTP " + r.status); continue; }
+      const j = await r.json();
+      if (j && j.error) { lastErr = new Error(String(j.error)); continue; }
+      return j;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("no response");
+}
+
+function searchHitsOf(j) {
+  return (j && j.hits && Array.isArray(j.hits.hits)) ? j.hits.hits : [];
+}
+
+// Sefaria wraps the matched words in <b>…</b> inside its highlight fragments.
+// Escape the whole fragment, then put just those two tags back, so the
+// emphasis survives and nothing else in the text can act as HTML.
+function snipHtml(s) {
+  return escapeHtml(String(s || "")).replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>");
+}
+
+function normHit(h) {
+  const s = (h && h._source) || {};
+  let snip = "";
+  const hl = h && h.highlight;
+  if (hl) {
+    for (const k of Object.keys(hl)) {
+      if (Array.isArray(hl[k]) && hl[k].length) { snip = hl[k].join(" … "); break; }
+    }
+  }
+  if (!snip) {
+    const plain = asText(s.exact || s.naive_lemmatizer || "");
+    snip = plain.length > 220 ? plain.slice(0, 220) + "…" : plain;
+  }
+  return {
+    ref: s.ref || "",
+    heRef: s.heRef || "",
+    path: s.path || (Array.isArray(s.categories) ? s.categories.join("/") : ""),
+    snip: snip
+  };
+}
+
+// One row per reference. A segment that matched in more than one version
+// (Hebrew and English, say) comes back as several hits; they are folded
+// together so the reference is listed once, carrying both snippets.
+function mergedHits() {
+  const seen = {}, out = [];
+  for (const h of SEARCH_RAW) {
+    if (!h.ref) continue;
+    const prev = seen[h.ref];
+    if (prev) {
+      if (h.snip && prev.snips.length < 2 && prev.snips.indexOf(h.snip) < 0) prev.snips.push(h.snip);
+      continue;
+    }
+    const rec = { ref: h.ref, heRef: h.heRef, path: h.path, snips: h.snip ? [h.snip] : [] };
+    seen[h.ref] = rec;
+    out.push(rec);
+  }
+  return out;
+}
+
+// "Talmud/Bavli/Seder Moed/Shabbat" → ["Talmud", "Bavli › Seder Moed › Shabbat"]
+function pathParts(p) {
+  const bits = String(p || "").split("/").filter(Boolean);
+  if (!bits.length) return ["Other", ""];
+  return [bits[0], bits.slice(1).join(" › ")];
+}
+
+// Category groups open, book groups closed: the first thing a search shows is
+// Sefaria's own category breakdown of what it found, and the reader drills in.
+function renderSearchResults() {
+  const hits = mergedHits();
+  const body = $("searchBody");
+  if (!hits.length) { body.innerHTML = '<div class="navnote">Nothing found. Try fewer words, or the other search mode.</div>'; return; }
+
+  const tops = [], topIdx = {};
+  for (const h of hits) {
+    const parts = pathParts(h.path);
+    const top = parts[0];
+    if (!(top in topIdx)) { topIdx[top] = tops.length; tops.push({ name: top, groups: [], idx: {}, n: 0 }); }
+    const t = tops[topIdx[top]];
+    const key = h.path || top;
+    if (!(key in t.idx)) { t.idx[key] = t.groups.length; t.groups.push({ label: parts[1] || top, hits: [] }); }
+    t.groups[t.idx[key]].hits.push(h);
+    t.n++;
+  }
+  tops.sort((a, b) => b.n - a.n);
+
+  let html = "";
+  for (const t of tops) {
+    t.groups.sort((a, b) => b.hits.length - a.hits.length);
+    let inner = "";
+    for (const g of t.groups) {
+      const rows = g.hits.map(h =>
+        `<div class="srch-hit" data-ref="${encodeURIComponent(h.ref)}">
+          <div class="srch-ref">${escapeHtml(h.ref)}${h.heRef ? ' <span class="srch-heref">' + escapeHtml(h.heRef) + "</span>" : ""}</div>
+          ${h.snips.map(s => '<div class="srch-snip" dir="auto">' + snipHtml(s) + "</div>").join("")}
+        </div>`).join("");
+      inner += `<div class="srch-grp collapsed">
+        <div class="srch-head sub"><span class="pv-caret">▾</span><span>${escapeHtml(g.label)}</span><span class="srch-count">${g.hits.length}</span></div>
+        <div class="srch-body">${rows}</div>
+      </div>`;
+    }
+    html += `<div class="srch-grp">
+      <div class="srch-head top"><span class="pv-caret">▾</span><span>${escapeHtml(t.name)}</span><span class="srch-count">${t.n}</span></div>
+      <div class="srch-body">${inner}</div>
+    </div>`;
+  }
+  if (SEARCH_RAW.length < SEARCH_TOTAL)
+    html += '<div class="navwhole"><button type="button" class="secondary" id="searchMore">Load more results</button></div>';
+  body.innerHTML = html;
+}
+
+async function runSearch(more) {
+  const q = ($("searchQ").value || "").trim();
+  if (!q) { searchMsg("Type something to search for.", true); return; }
+  if (SEARCHING) return;
+  if (!more || q !== SEARCH_Q) { SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq"; }
+  SEARCH_Q = q;
+  SEARCHING = true;
+  searchMsg(SEARCH_RAW.length ? "Loading more…" : "Searching Sefaria…");
+  try {
+    const from = SEARCH_RAW.length;
+    let j = await searchFetch(from, false);
+    let raw = searchHitsOf(j);
+    // a projection the API didn't honour would leave us with no refs at all
+    if (raw.length && !raw.some(h => h && h._source && h._source.ref)) {
+      j = await searchFetch(from, true);
+      raw = searchHitsOf(j);
+    }
+    const tot = j && j.hits && j.hits.total;
+    if (tot && typeof tot === "object") { SEARCH_TOTAL = tot.value || 0; SEARCH_REL = tot.relation || "eq"; }
+    else if (typeof tot === "number") { SEARCH_TOTAL = tot; SEARCH_REL = "eq"; }
+    raw.forEach(h => SEARCH_RAW.push(normHit(h)));
+    renderSearchResults();
+    if (!SEARCH_RAW.length) {
+      searchMsg("No results for “" + q + "”.");
+    } else {
+      const shown = mergedHits().length;
+      searchMsg(SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "") + " matching segments — showing " +
+        shown + ". Open a category, then tap a result to load its links.");
+    }
+  } catch (e) {
+    searchMsg("Search failed: " + e.message + ".", true);
+  } finally {
+    SEARCHING = false;
+  }
+}
+
+$("searchGo").onclick = () => runSearch(false);
+$("searchQ").addEventListener("keydown", e => {
+  if (e.key === "Enter") { e.preventDefault(); runSearch(false); }
+});
+document.querySelectorAll(".srchseg button").forEach(b => {
+  b.onclick = () => {
+    SEARCH_FIELD = (b.dataset.smode === "exact") ? "exact" : "naive_lemmatizer";
+    document.querySelectorAll(".srchseg button").forEach(x => x.classList.toggle("on", x === b));
+    if (($("searchQ").value || "").trim()) runSearch(false);
+  };
+});
+$("searchBody").addEventListener("click", e => {
+  if (e.target.closest("#searchMore")) { runSearch(true); return; }
+  const head = e.target.closest(".srch-head");
+  if (head) { head.parentElement.classList.toggle("collapsed"); return; }
+  const hit = e.target.closest(".srch-hit");
+  if (hit) commitRef(decodeURIComponent(hit.dataset.ref));
+});
+
+// ===========================================================================
 // Reference builder — Browse (category drill-down)
 // Selecting a reference fills the box and fetches its links automatically.
 // ===========================================================================
@@ -2842,12 +3101,23 @@ let backStack = [];
 function setMode(m) {
   document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
   $("browsePanel").style.display = m === "browse" ? "block" : "none";
+  $("searchPanel").style.display = m === "search" ? "block" : "none";
   if (m === "browse" && backStack.length === 0) startBrowse();
+  if (m === "search") $("searchQ").focus();
+}
+
+// Choosing a reference — a search hit, a Browse page, or the fallback when a
+// book's structure won't load — closes both panels but leaves the Search /
+// Browse buttons as they are, so tapping the same button reopens the panel
+// with its results still in place.
+function closePanels() {
+  $("browsePanel").style.display = "none";
+  $("searchPanel").style.display = "none";
 }
 
 function commitRef(ref) {
   $("ref").value = ref;
-  setMode("type");
+  closePanels();
   fetchLinks();
 }
 
@@ -2951,7 +3221,7 @@ async function openBook(title) {
     rec = await res.json();
   } catch (e) {
     navError('Couldn\u2019t load the structure of "' + title + '". Filling the box so you can type the rest.');
-    setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
+    setTimeout(() => { $("ref").value = title; closePanels(); $("ref").focus(); }, 900);
     return;
   }
   // Sefaria surfaces alternate structures for many books — the Chumash's
@@ -3387,6 +3657,10 @@ $("clearBtn").onclick = () => {
   hideShareBar();
   $("tree").innerHTML = "";
   $("preview").innerHTML = "";
+  $("searchQ").value = "";
+  $("searchBody").innerHTML = "";
+  SEARCH_Q = ""; SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq";
+  searchMsg("");
   setStatus("");
   backStack = [];
   if ($("browsePanel").style.display !== "none") startBrowse();
