@@ -207,17 +207,8 @@
   .navloading { font-size: 13px; color: var(--muted); padding: 8px 2px; }
   .naverr { font-size: 13px; color: #a23b2c; padding: 8px 2px; }
 
-  /* ---- search: query row, mode switch, and results by category ---- */
-  .searchrow { display: flex; gap: 6px; }
-  .searchrow input[type=text] { flex: 1; min-width: 0; }
-  .searchrow button { width: auto; margin: 0; padding: 12px 16px; flex: none; }
-  /* deliberately NOT .fmtseg — the format selector wires every .fmtseg
-     button to buildOutput(), which would fire a document build here */
-  .srchseg { display: flex; gap: 6px; margin-top: 8px; }
-  .srchseg button { flex: 1; width: auto; margin: 0; font-size: 13px; padding: 8px 6px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
-  .srchseg button:hover { background: #ece3d0; }
-  .srchseg button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .searchmeta { font-size: 12px; color: var(--muted); margin: 8px 2px; min-height: 16px; }
+  /* ---- search results, grouped by Sefaria's own categories ---- */
+  .searchmeta { font-size: 12px; color: var(--muted); margin: 0 2px 8px; min-height: 16px; }
   .searchmeta.err { color: #a23b2c; }
   .srch-grp { border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; overflow: hidden; background: #fff; }
   .srch-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; font-size: 15px; }
@@ -311,29 +302,16 @@
 <body>
 <div class="wrap">
   <h1>Sefaria Links → Kindle / Word / PDF</h1>
-  <p class="sub">Enter a reference and press Enter — or search Sefaria's library, or browse to one — then choose which commentaries you want and get a Kindle (EPUB), Word, or PDF file.</p>
 
   <div class="card">
-    <label for="ref">Find a reference in Sefaria's library</label>
-    <div class="refwrap">
-      <input type="text" id="ref" placeholder="Type and press Enter… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
-      <div class="ac" id="ac"></div>
-    </div>
+    <input type="text" id="ref" placeholder="א' זעירא" aria-label="Search Sefaria" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
 
     <div class="modeseg">
       <button type="button" data-mode="search" class="on">Search</button>
       <button type="button" data-mode="browse">Browse</button>
     </div>
 
-    <div class="navpanel" id="searchPanel">
-      <div class="searchrow">
-        <input type="text" id="searchQ" placeholder="Search the library — e.g. נר חנוכה" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
-        <button type="button" id="searchGo">Search</button>
-      </div>
-      <div class="srchseg">
-        <button type="button" data-smode="loose" class="on">Related words</button>
-        <button type="button" data-smode="exact">Exact phrase</button>
-      </div>
+    <div class="navpanel" id="searchPanel" style="display:none">
       <div class="searchmeta" id="searchMeta"></div>
       <div id="searchBody"></div>
     </div>
@@ -427,7 +405,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 33;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 34;   // bump when deploying, shows in footer + built books
 // Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
 // each source segment jumping to the pieces in place, and a back-link under
 // each piece. Plain internal links — survives Kindle's KFX conversion.
@@ -783,75 +761,11 @@ function catRank(c) {
 }
 
 // ===========================================================================
-// Reference autocomplete (Sefaria's own name API)
+// The search box
 // ===========================================================================
-const acBox = $("ac");
-let acItems = [], acActive = -1, acTimer = null;
-
-function hideAC() { acBox.style.display = "none"; acItems = []; acActive = -1; }
-
-function renderAC(list) {
-  if (!list.length) { hideAC(); return; }
-  acItems = list;
-  acActive = -1;
-  acBox.innerHTML = list.map((s, i) =>
-    `<div class="item" data-i="${i}">${s}</div>`
-  ).join("");
-  acBox.style.display = "block";
-  [...acBox.querySelectorAll(".item")].forEach(el => {
-    el.addEventListener("mousedown", e => {   // mousedown fires before blur
-      e.preventDefault();
-      pickAC(parseInt(el.dataset.i, 10));
-    });
-  });
-}
-// Picking a suggestion that ends in a number / daf is a usable reference —
-// fetch it right away (this is what replaces the old Fetch button). A bare
-// book name means the user is still narrowing down, so keep them typing.
-function pickAC(i) {
-  if (i < 0 || i >= acItems.length) return;
-  const v = acItems[i];
-  hideAC();
-  if (/\d+[ab]?(?::\d+)?$/.test(v.trim())) {
-    $("ref").value = v;
-    fetchLinks();
-  } else {
-    $("ref").value = v + " ";
-    $("ref").focus();
-  }
-}
-async function queryNames(q) {
-  try {
-    const res = await fetch(NAME_API + encodeURIComponent(q) + "?limit=8");
-    if (!res.ok) return;
-    const data = await res.json();
-    const list = Array.isArray(data.completions) ? data.completions.slice(0, 8) : [];
-    renderAC(list);
-  } catch (e) { /* silent: typing still works */ }
-}
-$("ref").addEventListener("input", () => {
-  const q = $("ref").value.trim();
-  clearTimeout(acTimer);
-  if (q.length < 2) { hideAC(); return; }
-  acTimer = setTimeout(() => queryNames(q), 220);
-});
 $("ref").addEventListener("keydown", e => {
-  if (acBox.style.display === "block" && acItems.length) {
-    if (e.key === "ArrowDown") { e.preventDefault(); acActive = (acActive + 1) % acItems.length; }
-    else if (e.key === "ArrowUp") { e.preventDefault(); acActive = (acActive - 1 + acItems.length) % acItems.length; }
-    else if (e.key === "Enter") {
-      if (acActive >= 0) { e.preventDefault(); pickAC(acActive); return; }
-      hideAC(); fetchLinks(); return;
-    }
-    else if (e.key === "Escape") { hideAC(); return; }
-    else return;
-    [...acBox.querySelectorAll(".item")].forEach((el, i) =>
-      el.classList.toggle("active", i === acActive));
-    return;
-  }
-  if (e.key === "Enter") fetchLinks();
+  if (e.key === "Enter") { e.preventDefault(); setMode("search"); runSearch(false); }
 });
-$("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
 
 // ===========================================================================
 // Fetch links + build the source trees (by category, and by section)
@@ -2874,7 +2788,7 @@ let SEARCH_Q = "";          // the query the current results belong to
 let SEARCH_RAW = [];        // normalised hits, in the order Sefaria ranked them
 let SEARCH_TOTAL = 0;       // total matching segments reported by the API
 let SEARCH_REL = "eq";      // "gte" when that total is a floor (ES caps at 10000)
-let SEARCH_FIELD = "naive_lemmatizer";   // "exact" for a strict phrase match
+let SEARCH_FIELD = "naive_lemmatizer";   // Sefaria's own default field
 let SEARCHING = false;
 
 function searchMsg(msg, isErr) {
@@ -2975,12 +2889,13 @@ function pathParts(p) {
   return [bits[0], bits.slice(1).join(" › ")];
 }
 
-// Category groups open, book groups closed: the first thing a search shows is
-// Sefaria's own category breakdown of what it found, and the reader drills in.
+// Everything opens at once, under Sefaria's own category and book headings —
+// the grouping organises the results without hiding any of them. The headings
+// stay tappable, so a group can still be folded away.
 function renderSearchResults() {
   const hits = mergedHits();
   const body = $("searchBody");
-  if (!hits.length) { body.innerHTML = '<div class="navnote">Nothing found. Try fewer words, or the other search mode.</div>'; return; }
+  if (!hits.length) { body.innerHTML = ""; return; }
 
   const tops = [], topIdx = {};
   for (const h of hits) {
@@ -3005,7 +2920,7 @@ function renderSearchResults() {
           <div class="srch-ref">${escapeHtml(h.ref)}${h.heRef ? ' <span class="srch-heref">' + escapeHtml(h.heRef) + "</span>" : ""}</div>
           ${h.snips.map(s => '<div class="srch-snip" dir="auto">' + snipHtml(s) + "</div>").join("")}
         </div>`).join("");
-      inner += `<div class="srch-grp collapsed">
+      inner += `<div class="srch-grp">
         <div class="srch-head sub"><span class="pv-caret">▾</span><span>${escapeHtml(g.label)}</span><span class="srch-count">${g.hits.length}</span></div>
         <div class="srch-body">${rows}</div>
       </div>`;
@@ -3021,8 +2936,8 @@ function renderSearchResults() {
 }
 
 async function runSearch(more) {
-  const q = ($("searchQ").value || "").trim();
-  if (!q) { searchMsg("Type something to search for.", true); return; }
+  const q = ($("ref").value || "").trim();
+  if (!q) return;
   if (SEARCHING) return;
   if (!more || q !== SEARCH_Q) { SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq"; }
   SEARCH_Q = q;
@@ -3046,8 +2961,8 @@ async function runSearch(more) {
       searchMsg("No results for “" + q + "”.");
     } else {
       const shown = mergedHits().length;
-      searchMsg(SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "") + " matching segments — showing " +
-        shown + ". Open a category, then tap a result to load its links.");
+      searchMsg(SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "") + " results" +
+        (shown < SEARCH_TOTAL ? " \u00b7 " + shown + " shown" : ""));
     }
   } catch (e) {
     searchMsg("Search failed: " + e.message + ".", true);
@@ -3056,17 +2971,6 @@ async function runSearch(more) {
   }
 }
 
-$("searchGo").onclick = () => runSearch(false);
-$("searchQ").addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.preventDefault(); runSearch(false); }
-});
-document.querySelectorAll(".srchseg button").forEach(b => {
-  b.onclick = () => {
-    SEARCH_FIELD = (b.dataset.smode === "exact") ? "exact" : "naive_lemmatizer";
-    document.querySelectorAll(".srchseg button").forEach(x => x.classList.toggle("on", x === b));
-    if (($("searchQ").value || "").trim()) runSearch(false);
-  };
-});
 $("searchBody").addEventListener("click", e => {
   if (e.target.closest("#searchMore")) { runSearch(true); return; }
   const head = e.target.closest(".srch-head");
@@ -3103,7 +3007,6 @@ function setMode(m) {
   $("browsePanel").style.display = m === "browse" ? "block" : "none";
   $("searchPanel").style.display = m === "search" ? "block" : "none";
   if (m === "browse" && backStack.length === 0) startBrowse();
-  if (m === "search") $("searchQ").focus();
 }
 
 // Choosing a reference — a search hit, a Browse page, or the fallback when a
@@ -3212,6 +3115,15 @@ function renderToc(node) {
   }));
 }
 
+// A book whose own schema is addressed by daf — every Talmud tractate, Bavli
+// and Yerushalmi. Complex books (the Zohar and its neighbours) carry nodes
+// instead of addressTypes at the top level, so they are not caught here and
+// keep their structure chooser.
+function isDafSchema(schema) {
+  return !!(schema && !schema.nodes && Array.isArray(schema.addressTypes)
+    && schema.addressTypes[0] === "Talmud");
+}
+
 async function openBook(title) {
   navLoading('Loading "' + title + '"…');
   let rec;
@@ -3220,11 +3132,15 @@ async function openBook(title) {
     if (!res.ok) throw new Error("HTTP " + res.status);
     rec = await res.json();
   } catch (e) {
-    navError('Couldn\u2019t load the structure of "' + title + '". Filling the box so you can type the rest.');
-    setTimeout(() => { $("ref").value = title; closePanels(); $("ref").focus(); }, 900);
+    navError('Couldn\u2019t load the structure of "' + title + '".');
     return;
   }
-  // Sefaria surfaces alternate structures for many books — the Chumash's
+  // A tractate is one continuous run of pages. Its chapter structure is not
+  // offered and never divides the grid: opening it goes straight to every
+  // amud, first to last.
+  if (isDafSchema(rec.schema)) { renderJagged(title, rec.schema); return; }
+
+  // Sefaria surfaces alternate structures for many other books — the Chumash's
   // parashot, the Zohar's Vilna dapim and essays, Tikkunei Zohar's tikkunim,
   // Pardes Rimmonim's gates. Offer the same choice the site does.
   const structs = await altStructsOf(title, rec);
@@ -3657,7 +3573,6 @@ $("clearBtn").onclick = () => {
   hideShareBar();
   $("tree").innerHTML = "";
   $("preview").innerHTML = "";
-  $("searchQ").value = "";
   $("searchBody").innerHTML = "";
   SEARCH_Q = ""; SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq";
   searchMsg("");
