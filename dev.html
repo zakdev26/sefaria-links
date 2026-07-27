@@ -26,7 +26,7 @@
     line-height: 1.5;
     -webkit-text-size-adjust: 100%;
   }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 18px 64px; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 46px 18px 64px; }
   h1 { font-size: 22px; margin: 8px 0 4px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
   .card {
@@ -195,7 +195,7 @@
   .navrow { display: flex; align-items: center; gap: 8px; padding: 11px 8px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 15px; }
   .navrow:last-child { border-bottom: none; }
   .navrow:hover { background: #f2ecdd; }
-  .navrow .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; color: var(--muted); font-size: 15px; direction: rtl; }
+  .navrow .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; color: inherit; font-size: inherit; font-weight: inherit; direction: rtl; }
   .navrow .chev { color: var(--muted); font-size: 13px; margin-left: 6px; }
   .navrow .he + .chev { margin-left: 6px; }
   .navgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; margin-top: 4px; }
@@ -220,11 +220,50 @@
   .srch-grp.collapsed > .srch-head .pv-caret { transform: rotate(-90deg); }
   .srch-grp.collapsed > .srch-body { display: none; }
   .srch-body { padding: 4px 8px 6px; }
-  .srch-hit { padding: 8px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  .srch-hit { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border-bottom: 1px solid var(--line); }
   .srch-hit:last-child { border-bottom: none; }
   .srch-hit:hover { background: #fbf8f0; }
-  .srch-ref { font-size: 13px; font-weight: bold; color: var(--accent-dark); }
-  .srch-heref { font-family: 'Frank Ruhl Libre', serif; font-weight: normal; color: var(--muted); }
+  .srch-hitbox { margin: 3px 0 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .srch-hitbody { flex: 1; min-width: 0; }
+  .srch-ref { font-size: 13px; font-weight: bold; color: var(--accent-dark); text-decoration: none; }
+  .srch-ref:hover { text-decoration: underline; }
+  .srch-heref { font-family: 'Frank Ruhl Libre', serif; font-size: inherit; font-weight: inherit; color: inherit; }
+  .srch-head .srch-grpbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .srch-load { font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+  /* ---- heading language, as א / A / א A fixed at the top right ----
+     The same HDRLANG setting the Headings row used to hold. Wherever a
+     reference has both an English and a Hebrew name, both are written into
+     the page inside .ui-en / .ui-he spans and one class on <body> hides one
+     of them — so the switch is instant and nothing has to re-render. A
+     reference that has only one of the two is never hidden. */
+  .he-glyph, .ui-he { font-family: 'Frank Ruhl Libre', serif; }
+  .ui-he { font-size: inherit; font-weight: inherit; color: inherit; }
+  .langbar { position: fixed; top: 8px; right: 10px; z-index: 50; display: flex; gap: 4px; }
+  .langbar button {
+    width: auto; margin: 0; padding: 5px 9px; font-size: 15px; line-height: 1.2;
+    background: var(--card); color: var(--muted); border: 1px solid var(--line); border-radius: 7px;
+  }
+  .langbar button:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .langbar button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  body.hdrlang-he .ui-en { display: none; }
+  body.hdrlang-en .ui-he { display: none; }
+  body:not(.hdrlang-both) .ui-both { display: none; }
+
+  /* ---- build a file straight from ticked search results ---- */
+  .selbar { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .selcount { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .selfmtseg { display: flex; gap: 6px; }
+  .selfmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .selfmtseg button:hover { background: #ece3d0; }
+
+  /* ---- open on Sefaria, beside the preview's copy button ---- */
+  .pv-open {
+    width: auto; margin: 0; padding: 3px 9px; line-height: 1.2; font-size: 14px;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none; text-decoration: none; display: inline-flex; align-items: center;
+  }
+  .pv-open:hover { background: #f2ecdd; color: var(--accent-dark); }
   .srch-snip { font-size: 13.5px; line-height: 1.55; margin-top: 3px; }
   .srch-snip b { background: #f6e7c0; }
   .srch-acts { margin-top: 4px; }
@@ -304,6 +343,11 @@
 </style>
 </head>
 <body>
+<div class="langbar" id="langBar">
+  <button type="button" data-hdr="he" class="he-glyph" title="Hebrew only" aria-label="Hebrew only">א</button>
+  <button type="button" data-hdr="en" title="English only" aria-label="English only">A</button>
+  <button type="button" data-hdr="both" class="on" title="Hebrew and English" aria-label="Hebrew and English"><span class="he-glyph">א</span> A</button>
+</div>
 <div class="wrap">
   <h1>Sefaria Links → Kindle / Word / PDF</h1>
 
@@ -318,6 +362,15 @@
     <div class="navpanel" id="searchPanel" style="display:none">
       <div class="searchmeta" id="searchMeta"></div>
       <div id="searchBody"></div>
+      <div class="selbar" id="selBar" style="display:none">
+        <div class="selcount" id="selCount"></div>
+        <div class="selfmtseg">
+          <button type="button" data-selfmt="kindle">Kindle (EPUB)</button>
+          <button type="button" data-selfmt="word">Word</button>
+          <button type="button" data-selfmt="pdf">PDF</button>
+        </div>
+        <div class="clearrow"><span class="globaltoggle" id="selClear">clear selection</span></div>
+      </div>
     </div>
 
     <div class="navpanel" id="browsePanel" style="display:none">
@@ -339,13 +392,6 @@
     <div class="fmtseg grpseg">
       <button type="button" data-grp="cat" class="on">Category</button>
       <button type="button" data-grp="seg">Section</button>
-    </div>
-
-    <div class="fmtlabel">Headings</div>
-    <div class="fmtseg hdrseg">
-      <button type="button" data-hdr="en">English</button>
-      <button type="button" data-hdr="he">Hebrew</button>
-      <button type="button" data-hdr="both" class="on">Both</button>
     </div>
 
     <div class="treehead" style="margin-top:16px">
@@ -417,7 +463,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 38;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 39;   // bump when deploying, shows in footer + built books
 // Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
 // each source segment jumping to the pieces in place, and a back-link under
 // each piece. Plain internal links — survives Kindle's KFX conversion.
@@ -703,6 +749,23 @@ function refLine(l) {
   if (HDRLANG === "he") return he || en;
   if (HDRLANG === "en") return en;
   return en + (he ? "  \u2014  " + he : "");
+}
+// The same choice, as live page HTML: both names are written out and the body
+// class hides one, so the corner switch takes effect without re-rendering.
+// A reference with only one of the two names always shows it.
+function refLabelHtml(enRef, heRef) {
+  if (!enRef) return heRef ? `<span class="he-glyph">${escapeHtml(heRef)}</span>` : "";
+  if (!heRef) return escapeHtml(enRef);
+  return `<span class="ui-en">${escapeHtml(enRef)}</span>` +
+         `<span class="ui-both">  \u2014  </span>` +
+         `<span class="ui-he">${escapeHtml(heRef)}</span>`;
+}
+// A reference on sefaria.org: spaces become underscores and the section
+// separator becomes a dot, the form the site itself uses
+// ("Zohar, Bereshit 15a" becomes Zohar,_Bereshit.15a).
+function sefariaUrl(ref) {
+  const r = String(ref || "").trim().replace(/\s+/g, "_").replace(/:/g, ".");
+  return "https://www.sefaria.org/" + encodeURI(r);
 }
 // n → Hebrew numeral (gematria) with geresh / gershayim: 5 → ה׳, 15 → ט״ו
 function hebNum(n) {
@@ -2650,10 +2713,16 @@ function setGrp(g) {
 // commentator, reference and (where Hebrew is derivable) section headings in
 // the preview and the built files; the source-picker tree stays English.
 // An open preview is re-rendered so the change shows immediately.
+const HDRLANG_KEY = "sefariaLinksHdrLang";
 function setHdr(h) {
-  if (h === HDRLANG) return;
-  HDRLANG = h;
-  document.querySelectorAll(".hdrseg button").forEach(b => b.classList.toggle("on", b.dataset.hdr === h));
+  HDRLANG = (h === "he" || h === "en") ? h : "both";
+  document.body.classList.remove("hdrlang-he", "hdrlang-en", "hdrlang-both");
+  document.body.classList.add("hdrlang-" + HDRLANG);
+  document.querySelectorAll("#langBar button").forEach(b => b.classList.toggle("on", b.dataset.hdr === HDRLANG));
+  try { localStorage.setItem(HDRLANG_KEY, HDRLANG); } catch (e) {}
+  // the preview and the Browse list build their labels in JavaScript, so they
+  // are re-rendered; search results and their reference links carry both
+  // names already and switch on the body class alone
   if ($("previewCard").style.display !== "none") renderPreview();
 }
 
@@ -2702,7 +2771,7 @@ const COPIED_ICON =
   ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<polyline points="20 6 9 17 4 12"/></svg>';
 
-function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef) {
+function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef, labelHtml, openRef) {
   const idx = PV_SHARE_TEXTS.length;
   PV_SHARE_TEXTS.push({ label, he, en });
   let body = "";
@@ -2713,7 +2782,8 @@ function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef) {
   const collapsed = startCollapsed && !(noteKey && noteOf(noteKey)) && !(transRef && TRANS[transRef]);
   return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${collapsed ? " collapsed" : ""}">
     <div class="pv-ref">
-      <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
+      <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${labelHtml || escapeHtml(label)}</span>
+      ${openRef ? `<a class="pv-open" href="${sefariaUrl(openRef)}" target="_blank" rel="noopener" title="Open on Sefaria" aria-label="Open on Sefaria">↗</a>` : ""}
       ${noteKey ? pvNoteBtnHtml(noteKey) : ""}
       <button type="button" class="pv-copy" data-idx="${idx}" title="Copy this text" aria-label="Copy this text">${COPY_ICON}</button>
     </div>
@@ -2744,7 +2814,7 @@ function wholeSrcPvItem(ref) {
     const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
     const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
   }
-  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__");
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__", null, null, SRC.ref || ref);
 }
 
 // Copy a single preview item's text to the clipboard — respects the
@@ -2799,7 +2869,7 @@ function renderPreview() {
       sections++;
       let secBody = "", secN = 0;
       if (wantSrc) {
-        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg);
+        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg, null, null, seg);
         secN++;
       }
       for (const [cat, arr] of sel) {
@@ -2807,7 +2877,7 @@ function renderPreview() {
         for (const [comm, links] of groupByComm(arr)) {
           let items = "";
           for (const l of links) {
-            items += pvItem(refLine(l), stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i, canonicalRef(l));
+            items += pvItem(refLine(l), stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i, canonicalRef(l), null, canonicalRef(l));
             count++;
           }
           catBody += pvGrp(hdrText(comm, commHeOf(links)), links.length, items, "sub", true);
@@ -2837,7 +2907,7 @@ function renderPreview() {
       for (const [comm, links] of groups) {
         let items = "";
         for (const l of links) {
-          items += pvItem(refLine(l), stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i, canonicalRef(l));
+          items += pvItem(refLine(l), stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i, canonicalRef(l), null, canonicalRef(l));
           count++;
         }
         catBody += pvGrp(hdrText(comm, commHeOf(links)), links.length, items, "sub", false);
@@ -3052,15 +3122,20 @@ function pathParts(p) {
   return [bits[0], bits.slice(1).join(" › ")];
 }
 
-// Everything opens at once, under Sefaria's own category and book headings —
-// the grouping organises the results without hiding any of them. The headings
-// stay tappable, so a group can still be folded away.
+// References ticked in the search results. The set is the single source of
+// truth; every checkbox on the page is painted from it by syncSearchSel.
+let SEARCH_SEL = new Set();
+const SEARCH_MAX_HITS = 2000;   // a safety valve on a very broad query
+
+// Every result Sefaria returned is already on the page, grouped under its own
+// category and book headings and CLOSED — the reader opens what interests
+// them. Each group carries a checkbox that ticks or unticks everything under
+// it, each result carries its own, and each reference is a link to the passage
+// on sefaria.org.
 function renderSearchResults() {
   const hits = mergedHits();
   const body = $("searchBody");
-  // groups the user has already opened stay open across "Load more"
-  const open = new Set([...body.querySelectorAll(".srch-grp:not(.collapsed) > .srch-head.top span:nth-child(2)")].map(s => s.textContent));
-  if (!hits.length) { body.innerHTML = ""; return; }
+  if (!hits.length) { body.innerHTML = ""; syncSearchSel(); return; }
 
   const tops = [], topIdx = {};
   for (const h of hits) {
@@ -3082,56 +3157,158 @@ function renderSearchResults() {
     for (const g of t.groups) {
       const rows = g.hits.map(h => {
         const whole = sectionOf(h.ref);
-        return `<div class="srch-hit" data-ref="${encodeURIComponent(h.ref)}">
-          <div class="srch-ref">${escapeHtml(h.ref)}${h.heRef ? ' <span class="srch-heref">' + escapeHtml(h.heRef) + "</span>" : ""}</div>
-          ${h.snips.map(s => '<div class="srch-snip" dir="auto">' + snipHtml(s) + "</div>").join("")}
-          ${whole ? '<div class="srch-acts"><span class="srch-act" data-whole="' + encodeURIComponent(whole) + '">use whole ' + escapeHtml(whole) + '</span></div>' : ""}
+        return `<div class="srch-hit">
+          <input type="checkbox" class="srch-hitbox" data-ref="${encodeURIComponent(h.ref)}">
+          <div class="srch-hitbody">
+            <a class="srch-ref" href="${sefariaUrl(h.ref)}" target="_blank" rel="noopener">${refLabelHtml(h.ref, h.heRef)}</a>
+            ${h.snips.map(s => '<div class="srch-snip" dir="auto">' + snipHtml(s) + "</div>").join("")}
+            <div class="srch-acts">
+              <span class="srch-load" data-ref="${encodeURIComponent(h.ref)}">open in the app with its commentary</span>
+              ${whole ? ' \u00b7 <span class="srch-act" data-whole="' + encodeURIComponent(whole) + '">use whole ' + escapeHtml(whole) + '</span>' : ""}
+            </div>
+          </div>
         </div>`;
       }).join("");
-      inner += `<div class="srch-grp">
-        <div class="srch-head sub"><span class="pv-caret">▾</span><span>${escapeHtml(g.label)}</span><span class="srch-count">${g.hits.length}</span></div>
+      inner += `<div class="srch-grp collapsed">
+        <div class="srch-head sub"><input type="checkbox" class="srch-grpbox"><span class="pv-caret">▾</span><span>${escapeHtml(g.label)}</span><span class="srch-count">${g.hits.length}</span></div>
         <div class="srch-body">${rows}</div>
       </div>`;
     }
-    html += `<div class="srch-grp${open.has(t.name) ? "" : " collapsed"}">
-      <div class="srch-head top"><span class="pv-caret">▾</span><span>${escapeHtml(t.name)}</span><span class="srch-count">${t.n}</span></div>
+    html += `<div class="srch-grp collapsed">
+      <div class="srch-head top"><input type="checkbox" class="srch-grpbox"><span class="pv-caret">▾</span><span>${escapeHtml(t.name)}</span><span class="srch-count">${t.n}</span></div>
       <div class="srch-body">${inner}</div>
     </div>`;
   }
-  if (SEARCH_RAW.length < SEARCH_TOTAL)
-    html += '<div class="navwhole"><button type="button" class="secondary" id="searchMore">Load more results</button></div>';
   body.innerHTML = html;
+  syncSearchSel();
 }
 
-async function runSearch(more) {
+// Repaint every search checkbox from SEARCH_SEL, and the build bar with them.
+// A group is ticked when any of its results are, half-ticked when only some —
+// the same three states the source tree uses.
+function syncSearchSel() {
+  document.querySelectorAll("#searchBody .srch-hitbox").forEach(b => {
+    b.checked = SEARCH_SEL.has(decodeURIComponent(b.dataset.ref));
+  });
+  document.querySelectorAll("#searchBody .srch-grp").forEach(g => {
+    const cb = g.querySelector(".srch-grpbox"); if (!cb) return;
+    const boxes = [...g.querySelectorAll(".srch-hitbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  const bar = $("selBar");
+  if (!bar) return;
+  const n = SEARCH_SEL.size;
+  bar.style.display = n ? "block" : "none";
+  $("selCount").textContent = n
+    ? n + " passage" + (n === 1 ? "" : "s") + " ticked \u2014 build a file of their texts:"
+    : "";
+}
+
+// The ticked references, in the order Sefaria ranked them.
+function orderedSelectedRefs() {
+  return mergedHits().filter(h => SEARCH_SEL.has(h.ref)).map(h => h.ref);
+}
+
+// A file straight from the ticked results: each reference's own text and
+// nothing else — no commentary is fetched. The blocks/toc shape is exactly
+// what gatherContent produces, so the Word / EPUB / PDF builders take it
+// unchanged.
+async function buildSelectedTexts(fmt) {
+  const refs = orderedSelectedRefs();
+  if (!refs.length) return;
+  const incHe = $("incHe").checked, incEn = $("incEn").checked;
+  if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
+
+  const btns = [...document.querySelectorAll(".selfmtseg button")];
+  btns.forEach(b => b.disabled = true);
+  hideShareBar();
+  try {
+    setStatus("Fetching " + refs.length + " texts\u2026");
+    const got = await mapPool(refs, async (r) => {
+      try {
+        const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0&pad=0");
+        if (!res.ok) return null;
+        const j = await res.json();
+        if (j.error) return null;
+        return { ref: j.ref || r, heRef: j.heRef || "", he: toArr(j.he), text: toArr(j.text) };
+      } catch (e) { return null; }
+    }, 6, (done, total) => setStatus("Fetching texts\u2026 " + done + " / " + total));
+
+    const blocks = [], toc = [];
+    let bmId = 0, written = 0;
+    for (const t of got) {
+      if (!t || !(t.he.length || t.text.length)) continue;
+      const anchor = "sec" + (bmId++);
+      const heading = hdrText(t.ref, t.heRef);
+      toc.push({ level: 1, text: heading, anchor });
+      blocks.push({ type: "h1", text: heading, anchor, first: blocks.length === 0 });
+      const n = Math.max(t.he.length, t.text.length);
+      for (let i = 0; i < n; i++) {
+        if (incHe) { const he = stripHtml(t.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
+        if (incEn) { const en = stripHtml(t.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
+      }
+      written++;
+    }
+    if (!written) { setStatus("None of the ticked passages returned any text.", true); return; }
+
+    const content = {
+      ref: SEARCH_Q || refs[0],
+      title: "Sefaria search: " + (SEARCH_Q || refs[0]),
+      blocks, toc, haveSrc: false, written, incHe, incEn
+    };
+    if (fmt === "word") await buildDocx(content);
+    else if (fmt === "pdf") buildPdf(content);
+    else await buildEpub(content);
+  } catch (e) {
+    setStatus("Failed to build: " + e.message, true);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+// One query, every page. Sefaria serves hits 50 at a time; they are all pulled
+// in before anything is drawn, so there is no "load more" to press.
+// SEARCH_MAX_HITS stops a runaway query from paging forever.
+async function runSearch() {
   const q = ($("ref").value || "").trim();
   if (!q) return;
   if (SEARCHING) return;
-  if (!more || q !== SEARCH_Q) { SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq"; }
+  SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq"; SEARCH_SEL = new Set();
   SEARCH_Q = q;
   SEARCHING = true;
-  searchMsg(SEARCH_RAW.length ? "Loading more…" : "Searching Sefaria…");
+  $("searchBody").innerHTML = "";
+  syncSearchSel();
+  searchMsg("Searching Sefaria\u2026");
   try {
-    const from = SEARCH_RAW.length;
-    let j = await searchFetch(from, false);
-    let raw = searchHitsOf(j);
-    // a projection the API didn't honour would leave us with no refs at all
-    if (raw.length && !raw.some(h => h && h._source && h._source.ref)) {
-      j = await searchFetch(from, true);
-      raw = searchHitsOf(j);
+    while (true) {
+      const from = SEARCH_RAW.length;
+      let j = await searchFetch(from, false);
+      let raw = searchHitsOf(j);
+      // a projection the API didn't honour would leave us with no refs at all
+      if (raw.length && !raw.some(h => h && h._source && h._source.ref)) {
+        j = await searchFetch(from, true);
+        raw = searchHitsOf(j);
+      }
+      const tot = j && j.hits && j.hits.total;
+      if (tot && typeof tot === "object") { SEARCH_TOTAL = tot.value || 0; SEARCH_REL = tot.relation || "eq"; }
+      else if (typeof tot === "number") { SEARCH_TOTAL = tot; SEARCH_REL = "eq"; }
+      if (!raw.length) break;
+      raw.forEach(h => SEARCH_RAW.push(normHit(h)));
+      searchMsg("Loading results\u2026 " + SEARCH_RAW.length +
+        (SEARCH_TOTAL ? " of " + SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "") : ""));
+      if (SEARCH_RAW.length >= SEARCH_TOTAL) break;
+      if (SEARCH_RAW.length >= SEARCH_MAX_HITS) break;
     }
-    const tot = j && j.hits && j.hits.total;
-    if (tot && typeof tot === "object") { SEARCH_TOTAL = tot.value || 0; SEARCH_REL = tot.relation || "eq"; }
-    else if (typeof tot === "number") { SEARCH_TOTAL = tot; SEARCH_REL = "eq"; }
-    raw.forEach(h => SEARCH_RAW.push(normHit(h)));
     renderSearchResults();
     if (!SEARCH_RAW.length) {
-      searchMsg("No results for “" + q + "”.");
+      searchMsg("No results for \u201c" + q + "\u201d.");
     } else {
       const shown = mergedHits().length;
-      searchMsg(SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "") + " results" +
-        (shown < SEARCH_TOTAL ? " \u00b7 " + shown + " shown" : "") +
-        " \u00b7 tap a group to open it");
+      let msg = shown + " result" + (shown === 1 ? "" : "s") + " loaded";
+      if (SEARCH_RAW.length < SEARCH_TOTAL)
+        msg += " of " + SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "");
+      searchMsg(msg + " \u00b7 tap a heading to open it, tick what you want");
     }
   } catch (e) {
     searchMsg("Search failed: " + e.message + ".", true);
@@ -3141,13 +3318,31 @@ async function runSearch(more) {
 }
 
 $("searchBody").addEventListener("click", e => {
-  if (e.target.closest("#searchMore")) { runSearch(true); return; }
+  const hitbox = e.target.closest(".srch-hitbox");
+  if (hitbox) {
+    const ref = decodeURIComponent(hitbox.dataset.ref);
+    if (hitbox.checked) SEARCH_SEL.add(ref); else SEARCH_SEL.delete(ref);
+    syncSearchSel();
+    return;
+  }
+  const grpbox = e.target.closest(".srch-grpbox");
+  if (grpbox) {
+    const on = grpbox.checked;
+    const grp = grpbox.closest(".srch-grp");
+    [...grp.querySelectorAll(".srch-hitbox")].forEach(b => {
+      const ref = decodeURIComponent(b.dataset.ref);
+      if (on) SEARCH_SEL.add(ref); else SEARCH_SEL.delete(ref);
+    });
+    syncSearchSel();
+    return;
+  }
   const act = e.target.closest(".srch-act");
   if (act) { commitRef(decodeURIComponent(act.dataset.whole)); return; }
+  const load = e.target.closest(".srch-load");
+  if (load) { commitRef(decodeURIComponent(load.dataset.ref)); return; }
+  if (e.target.closest(".srch-ref")) return;   // the reference opens on Sefaria
   const head = e.target.closest(".srch-head");
   if (head) { head.parentElement.classList.toggle("collapsed"); return; }
-  const hit = e.target.closest(".srch-hit");
-  if (hit) commitRef(decodeURIComponent(hit.dataset.ref));
 });
 
 // ===========================================================================
@@ -3221,8 +3416,8 @@ function rowList(items, onPick) {
   const wrap = document.createElement("div"); wrap.className = "navlist";
   items.forEach(it => {
     const r = document.createElement("div"); r.className = "navrow";
-    const name = document.createElement("span"); name.textContent = it.label; r.appendChild(name);
-    if (it.he) { const h = document.createElement("span"); h.className = "he"; h.textContent = it.he; r.appendChild(h); }
+    const name = document.createElement("span"); if (it.he) name.className = "ui-en"; name.textContent = it.label; r.appendChild(name);
+    if (it.he) { const h = document.createElement("span"); h.className = "he ui-he"; h.textContent = it.he; r.appendChild(h); }
     const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "›"; r.appendChild(chev);
     r.onclick = () => onPick(it);
     wrap.appendChild(r);
@@ -3783,7 +3978,13 @@ document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => {
 });
 document.querySelectorAll(".fmtseg:not(.grpseg):not(.hdrseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
-document.querySelectorAll(".hdrseg button").forEach(b => b.onclick = () => setHdr(b.dataset.hdr));
+document.querySelectorAll("#langBar button").forEach(b => b.onclick = () => setHdr(b.dataset.hdr));
+document.querySelectorAll(".selfmtseg button").forEach(b => b.onclick = () => buildSelectedTexts(b.dataset.selfmt));
+$("selClear").onclick = () => { SEARCH_SEL = new Set(); syncSearchSel(); };
+
+let _savedHdrLang = "both";
+try { _savedHdrLang = localStorage.getItem(HDRLANG_KEY) || "both"; } catch (e) {}
+setHdr(_savedHdrLang);
 
 $("incHe").addEventListener("change", applyTreeLang);
 $("incEn").addEventListener("change", applyTreeLang);
@@ -3802,6 +4003,7 @@ $("clearBtn").onclick = () => {
   $("preview").innerHTML = "";
   $("searchBody").innerHTML = "";
   SEARCH_Q = ""; SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq";
+  SEARCH_SEL = new Set(); syncSearchSel();
   searchMsg("");
   setStatus("");
   backStack = [];
