@@ -417,7 +417,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 37;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 38;   // bump when deploying, shows in footer + built books
 // Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
 // each source segment jumping to the pieces in place, and a back-link under
 // each piece. Plain internal links — survives Kindle's KFX conversion.
@@ -3771,7 +3771,16 @@ async function fetchCount(ref) {
 // ===========================================================================
 // Wiring
 // ===========================================================================
-document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => {
+  setMode(b.dataset.mode);
+  // The Search button actually searches: tapping it with a query in the box
+  // runs the search (the keyboard's search / Enter key still works too).
+  // With an empty box and no earlier results, prompt instead of silence.
+  if (b.dataset.mode === "search") {
+    if (($("ref").value || "").trim()) runSearch(false);
+    else if (!SEARCH_RAW.length) searchMsg("Type a word or phrase above, then tap Search.");
+  }
+});
 document.querySelectorAll(".fmtseg:not(.grpseg):not(.hdrseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
 document.querySelectorAll(".hdrseg button").forEach(b => b.onclick = () => setHdr(b.dataset.hdr));
