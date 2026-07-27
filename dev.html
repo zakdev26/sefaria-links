@@ -231,6 +231,18 @@
   .srch-head .srch-grpbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
   .srch-load { font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: underline; }
 
+  /* ---- back to the results after opening one of them ----
+     Shown only while results exist and the panel holding them is closed. */
+  .srch-back {
+    display: none; align-items: center; gap: 8px; margin: 8px 0 0;
+    padding: 9px 11px; cursor: pointer; user-select: none;
+    background: #f2ecdd; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14px; color: var(--accent-dark);
+  }
+  .srch-back.show { display: flex; }
+  .srch-back:hover { background: #ece3d0; }
+  .srch-back .srch-backq { color: var(--muted); font-size: 13px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   /* ---- heading language, as א / A / א A fixed at the top right ----
      The same HDRLANG setting the Headings row used to hold. Wherever a
      reference has both an English and a Hebrew name, both are written into
@@ -352,11 +364,16 @@
   <h1>Sefaria Links → Kindle / Word / PDF</h1>
 
   <div class="card">
-    <input type="text" id="ref" placeholder="א' זעירא" aria-label="Search Sefaria" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search">
+    <input type="text" id="ref" placeholder="א' זעירא" aria-label="Search Sefaria" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
 
     <div class="modeseg">
       <button type="button" data-mode="search" class="on">Search</button>
       <button type="button" data-mode="browse">Browse</button>
+    </div>
+
+    <div class="srch-back" id="srchBack" role="button" tabindex="0">
+      <span>&#8592; Back to search results</span>
+      <span class="srch-backq" id="srchBackQ"></span>
     </div>
 
     <div class="navpanel" id="searchPanel" style="display:none">
@@ -463,7 +480,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 39;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 40;   // bump when deploying, shows in footer + built books
 // Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
 // each source segment jumping to the pieces in place, and a back-link under
 // each piece. Plain internal links — survives Kindle's KFX conversion.
@@ -902,7 +919,13 @@ function catRank(c) {
 // The search box
 // ===========================================================================
 $("ref").addEventListener("keydown", e => {
-  if (e.key === "Enter") { e.preventDefault(); setMode("search"); runSearch(false); }
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  setMode("search");
+  const box = ($("ref").value || "").trim();
+  const q = normQuery(box);
+  if (SEARCH_RAW.length && (!q || q === SEARCH_Q || (box && box === OPENED_FROM_SEARCH))) reopenSearchResults();
+  else runSearch();
 });
 
 // ===========================================================================
@@ -3022,6 +3045,36 @@ function searchMsg(msg, isErr) {
   el.className = "searchmeta" + (isErr ? " err" : "");
 }
 
+// A phone does not send what was typed. iOS smart punctuation turns a typed
+// apostrophe into a curly one, and Hebrew geresh (U+05F3) and gershayim
+// (U+05F4) are separate characters again — so "א' זעירא" typed on a phone is
+// a different string from the same thing typed on a desktop keyboard, and
+// Sefaria's index matches much less of it. Fold every variant back to the
+// plain ASCII forms the app's own placeholder uses, and collapse runs of
+// whitespace while we are here.
+function normQuery(s) {
+  return String(s || "")
+    .replace(/[\u2018\u2019\u201A\u201B\u02BC\u02B9\u05F3\u00B4\u0060]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u02BA\u05F4]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// The total is advisory only — paging no longer depends on it (see runSearch),
+// it just feeds the message. Read it from whichever shape the response uses
+// and leave the previous value alone if none of them are present.
+function readSearchTotal(j) {
+  const tot = j && j.hits && j.hits.total;
+  if (tot && typeof tot === "object") {
+    SEARCH_TOTAL = tot.value || 0;
+    SEARCH_REL = tot.relation || "eq";
+  } else if (typeof tot === "number") {
+    SEARCH_TOTAL = tot; SEARCH_REL = "eq";
+  } else if (j && typeof j.total === "number") {
+    SEARCH_TOTAL = j.total; SEARCH_REL = "eq";
+  }
+}
+
 // One POST. Content-Type text/plain is deliberate: it keeps the request in the
 // CORS "simple request" class, so the browser sends it straight through with
 // no preflight — Sefaria reads the raw request body, so the content type makes
@@ -3126,6 +3179,31 @@ function pathParts(p) {
 // truth; every checkbox on the page is painted from it by syncSearchSel.
 let SEARCH_SEL = new Set();
 const SEARCH_MAX_HITS = 2000;   // a safety valve on a very broad query
+
+// The reference commitRef last wrote into the box. While the box still holds
+// it, the box is displaying a chosen source rather than a query — so the
+// Search button re-shows the results instead of searching for the reference.
+let OPENED_FROM_SEARCH = "";
+
+// Show the back bar whenever results exist but the panel holding them is shut.
+function refreshBackBar() {
+  const bar = $("srchBack"); if (!bar) return;
+  const hidden = $("searchPanel").style.display === "none";
+  const on = hidden && SEARCH_RAW.length > 0;
+  bar.classList.toggle("show", on);
+  $("srchBackQ").textContent = on && SEARCH_Q ? "\u201c" + SEARCH_Q + "\u201d" : "";
+}
+
+// Back to the results, with nothing refetched: they never left the page. The
+// query goes back into the box so that pressing Search again repeats the
+// search rather than searching for whatever reference was being read.
+function reopenSearchResults() {
+  if (!SEARCH_RAW.length) return;
+  if (SEARCH_Q) { $("ref").value = SEARCH_Q; OPENED_FROM_SEARCH = ""; }
+  setMode("search");
+  refreshBackBar();
+  $("searchPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 // Every result Sefaria returned is already on the page, grouped under its own
 // category and book headings and CLOSED — the reader opens what interests
@@ -3271,14 +3349,17 @@ async function buildSelectedTexts(fmt) {
 // in before anything is drawn, so there is no "load more" to press.
 // SEARCH_MAX_HITS stops a runaway query from paging forever.
 async function runSearch() {
-  const q = ($("ref").value || "").trim();
+  const q = normQuery($("ref").value);
   if (!q) return;
   if (SEARCHING) return;
+  if (q !== ($("ref").value || "").trim()) $("ref").value = q;   // show what was actually sent
   SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq"; SEARCH_SEL = new Set();
   SEARCH_Q = q;
+  OPENED_FROM_SEARCH = "";
   SEARCHING = true;
   $("searchBody").innerHTML = "";
   syncSearchSel();
+  refreshBackBar();
   searchMsg("Searching Sefaria\u2026");
   try {
     while (true) {
@@ -3290,24 +3371,31 @@ async function runSearch() {
         j = await searchFetch(from, true);
         raw = searchHitsOf(j);
       }
-      const tot = j && j.hits && j.hits.total;
-      if (tot && typeof tot === "object") { SEARCH_TOTAL = tot.value || 0; SEARCH_REL = tot.relation || "eq"; }
-      else if (typeof tot === "number") { SEARCH_TOTAL = tot; SEARCH_REL = "eq"; }
+      readSearchTotal(j);
       if (!raw.length) break;
       raw.forEach(h => SEARCH_RAW.push(normHit(h)));
       searchMsg("Loading results\u2026 " + SEARCH_RAW.length +
         (SEARCH_TOTAL ? " of " + SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "") : ""));
-      if (SEARCH_RAW.length >= SEARCH_TOTAL) break;
+      // Stop on a short page. The old test — "we have as many as the total
+      // says there are" — ended the loop after page one whenever the total
+      // came back as 0 because the response didn't carry it where we looked.
+      if (raw.length < SEARCH_PAGE) break;
       if (SEARCH_RAW.length >= SEARCH_MAX_HITS) break;
     }
     renderSearchResults();
     if (!SEARCH_RAW.length) {
       searchMsg("No results for \u201c" + q + "\u201d.");
     } else {
+      // Two counts, because they differ and the difference is not a loss:
+      // Sefaria indexes each version of a segment separately, so one passage
+      // matching in Hebrew and in three translations is four hits on
+      // sefaria.org and one row here.
       const shown = mergedHits().length;
-      let msg = shown + " result" + (shown === 1 ? "" : "s") + " loaded";
-      if (SEARCH_RAW.length < SEARCH_TOTAL)
+      let msg = shown + " passage" + (shown === 1 ? "" : "s");
+      if (SEARCH_RAW.length !== shown) msg += " from " + SEARCH_RAW.length + " version matches";
+      if (SEARCH_TOTAL > SEARCH_RAW.length)
         msg += " of " + SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "");
+      if (SEARCH_RAW.length >= SEARCH_MAX_HITS) msg += " (capped)";
       searchMsg(msg + " \u00b7 tap a heading to open it, tick what you want");
     }
   } catch (e) {
@@ -3376,6 +3464,7 @@ function setMode(m) {
   // sit there looking like content — show no placeholder at all.
   $("ref").placeholder = m === "browse" ? "" : "א' זעירא";
   if (m === "browse" && backStack.length === 0) startBrowse();
+  refreshBackBar();
 }
 
 // Choosing a reference — a search hit, a Browse page, or the fallback when a
@@ -3385,11 +3474,14 @@ function setMode(m) {
 function closePanels() {
   $("browsePanel").style.display = "none";
   $("searchPanel").style.display = "none";
+  refreshBackBar();
 }
 
 function commitRef(ref) {
   $("ref").value = ref;
+  OPENED_FROM_SEARCH = ref;   // the box is showing a source now, not a query
   closePanels();
+  refreshBackBar();
   fetchLinks();
 }
 
@@ -3968,14 +4060,28 @@ async function fetchCount(ref) {
 // ===========================================================================
 document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => {
   setMode(b.dataset.mode);
-  // The Search button actually searches: tapping it with a query in the box
-  // runs the search (the keyboard's search / Enter key still works too).
-  // With an empty box and no earlier results, prompt instead of silence.
-  if (b.dataset.mode === "search") {
-    if (($("ref").value || "").trim()) runSearch(false);
-    else if (!SEARCH_RAW.length) searchMsg("Type a word or phrase above, then tap Search.");
+  // The Search button searches when there is something new to search for, and
+  // otherwise just puts the existing results back on screen. The three cases
+  // it must not confuse: a genuinely new query (search), the query that
+  // produced the results already loaded (re-show), and a reference this app
+  // wrote into the box when the reader opened one of those results (re-show —
+  // searching for it would throw the results away, which is the whole bug).
+  if (b.dataset.mode !== "search") return;
+  const box = ($("ref").value || "").trim();
+  const q = normQuery(box);
+  const isOpenedSource = box && box === OPENED_FROM_SEARCH;
+  if (SEARCH_RAW.length && (!q || q === SEARCH_Q || isOpenedSource)) {
+    reopenSearchResults();
+  } else if (q) {
+    runSearch();
+  } else {
+    searchMsg("Type a word or phrase above, then tap Search.");
   }
 });
+$("srchBack").onclick = reopenSearchResults;
+$("srchBack").onkeydown = e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); reopenSearchResults(); }
+};
 document.querySelectorAll(".fmtseg:not(.grpseg):not(.hdrseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
 document.querySelectorAll("#langBar button").forEach(b => b.onclick = () => setHdr(b.dataset.hdr));
@@ -4004,6 +4110,7 @@ $("clearBtn").onclick = () => {
   $("searchBody").innerHTML = "";
   SEARCH_Q = ""; SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq";
   SEARCH_SEL = new Set(); syncSearchSel();
+  OPENED_FROM_SEARCH = ""; refreshBackBar();
   searchMsg("");
   setStatus("");
   backStack = [];
