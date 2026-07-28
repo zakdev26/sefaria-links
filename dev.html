@@ -480,7 +480,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 40;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 41;   // bump when deploying, shows in footer + built books
 // Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
 // each source segment jumping to the pieces in place, and a back-link under
 // each piece. Plain internal links — survives Kindle's KFX conversion.
@@ -1129,6 +1129,100 @@ async function fetchRangeData(ref) {
   return { links, src };
 }
 
+// ---------------------------------------------------------------------------
+// Whole-chapter fetches (a perek of a tractate, or any daf range)
+// ---------------------------------------------------------------------------
+// A chapter is a list of pages rather than one addressable section, so it is
+// walked page by page and the segments concatenated. The result is the same
+// { links, src-with-segMap } shape fetchRangeData returns, which is why
+// nothing downstream needs to know a chapter fetch happened.
+//
+// PENDING_PAGES holds Sefaria's own page list for the label showing in the
+// reference box. It is kept rather than consumed, so re-running the same
+// reference walks the same exact pages — including the partial ones at the
+// chapter's ends, which a label like "Berakhot 2a-13a" cannot express.
+let PENDING_PAGES = null;   // { label, refs: [...] }
+
+// "Berakhot 2a-13a" -> every amud from 2a to 13a. The fallback for a daf
+// range typed by hand, with no page list behind it.
+function dafRangeRefs(ref) {
+  const m = String(ref).trim().match(/^(.+?)\s(\d+)([ab])\s*[-\u2013]\s*(\d+)([ab])$/);
+  if (!m) return null;
+  const book = m[1];
+  const from = parseInt(m[2], 10) * 2 + (m[3] === "b" ? 1 : 0);
+  const to = parseInt(m[4], 10) * 2 + (m[5] === "b" ? 1 : 0);
+  if (to < from || (to - from) > 400) return null;
+  const out = [];
+  for (let s = from; s <= to; s++)
+    out.push(book + " " + Math.floor(s / 2) + (s % 2 === 0 ? "a" : "b"));
+  return out;
+}
+
+// The page list for the reference now in the box, or null if it isn't a
+// multi-page reference at all.
+function pagesForRef(ref) {
+  if (PENDING_PAGES && PENDING_PAGES.label === ref) return PENDING_PAGES.refs;
+  PENDING_PAGES = null;
+  return dafRangeRefs(ref);
+}
+
+// One page -> its segment refs, each with its own Hebrew and English text.
+// A partial page ("Berakhot 13a:1-9") keeps its real segment numbers, so a
+// link on 13a:4 files under 13a:4 and not under the page's first line.
+async function expandPageRef(pref) {
+  const t = String(pref).trim();
+  let j = null;
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(t) + "?context=0&commentary=0&pad=0");
+    if (r.ok) { const x = await r.json(); if (!x.error) j = x; }
+  } catch (e) {}
+  const heArr = (j && Array.isArray(j.he)) ? j.he : [];
+  const enArr = (j && Array.isArray(j.text)) ? j.text : [];
+  let n = Math.max(heArr.length, enArr.length);
+  const heRef = (j && j.heRef) ? String(j.heRef).split(":")[0] : "";
+  const m = t.match(/^(.+?):(\d+)\s*[-\u2013]\s*(\d+)$/);
+  if (m && +m[3] >= +m[2]) {
+    const base = m[1], start = +m[2];
+    if (!n) n = +m[3] - start + 1;
+    const out = [];
+    for (let i = 0; i < n; i++)
+      out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
+    return { heRef, segs: out };
+  }
+  const nShape = await shapeCountFor(t);
+  if (nShape && nShape > n) n = nShape;
+  const out = [];
+  for (let i = 0; i < n; i++)
+    out.push({ ref: t + ":" + (i + 1), he: asText(heArr[i]), en: asText(enArr[i]) });
+  return { heRef, segs: out };
+}
+
+// A list of pages -> links + a source object aligned segment by segment.
+async function fetchPagesData(pages, label) {
+  setStatus("Reading " + label + "\u2026");
+  const per = await mapPool(pages, p => expandPageRef(p), 4,
+    (done, total) => setStatus("Reading " + label + "\u2026 " + done + " / " + total + " pages"));
+  const segs = [];
+  per.forEach(p => { if (p && p.segs) segs.push.apply(segs, p.segs); });
+  if (!segs.length) return null;
+  const links = await linksForSegs(segs.map(s => s.ref));
+  const segMap = {};
+  segs.forEach((s, i) => { segMap[s.ref] = i; });
+  const firstHe = (per[0] && per[0].heRef) || "";
+  const lastHe = (per[per.length - 1] && per[per.length - 1].heRef) || "";
+  const heRef = (firstHe && lastHe)
+    ? (firstHe === lastHe ? firstHe : firstHe + "\u2013" + lastHe)
+    : (firstHe || lastHe);
+  return {
+    links,
+    src: {
+      ref: label, heRef: heRef,
+      he: segs.map(s => s.he), text: segs.map(s => s.en),
+      segMap: segMap
+    }
+  };
+}
+
 let FETCHING = false;
 async function fetchLinks() {
   if (FETCHING) return;
@@ -1146,7 +1240,12 @@ async function fetchLinks() {
   try {
     let data;
     let preSrc = null;   // source text prepared by the range walk, if any
-    if (isRangedRef(ref)) {
+    const pages = pagesForRef(ref);
+    if (pages && pages.length) {
+      const pd = await fetchPagesData(pages, ref);
+      if (!pd) throw new Error("no text came back for those pages");
+      data = pd.links; preSrc = pd.src;
+    } else if (isRangedRef(ref)) {
       const rd = await fetchRangeData(ref);
       if (rd) { data = rd.links; preSrc = rd.src; }
       else {
@@ -3485,6 +3584,18 @@ function commitRef(ref) {
   fetchLinks();
 }
 
+// Open a whole chapter. The box shows the chapter's range; the exact page
+// list from Sefaria's chapter node is what actually gets walked.
+function commitPages(label, refs, what) {
+  const n = refs.length;
+  if (n > 2 && !confirm(
+      (what || label) + " runs to " + n + " pages (" + label + ").\n\n" +
+      "Every line of every page is read, with all of its linked commentary. " +
+      "That can take a few minutes and makes a long book.\n\nGo ahead?")) return;
+  PENDING_PAGES = { label: label, refs: refs.slice() };
+  commitRef(label);
+}
+
 function mk(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
 function navBody() { return $("navBody"); }
 function navLoading(msg) { navBody().innerHTML = '<div class="navloading">' + (msg || "Loading…") + '</div>'; }
@@ -3607,7 +3718,7 @@ async function renderTractate(title, rec) {
   if (!usable) { renderJagged(title, rec.schema); return; }
 
   navBody().innerHTML = "";
-  navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back. A page shared by two chapters appears under both; tapping it there fetches that chapter\u2019s lines of the page.</div>'));
+  navBody().appendChild(mk('<div class="navnote">Take a whole chapter, or pick one page \u2014 a is the front, b the back. A page shared by two chapters appears under both; tapping it there fetches that chapter\u2019s lines of the page.</div>'));
   chapters.forEach((ch, i) => {
     const head = document.createElement("div"); head.className = "navchap";
     const nm = document.createElement("span");
@@ -3617,6 +3728,17 @@ async function renderTractate(title, rec) {
     const he = nodeHe(ch);
     if (he) { const h = document.createElement("span"); h.className = "he"; h.textContent = he; head.appendChild(h); }
     navBody().appendChild(head);
+    const first = dafFromRef(ch.refs[0]);
+    const last = dafFromRef(ch.refs[ch.refs.length - 1]);
+    if (first) {
+      const label = title + " " + first + (last && last !== first ? "-" + last : "");
+      const w = document.createElement("div"); w.className = "navwhole";
+      const wb = document.createElement("button"); wb.className = "secondary";
+      wb.textContent = "Whole chapter \u2014 " + label;
+      wb.onclick = () => commitPages(label, ch.refs, nm.textContent);
+      w.appendChild(wb);
+      navBody().appendChild(w);
+    }
     const grid = document.createElement("div"); grid.className = "navgrid";
     for (const r of ch.refs) {
       const b = document.createElement("button");
