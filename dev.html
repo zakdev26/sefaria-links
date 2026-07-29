@@ -480,10 +480,11 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 41;   // bump when deploying, shows in footer + built books
-// Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
-// each source segment jumping to the pieces in place, and a back-link under
-// each piece. Plain internal links — survives Kindle's KFX conversion.
+const APP_VERSION = 42;   // bump when deploying, shows in footer + built books
+// Commentator quick-links in the EPUB: a small marker row after each source
+// segment jumping to that section's pieces in place — Rashi, Tosafot and
+// Steinsaltz first, then every other selected commentator — and a back-link
+// under each piece. Plain internal links — survives Kindle's KFX conversion.
 const RTS_POPUPS = true;
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
@@ -1615,16 +1616,17 @@ function gatherContent() {
   // piece's back-link lands on its own verse rather than the top of Source.
   const segSrcAnchor = {};
 
-  // Selected Rashi / Tosafot / Steinsaltz links of one section, as direct
-  // jump-marks: { marks: [{ name, target }] } where target is the anchor the
-  // commentator's first piece will carry in this document. Returns null when
-  // the flag is off or nothing selected in this section qualifies.
+  // Every selected commentator of one section, as direct jump-marks:
+  // { marks: [{ name, target }] } where target is the anchor the commentator's
+  // first piece will carry in this document. Rashi, Tosafot and Steinsaltz
+  // lead (commRank 0/1/2); the rest follow in the order they appear further
+  // down the document, since Array.sort is stable and they all rank 3.
+  // Returns null when the flag is off or nothing is selected in this section.
   const rtsFor = (seg) => {
     if (!RTS_POPUPS || !SEG_TREE[seg]) return null;
     const segLinks = [];
     for (const c of segCats(seg)) for (const l of segCatLinks(seg, c)) if (SEL.has(l._i)) segLinks.push(l);
     const groups = groupByComm(segLinks)
-      .filter(([name]) => commRank(name) <= 2)
       .sort((a, b) => commRank(a[0]) - commRank(b[0]));
     if (!groups.length) return null;
     return { marks: groups.map(([name, links]) => ({ name, target: anchorForLink(links[0]) })) };
@@ -1716,7 +1718,7 @@ function gatherContent() {
             if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
             emitAiBlock(blocks, canonicalRef(l));
             emitNote("L" + l._i);   // this text's own note, right beneath it
-            if (wantSrc && commRank(commName(l)) <= 2)
+            if (wantSrc)
               blocks.push({ type: "backlink", text: seg, anchor: anchor });
             written++;
           }
@@ -1758,7 +1760,7 @@ function gatherContent() {
         emitAiBlock(blocks, canonicalRef(l));
         emitNote("L" + l._i);   // this text's own note, right beneath it
         const bseg = segRefOf(l);
-        if (haveSrc && commRank(comm) <= 2 && segSrcAnchor[bseg])
+        if (haveSrc && segSrcAnchor[bseg])
           blocks.push({ type: "backlink", text: bseg, anchor: segSrcAnchor[bseg] });
         written++;
       }
