@@ -480,10 +480,11 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 41;   // bump when deploying, shows in footer + built books
-// Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
-// each source segment jumping to the pieces in place, and a back-link under
-// each piece. Plain internal links — survives Kindle's KFX conversion.
+const APP_VERSION = 43;   // bump when deploying, shows in footer + built books
+// Commentator quick-links in the EPUB: a small marker row after each source
+// segment jumping to that section's pieces in place — Rashi, Tosafot and
+// Steinsaltz first, then every other selected commentator — and a back-link
+// under each piece. Plain internal links — survives Kindle's KFX conversion.
 const RTS_POPUPS = true;
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
@@ -1615,19 +1616,23 @@ function gatherContent() {
   // piece's back-link lands on its own verse rather than the top of Source.
   const segSrcAnchor = {};
 
-  // Selected Rashi / Tosafot / Steinsaltz links of one section, as direct
-  // jump-marks: { marks: [{ name, target }] } where target is the anchor the
-  // commentator's first piece will carry in this document. Returns null when
-  // the flag is off or nothing selected in this section qualifies.
+  // Every selected commentator of one section, as direct jump-marks:
+  // { marks: [{ name, target }] } where target is the anchor the commentator's
+  // first piece will carry in this document. Rashi, Tosafot and Steinsaltz
+  // lead (commRank 0/1/2); the rest follow in the order they appear further
+  // down the document, since Array.sort is stable and they all rank 3.
+  // Returns null when the flag is off or nothing is selected in this section.
   const rtsFor = (seg) => {
     if (!RTS_POPUPS || !SEG_TREE[seg]) return null;
+    // Only commentary and halakhah links get a quick-link, labelled in Hebrew.
+    const RTS_CATS = ["commentary", "halakhah", "halacha", "halakha"];
     const segLinks = [];
-    for (const c of segCats(seg)) for (const l of segCatLinks(seg, c)) if (SEL.has(l._i)) segLinks.push(l);
+    for (const c of segCats(seg)) for (const l of segCatLinks(seg, c))
+      if (SEL.has(l._i) && RTS_CATS.indexOf(catName(l).toLowerCase()) >= 0) segLinks.push(l);
     const groups = groupByComm(segLinks)
-      .filter(([name]) => commRank(name) <= 2)
       .sort((a, b) => commRank(a[0]) - commRank(b[0]));
     if (!groups.length) return null;
-    return { marks: groups.map(([name, links]) => ({ name, target: anchorForLink(links[0]) })) };
+    return { marks: groups.map(([name, links]) => ({ name: commHeOf(links) || name, target: anchorForLink(links[0]) })) };
   };
 
   const emitWholeSource = () => {
@@ -1716,7 +1721,7 @@ function gatherContent() {
             if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
             emitAiBlock(blocks, canonicalRef(l));
             emitNote("L" + l._i);   // this text's own note, right beneath it
-            if (wantSrc && commRank(commName(l)) <= 2)
+            if (wantSrc)
               blocks.push({ type: "backlink", text: seg, anchor: anchor });
             written++;
           }
@@ -1758,7 +1763,7 @@ function gatherContent() {
         emitAiBlock(blocks, canonicalRef(l));
         emitNote("L" + l._i);   // this text's own note, right beneath it
         const bseg = segRefOf(l);
-        if (haveSrc && commRank(comm) <= 2 && segSrcAnchor[bseg])
+        if (haveSrc && segSrcAnchor[bseg])
           blocks.push({ type: "backlink", text: bseg, anchor: segSrcAnchor[bseg] });
         written++;
       }
@@ -2437,7 +2442,6 @@ async function buildDocx(content) {
     else if (b.type === "ai") body.push(new Paragraph({
       spacing: { before: 60, after: 100 },
       children: [
-        new TextRun({ text: "AI translation (" + b.lang + "): ", bold: true, size: 20, color: "8a6d3b" }),
         new TextRun({ text: b.text, italics: true, size: 22 })
       ]
     }));
@@ -2575,11 +2579,11 @@ function epubBody(content) {
     else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
     else if (b.type === "ref") s += `<p class="ref"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "note") s += `<p class="usernote">${xmlEsc(b.text)}</p>\n<p class="usernote-date">${xmlEsc(b.date || "")}</p>\n`;
-    else if (b.type === "ai") s += `<p class="ai-label">AI translation (${xmlEsc(b.lang)})</p>\n<p class="ai">${xmlEsc(b.text)}</p>\n`;
+    else if (b.type === "ai") s += `<p class="ai">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he"${b.anchor ? ` id="${b.anchor}"` : ""} dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "rtsrow") {
-      s += `<p class="rtsrow">` + b.marks.map(m => `<a class="rts" href="#${m.target}">${xmlEsc(m.name)}</a>`).join(" \u00b7 ") + `</p>\n`;
+      s += `<p class="rtsrow" dir="rtl">` + b.marks.map(m => `<a class="rts" href="#${m.target}">${xmlEsc(m.name)}</a>`).join(" \u00b7 ") + `</p>\n`;
     }
     else if (b.type === "backlink") {
       s += `<p class="backlink"><a href="#${b.anchor}">\u25c4 ${xmlEsc(b.text)}</a></p>\n`;
@@ -2757,7 +2761,7 @@ function buildPdf(content) {
     else if (b.type === "h3") bodyHtml += `<h3 id="${b.anchor}">${escapeHtml(b.text)}</h3>`;
     else if (b.type === "ref") bodyHtml += `<p class="ref">${escapeHtml(b.text)}</p>`;
     else if (b.type === "note") bodyHtml += `<p class="usernote">${escapeHtml(b.text)}</p><p class="usernote-date">${escapeHtml(b.date || "")}</p>`;
-    else if (b.type === "ai") bodyHtml += `<p class="ai-label">AI translation (${escapeHtml(b.lang)})</p><p class="ai">${escapeHtml(b.text)}</p>`;
+    else if (b.type === "ai") bodyHtml += `<p class="ai">${escapeHtml(b.text)}</p>`;
     else if (b.type === "he") bodyHtml += `<p class="he" dir="rtl" lang="he">${escapeHtml(b.text)}</p>`;
     else if (b.type === "en") bodyHtml += `<p class="en">${escapeHtml(b.text)}</p>`;
   }
