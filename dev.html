@@ -280,6 +280,36 @@
   .srch-snip b { background: #f6e7c0; }
   .srch-acts { margin-top: 4px; }
   .srch-act { font-size: 12px; color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .advcard { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0 0; background: #fff; }
+  .advhead { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; font-size: 14px; color: var(--accent-dark); background: #f2ecdd; }
+  .advcard.collapsed .advhead .pv-caret { transform: rotate(-90deg); }
+  .advcard.collapsed .advbody { display: none; }
+  .advbody { padding: 8px 10px 10px; }
+  .advrow { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 6px 0 2px; font-size: 14px; }
+  .advrow select, .advrow input { width: auto; flex: 1; max-width: 62%; margin: 0; font-size: 14px; padding: 6px 8px; }
+  .advhint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 8px; }
+  .advwarn { font-size: 12.5px; color: var(--accent-dark); background: #f6e7c0; border-radius: 6px; padding: 6px 8px; margin-top: 8px; line-height: 1.5; }
+  .areacard { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 8px; background: #fff; }
+  .areacard.busy { opacity: 0.5; pointer-events: none; }
+  .areahead { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 14px; font-weight: bold; color: var(--accent-dark); background: #f2ecdd; }
+  .areahead .globaltoggle { margin-left: auto; font-weight: normal; font-size: 12px; }
+  .areabody { padding: 4px 8px 8px; max-height: 300px; overflow-y: auto; }
+  .area-row { display: flex; align-items: center; gap: 6px; padding: 4px 2px; font-size: 14px; }
+  .area-row.covered { opacity: 0.45; }
+  .area-kids { margin-left: 18px; }
+  .area-node.collapsed > .area-kids { display: none; }
+  .area-node.collapsed > .area-row .area-caret { transform: rotate(-90deg); }
+  .area-caret { cursor: pointer; }
+  .area-nocaret { display: inline-block; width: 10px; }
+  .area-box { margin: 0; width: 15px; height: 15px; flex: none; cursor: pointer; }
+  .area-name { cursor: pointer; }
+  .srch-why { font-size: 12px; color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .srch-whybody { font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-top: 4px; }
+  .srch-whybody ul { margin: 0; padding-left: 18px; }
+  .srch-forms { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .srch-forms b { background: #f6e7c0; font-weight: normal; }
+  .selscope { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 0 0 6px; }
+  .selscope select { width: auto; flex: 1; margin: 0; font-size: 13px; padding: 5px 8px; }
 
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
@@ -371,16 +401,52 @@
       <button type="button" data-mode="browse">Browse</button>
     </div>
 
+    <div class="advcard collapsed" id="advCard">
+      <div class="advhead" id="advHead"><span class="pv-caret">&#9662;</span><span>Advanced search</span></div>
+      <div class="advbody">
+        <div class="advrow"><span>Word forms</span>
+          <select id="advForms">
+            <option value="broad" selected>Include related forms</option>
+            <option value="exact">Only as typed</option>
+          </select>
+        </div>
+        <div class="advhint">Related forms also finds the word carrying a prefix or spelled differently &mdash; so &#1506;&#1511;&#1489; also matches &#1493;&#1506;&#1511;&#1489; and &#1489;&#1506;&#1511;&#1489;.</div>
+        <div class="advrow"><span>Words together</span>
+          <select id="advTogether">
+            <option value="apart" selected>Allow other words in between</option>
+            <option value="adjacent">Keep the words next to each other</option>
+          </select>
+        </div>
+        <div class="advhint">Only affects a search of more than one word.</div>
+        <div class="advrow"><span>Sections to load</span>
+          <input type="number" id="advSections" value="300" min="10" max="2000" inputmode="numeric">
+        </div>
+        <div class="advhint">Loading stops once this many sections have been found.</div>
+        <div class="advwarn" id="advWarn" style="display:none">These settings differ from Sefaria's own, so the results won't match sefaria.org. <span class="globaltoggle" id="advReset">use Sefaria's settings</span></div>
+      </div>
+    </div>
+
     <div class="srch-back" id="srchBack" role="button" tabindex="0">
       <span>&#8592; Back to search results</span>
       <span class="srch-backq" id="srchBackQ"></span>
     </div>
 
     <div class="navpanel" id="searchPanel" style="display:none">
+      <div class="areacard" id="areaCard" style="display:none">
+        <div class="areahead"><span>Search only in&hellip;</span><span class="globaltoggle" id="areaClear" style="display:none">all areas</span></div>
+        <div class="areabody" id="areaBody"></div>
+      </div>
       <div class="searchmeta" id="searchMeta"></div>
+      <div id="searchWhy"></div>
       <div id="searchBody"></div>
       <div class="selbar" id="selBar" style="display:none">
         <div class="selcount" id="selCount"></div>
+        <div class="selscope"><span>Text to use</span>
+          <select id="selScope">
+            <option value="section" selected>The whole section</option>
+            <option value="segment">Just the matching line</option>
+          </select>
+        </div>
         <div class="selfmtseg">
           <button type="button" data-selfmt="kindle">Kindle (EPUB)</button>
           <button type="button" data-selfmt="word">Word</button>
@@ -480,7 +546,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 43;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 44;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -3132,15 +3198,26 @@ $("pvCollapseAll").onclick = () =>
 // as category → book → hits. Tapping a hit hands its ref to commitRef, just
 // as Browse does, and the rest of the app carries on unchanged.
 // ===========================================================================
-const SEARCH_API = "https://www.sefaria.org/api/search-wrapper";
-const SEARCH_PAGE = 50;                       // hits fetched per request
+const SEARCH_API = "https://www.sefaria.org/api/search-wrapper/es8";
+const SEARCH_PAGE = 100;                      // hits fetched per request
 const SEARCH_PROJ = ["ref", "heRef", "categories", "path", "version", "lang", "exact"];
 let SEARCH_Q = "";          // the query the current results belong to
 let SEARCH_RAW = [];        // normalised hits, in the order Sefaria ranked them
 let SEARCH_TOTAL = 0;       // total matching segments reported by the API
 let SEARCH_REL = "eq";      // "gte" when that total is a floor (ES caps at 10000)
-let SEARCH_FIELD = "naive_lemmatizer";   // Sefaria's own default field
 let SEARCHING = false;
+
+// Aggregations, taken from the UNFILTERED run only. Rebuilding the tree from a
+// filtered response would delete every area the reader hadn't picked and leave
+// them with no way back, so a filtered search deliberately asks for no
+// aggregations and leaves these alone.
+let SEARCH_AGG_PATH = [];   // [{key: "Midrash/Aggadah/...", doc_count}]
+let SEARCH_AGG_REF = [];    // [{key: "Berakhot 2a:5", doc_count}] — one per passage
+let SEARCH_AGG_TRUNC = false;  // Elasticsearch stops bucketing at 10000 distinct keys
+let SEARCH_PASS_TOTAL = 0;  // distinct passages across the whole match set
+let SEARCH_SECT_TOTAL = 0;  // those passages rolled up to sections
+let SEARCH_FILTERS = [];    // chosen category paths; a prefix match, so a parent covers its children
+let SEARCH_FORMS = [];      // the word forms Sefaria actually matched, for display
 
 function searchMsg(msg, isErr) {
   const el = $("searchMeta");
@@ -3178,25 +3255,198 @@ function readSearchTotal(j) {
   }
 }
 
+// The aggregation buckets. `path` gives one bucket per full category path, so
+// the drill-down tree is built by splitting on "/" — no further requests as the
+// reader expands it. `ref` gives one bucket per passage with its edition count,
+// which is where the honest passage and section totals come from: they are
+// known before a single hit is fetched.
+function readSearchAggs(j) {
+  const a = j && j.aggregations;
+  if (!a) return;
+  const p = a["path"];
+  const r = a["ref.keyword"] || a["ref"];
+  if (p && Array.isArray(p.buckets)) SEARCH_AGG_PATH = p.buckets.slice();
+  if (r && Array.isArray(r.buckets)) {
+    SEARCH_AGG_REF = r.buckets.slice();
+    SEARCH_AGG_TRUNC = !!r.sum_other_doc_count;
+    SEARCH_PASS_TOTAL = SEARCH_AGG_REF.length;
+    const seen = {};
+    let n = 0;
+    for (const b of SEARCH_AGG_REF) {
+      const s = sectionRefOf(b.key);
+      if (s && !(s in seen)) { seen[s] = 1; n++; }
+    }
+    SEARCH_SECT_TOTAL = n;
+  }
+}
+
+// Advanced search settings. The defaults are Sefaria's own, so an untouched app
+// returns what the website returns.
+function searchFieldSetting() {
+  const el = $("advForms");
+  return (el && el.value === "exact") ? "exact" : "naive_lemmatizer";
+}
+function searchSlopSetting() {
+  const el = $("advTogether");
+  return (el && el.value === "adjacent") ? 0 : 10;
+}
+function sectionsWanted() {
+  const v = parseInt(($("advSections") || {}).value, 10);
+  return (isFinite(v) && v > 0) ? Math.min(v, 2000) : 300;
+}
+function isSefariaDefaults() {
+  return searchFieldSetting() === "naive_lemmatizer" && searchSlopSetting() === 10;
+}
+function refreshAdvWarn() {
+  const w = $("advWarn");
+  if (w) w.style.display = isSefariaDefaults() ? "none" : "block";
+}
+
+// The distinct word forms Sefaria matched, pulled out of its own <b> tags. A
+// reader who sees עקב, ועקב and בעקב listed understands what "related forms"
+// means far faster than any wording could explain it.
+function collectForms(hl) {
+  if (!hl) return;
+  for (const k of Object.keys(hl)) {
+    const arr = hl[k];
+    if (!Array.isArray(arr)) continue;
+    for (const frag of arr) {
+      const re = /<b>([^<]{1,40})<\/b>/g;
+      let m;
+      while ((m = re.exec(String(frag)))) {
+        const w = m[1].trim();
+        if (w && SEARCH_FORMS.indexOf(w) < 0 && SEARCH_FORMS.length < 24) SEARCH_FORMS.push(w);
+      }
+    }
+  }
+}
+
+// "Midrash/Aggadah/Midrash Sekhel Tov" and its siblings become a nested tree,
+// each node keeping the full path that is sent as the filter.
+function buildAreaTree(buckets) {
+  const root = { name: "", path: "", kids: [], idx: {} };
+  for (const b of buckets) {
+    const bits = String((b && b.key) || "").split("/").filter(Boolean);
+    let node = root, prefix = "";
+    for (const bit of bits) {
+      prefix = prefix ? prefix + "/" + bit : bit;
+      if (!(prefix in node.idx)) {
+        node.idx[prefix] = node.kids.length;
+        node.kids.push({ name: bit, path: prefix, kids: [], idx: {} });
+      }
+      node = node.kids[node.idx[prefix]];
+    }
+  }
+  return root;
+}
+
+// A node already covered by a ticked ancestor is cleared and disabled: the
+// filter is a prefix match, so ticking both would say nothing extra.
+function areaCoveredBy(path) {
+  for (const f of SEARCH_FILTERS) if (path !== f && (path + "/").indexOf(f + "/") === 0) return true;
+  return false;
+}
+
+function areaNodeHtml(node) {
+  const covered = areaCoveredBy(node.path);
+  const on = SEARCH_FILTERS.indexOf(node.path) >= 0;
+  const kids = node.kids.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const kidHtml = kids.length ? '<div class="area-kids">' + kids.map(areaNodeHtml).join("") + "</div>" : "";
+  return '<div class="area-node' + (kids.length ? " collapsed" : "") + '">' +
+    '<div class="area-row' + (covered ? " covered" : "") + '">' +
+    '<input type="checkbox" class="area-box" data-path="' + encodeURIComponent(node.path) + '"' +
+      (on ? " checked" : "") + (covered ? " disabled" : "") + ">" +
+    (kids.length ? '<span class="pv-caret area-caret">&#9662;</span>' : '<span class="area-nocaret"></span>') +
+    '<span class="area-name">' + escapeHtml(node.name) + "</span>" +
+    "</div>" + kidHtml + "</div>";
+}
+
+// No counts on the nodes: the only per-path number the API gives is an edition
+// count, which reads higher than the sections the reader will actually get.
+function renderAreaTree() {
+  const card = $("areaCard"), body = $("areaBody");
+  if (!card || !body) return;
+  if (!SEARCH_AGG_PATH.length) { card.style.display = "none"; body.innerHTML = ""; return; }
+  const root = buildAreaTree(SEARCH_AGG_PATH);
+  const tops = root.kids.slice().sort((a, b) => a.name.localeCompare(b.name));
+  card.style.display = "block";
+  body.innerHTML = tops.map(areaNodeHtml).join("");
+  const clear = $("areaClear");
+  if (clear) clear.style.display = SEARCH_FILTERS.length ? "inline" : "none";
+}
+
+function setAreaBusy(on) {
+  const card = $("areaCard");
+  if (card) card.classList.toggle("busy", !!on);
+}
+
+// Two counts and the road between them. Every step is a real reduction, so the
+// reader can see why the number they are looking at is smaller than the one
+// Sefaria quotes.
+function renderSearchMeta() {
+  const hits = mergedHits();
+  const shown = hits.length;
+  const sects = sectionCountOf(hits);
+  searchMsg(sects + " section" + (sects === 1 ? "" : "s") + " \u00b7 " +
+    shown + " passage" + (shown === 1 ? "" : "s") +
+    " \u00b7 tap a heading to open it, tick what you want");
+  const steps = [];
+  if (SEARCH_SECT_TOTAL) {
+    steps.push("Across the library this search matches " + (SEARCH_AGG_TRUNC ? "at least " : "") +
+      SEARCH_SECT_TOTAL + " sections, holding " + SEARCH_PASS_TOTAL + " passages.");
+  } else if (SEARCH_TOTAL) {
+    steps.push("Sefaria reported " + (SEARCH_REL === "gte" ? "at least " : "") +
+      SEARCH_TOTAL + " matches, counted once per edition.");
+  }
+  if (SEARCH_FILTERS.length) steps.push("Narrowed to " + SEARCH_FILTERS.join(" and ") + ".");
+  steps.push("Loaded the first " + SEARCH_RAW.length + " matches, in Sefaria's own order of relevance.");
+  if (SEARCH_RAW.length !== shown) {
+    steps.push("A passage that matches in several editions is listed once here, so those " +
+      SEARCH_RAW.length + " matches are " + shown + " passages.");
+  }
+  if (shown !== sects) {
+    steps.push("Those passages sit in " + sects + " sections \u2014 several results often share one section.");
+  }
+  if (!isSefariaDefaults()) {
+    steps.push("Word matching has been changed under Advanced search, so these results differ from sefaria.org.");
+  }
+  let html = '<span class="srch-why" id="srchWhyToggle">how this was counted</span>' +
+    '<div class="srch-whybody" id="srchWhyBody" style="display:none"><ul>' +
+    steps.map(s => "<li>" + escapeHtml(s) + "</li>").join("") + "</ul></div>";
+  if (SEARCH_FORMS.length) {
+    html += '<div class="srch-forms">matching: ' +
+      SEARCH_FORMS.slice(0, 12).map(f => "<b>" + escapeHtml(f) + "</b>").join(", ") + "</div>";
+  }
+  const why = $("searchWhy");
+  if (why) why.innerHTML = html;
+}
+
 // One POST. Content-Type text/plain is deliberate: it keeps the request in the
 // CORS "simple request" class, so the browser sends it straight through with
 // no preflight — Sefaria reads the raw request body, so the content type makes
 // no difference to how the query is parsed. If that ever stops working, the
 // documented application/json header is tried next (which needs Sefaria to
 // answer the preflight OPTIONS).
-async function searchFetch(from, fullSource) {
+async function searchFetch(from, fullSource, withAggs) {
   const body = {
     query: SEARCH_Q,
     type: "text",
-    field: SEARCH_FIELD,
+    field: searchFieldSetting(),
     source_proj: fullSource ? true : SEARCH_PROJ,
     size: SEARCH_PAGE,
     start: from,
+    slop: searchSlopSetting(),
     sort_method: "score",
     sort_fields: ["pagesheetrank"],
     sort_score_missing: 0.04
   };
-  if (SEARCH_FIELD === "naive_lemmatizer") body.slop = 10;
+  // Parallel arrays, and the names matter: a key this endpoint doesn't
+  // recognise is dropped in silence and the search comes back unfiltered.
+  if (SEARCH_FILTERS.length) {
+    body.filters = SEARCH_FILTERS.slice();
+    body.filter_fields = SEARCH_FILTERS.map(() => "path");
+  }
+  if (withAggs) body.aggs = ["path", "ref.keyword"];
   const payload = JSON.stringify(body);
   const tries = ["text/plain;charset=UTF-8", "application/json"];
   let lastErr = null;
@@ -3227,6 +3477,7 @@ function normHit(h) {
   const s = (h && h._source) || {};
   let snip = "";
   const hl = h && h.highlight;
+  collectForms(hl);
   if (hl) {
     for (const k of Object.keys(hl)) {
       if (Array.isArray(hl[k]) && hl[k].length) { snip = hl[k].join(" … "); break; }
@@ -3269,6 +3520,25 @@ function mergedHits() {
 function sectionOf(ref) {
   const m = String(ref).match(/^(.*\S):\d+(?:\s*[-\u2013]\s*\d+)?$/);
   return m ? m[1] : "";
+}
+
+// The section a hit belongs to, for counting and for building. A great many
+// works — most of Chasidut and Kabbalah, dictionary entries — are addressed a
+// single level deep, so sectionOf finds nothing; for those the ref IS the whole
+// unit and there is nothing between it and the entire book.
+function sectionRefOf(ref) {
+  return sectionOf(ref) || String(ref || "");
+}
+
+// Distinct sections across a list of merged hits.
+function sectionCountOf(hits) {
+  const seen = {};
+  let n = 0;
+  for (const h of hits) {
+    const s = sectionRefOf(h.ref);
+    if (s && !(s in seen)) { seen[s] = 1; n++; }
+  }
+  return n;
 }
 
 // "Talmud/Bavli/Seder Moed/Shabbat" → ["Talmud", "Bavli › Seder Moed › Shabbat"]
@@ -3337,7 +3607,6 @@ function renderSearchResults() {
     let inner = "";
     for (const g of t.groups) {
       const rows = g.hits.map(h => {
-        const whole = sectionOf(h.ref);
         return `<div class="srch-hit">
           <input type="checkbox" class="srch-hitbox" data-ref="${encodeURIComponent(h.ref)}">
           <div class="srch-hitbody">
@@ -3345,7 +3614,6 @@ function renderSearchResults() {
             ${h.snips.map(s => '<div class="srch-snip" dir="auto">' + snipHtml(s) + "</div>").join("")}
             <div class="srch-acts">
               <span class="srch-load" data-ref="${encodeURIComponent(h.ref)}">open in the app with its commentary</span>
-              ${whole ? ' \u00b7 <span class="srch-act" data-whole="' + encodeURIComponent(whole) + '">use whole ' + escapeHtml(whole) + '</span>' : ""}
             </div>
           </div>
         </div>`;
@@ -3381,9 +3649,14 @@ function syncSearchSel() {
   if (!bar) return;
   const n = SEARCH_SEL.size;
   bar.style.display = n ? "block" : "none";
-  $("selCount").textContent = n
-    ? n + " passage" + (n === 1 ? "" : "s") + " ticked \u2014 build a file of their texts:"
-    : "";
+  if (n) {
+    const docs = documentRefs();
+    const unit = scopeSetting() === "segment" ? "passage" : "section";
+    $("selCount").textContent = n + " ticked \u2014 " + docs.length + " " + unit +
+      (docs.length === 1 ? "" : "s") + " to build:";
+  } else {
+    $("selCount").textContent = "";
+  }
 }
 
 // The ticked references, in the order Sefaria ranked them.
@@ -3391,12 +3664,29 @@ function orderedSelectedRefs() {
   return mergedHits().filter(h => SEARCH_SEL.has(h.ref)).map(h => h.ref);
 }
 
+function scopeSetting() {
+  const el = $("selScope");
+  return (el && el.value === "segment") ? "segment" : "section";
+}
+
+// What goes in the file. In section mode several ticked results often collapse
+// to one section, which is why the build bar counts these rather than ticks.
+function documentRefs() {
+  const seg = scopeSetting() === "segment";
+  const out = [], seen = {};
+  for (const r of orderedSelectedRefs()) {
+    const use = seg ? r : sectionRefOf(r);
+    if (use && !(use in seen)) { seen[use] = 1; out.push(use); }
+  }
+  return out;
+}
+
 // A file straight from the ticked results: each reference's own text and
 // nothing else — no commentary is fetched. The blocks/toc shape is exactly
 // what gatherContent produces, so the Word / EPUB / PDF builders take it
 // unchanged.
 async function buildSelectedTexts(fmt) {
-  const refs = orderedSelectedRefs();
+  const refs = documentRefs();
   if (!refs.length) return;
   const incHe = $("incHe").checked, incEn = $("incEn").checked;
   if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
@@ -3448,63 +3738,75 @@ async function buildSelectedTexts(fmt) {
   }
 }
 
-// One query, every page. Sefaria serves hits 50 at a time; they are all pulled
-// in before anything is drawn, so there is no "load more" to press.
-// SEARCH_MAX_HITS stops a runaway query from paging forever.
-async function runSearch() {
+// One query, every page. Sefaria serves a page at a time; they are all pulled
+// in before anything is drawn, so there is no "load more" to press. Paging
+// stops once the reader's requested number of sections is in hand.
+//
+// keepAgg marks a re-run caused by the area filter: the aggregations from the
+// unfiltered search are kept, so the tree still offers every area rather than
+// only the one already chosen.
+async function runSearch(opts) {
+  const keepAgg = !!(opts && opts.keepAgg);
   const q = normQuery($("ref").value);
   if (!q) return;
   if (SEARCHING) return;
   if (q !== ($("ref").value || "").trim()) $("ref").value = q;   // show what was actually sent
   SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq"; SEARCH_SEL = new Set();
+  SEARCH_FORMS = [];
+  if (!keepAgg) {
+    SEARCH_AGG_PATH = []; SEARCH_AGG_REF = []; SEARCH_AGG_TRUNC = false;
+    SEARCH_PASS_TOTAL = 0; SEARCH_SECT_TOTAL = 0; SEARCH_FILTERS = [];
+    renderAreaTree();
+  }
   SEARCH_Q = q;
   OPENED_FROM_SEARCH = "";
   SEARCHING = true;
+  setAreaBusy(true);
   $("searchBody").innerHTML = "";
+  $("searchWhy").innerHTML = "";
   syncSearchSel();
   refreshBackBar();
   searchMsg("Searching Sefaria\u2026");
   try {
+    const want = sectionsWanted();
+    let sects = 0;
     while (true) {
       const from = SEARCH_RAW.length;
-      let j = await searchFetch(from, false);
+      // The aggregation costs a couple of seconds, so it is asked for once —
+      // on the first page of an unfiltered search — and never again.
+      const withAggs = (from === 0 && !keepAgg);
+      let j = await searchFetch(from, false, withAggs);
       let raw = searchHitsOf(j);
       // a projection the API didn't honour would leave us with no refs at all
       if (raw.length && !raw.some(h => h && h._source && h._source.ref)) {
-        j = await searchFetch(from, true);
+        j = await searchFetch(from, true, withAggs);
         raw = searchHitsOf(j);
       }
       readSearchTotal(j);
+      if (withAggs) readSearchAggs(j);
       if (!raw.length) break;
       raw.forEach(h => SEARCH_RAW.push(normHit(h)));
-      searchMsg("Loading results\u2026 " + SEARCH_RAW.length +
-        (SEARCH_TOTAL ? " of " + SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "") : ""));
+      sects = sectionCountOf(mergedHits());
+      searchMsg("Loading results\u2026 " + sects + " section" + (sects === 1 ? "" : "s") + " so far");
       // Stop on a short page. The old test — "we have as many as the total
       // says there are" — ended the loop after page one whenever the total
       // came back as 0 because the response didn't carry it where we looked.
       if (raw.length < SEARCH_PAGE) break;
+      if (sects >= want) break;
       if (SEARCH_RAW.length >= SEARCH_MAX_HITS) break;
     }
     renderSearchResults();
+    if (!keepAgg) renderAreaTree();
     if (!SEARCH_RAW.length) {
-      searchMsg("No results for \u201c" + q + "\u201d.");
+      searchMsg("No results for \u201c" + q + "\u201d" + (SEARCH_FILTERS.length ? " in that area." : "."));
     } else {
-      // Two counts, because they differ and the difference is not a loss:
-      // Sefaria indexes each version of a segment separately, so one passage
-      // matching in Hebrew and in three translations is four hits on
-      // sefaria.org and one row here.
-      const shown = mergedHits().length;
-      let msg = shown + " passage" + (shown === 1 ? "" : "s");
-      if (SEARCH_RAW.length !== shown) msg += " from " + SEARCH_RAW.length + " version matches";
-      if (SEARCH_TOTAL > SEARCH_RAW.length)
-        msg += " of " + SEARCH_TOTAL + (SEARCH_REL === "gte" ? "+" : "");
-      if (SEARCH_RAW.length >= SEARCH_MAX_HITS) msg += " (capped)";
-      searchMsg(msg + " \u00b7 tap a heading to open it, tick what you want");
+      renderSearchMeta();
     }
   } catch (e) {
     searchMsg("Search failed: " + e.message + ".", true);
   } finally {
     SEARCHING = false;
+    setAreaBusy(false);
   }
 }
 
@@ -3527,8 +3829,7 @@ $("searchBody").addEventListener("click", e => {
     syncSearchSel();
     return;
   }
-  const act = e.target.closest(".srch-act");
-  if (act) { commitRef(decodeURIComponent(act.dataset.whole)); return; }
+
   const load = e.target.closest(".srch-load");
   if (load) { commitRef(decodeURIComponent(load.dataset.ref)); return; }
   if (e.target.closest(".srch-ref")) return;   // the reference opens on Sefaria
@@ -3563,6 +3864,7 @@ function setMode(m) {
   document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
   $("browsePanel").style.display = m === "browse" ? "block" : "none";
   $("searchPanel").style.display = m === "search" ? "block" : "none";
+  $("advCard").style.display = m === "search" ? "block" : "none";
   // In Browse the box isn't the entry point, so the example name would just
   // sit there looking like content — show no placeholder at all.
   $("ref").placeholder = m === "browse" ? "" : "א' זעירא";
@@ -4212,6 +4514,45 @@ document.querySelectorAll(".fmtseg:not(.grpseg):not(.hdrseg) button").forEach(b 
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
 document.querySelectorAll("#langBar button").forEach(b => b.onclick = () => setHdr(b.dataset.hdr));
 document.querySelectorAll(".selfmtseg button").forEach(b => b.onclick = () => buildSelectedTexts(b.dataset.selfmt));
+$("advHead").onclick = () => $("advCard").classList.toggle("collapsed");
+$("advForms").onchange = refreshAdvWarn;
+$("advTogether").onchange = refreshAdvWarn;
+$("advReset").onclick = () => {
+  $("advForms").value = "broad";
+  $("advTogether").value = "apart";
+  refreshAdvWarn();
+};
+$("selScope").onchange = syncSearchSel;
+$("searchWhy").addEventListener("click", e => {
+  if (!e.target.closest("#srchWhyToggle")) return;
+  const b = $("srchWhyBody");
+  if (b) b.style.display = b.style.display === "none" ? "block" : "none";
+});
+$("areaBody").addEventListener("click", e => {
+  const box = e.target.closest(".area-box");
+  if (box) {
+    const p = decodeURIComponent(box.dataset.path);
+    if (box.checked) {
+      // ticking a parent absorbs anything already ticked beneath it
+      SEARCH_FILTERS = SEARCH_FILTERS.filter(f => (f + "/").indexOf(p + "/") !== 0);
+      SEARCH_FILTERS.push(p);
+    } else {
+      SEARCH_FILTERS = SEARCH_FILTERS.filter(f => f !== p);
+    }
+    renderAreaTree();
+    runSearch({ keepAgg: true });
+    return;
+  }
+  const node = e.target.closest(".area-node");
+  if (node && (e.target.closest(".area-caret") || e.target.closest(".area-name"))) {
+    node.classList.toggle("collapsed");
+  }
+});
+$("areaClear").onclick = () => {
+  SEARCH_FILTERS = [];
+  renderAreaTree();
+  runSearch({ keepAgg: true });
+};
 $("selClear").onclick = () => { SEARCH_SEL = new Set(); syncSearchSel(); };
 
 let _savedHdrLang = "both";
@@ -4234,7 +4575,12 @@ $("clearBtn").onclick = () => {
   $("tree").innerHTML = "";
   $("preview").innerHTML = "";
   $("searchBody").innerHTML = "";
+  $("searchWhy").innerHTML = "";
   SEARCH_Q = ""; SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq";
+  SEARCH_AGG_PATH = []; SEARCH_AGG_REF = []; SEARCH_AGG_TRUNC = false;
+  SEARCH_PASS_TOTAL = 0; SEARCH_SECT_TOTAL = 0;
+  SEARCH_FILTERS = []; SEARCH_FORMS = [];
+  renderAreaTree();
   SEARCH_SEL = new Set(); syncSearchSel();
   OPENED_FROM_SEARCH = ""; refreshBackBar();
   searchMsg("");
