@@ -289,7 +289,7 @@
   .advrow select, .advrow input { width: auto; flex: 1; max-width: 62%; margin: 0; font-size: 14px; padding: 6px 8px; }
   .advhint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 8px; }
   .advwarn { font-size: 12.5px; color: var(--accent-dark); background: #f6e7c0; border-radius: 6px; padding: 6px 8px; margin-top: 8px; line-height: 1.5; }
-  .areacard { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 8px; background: #fff; }
+  .areacard { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; background: #fff; }
   .areacard.busy { opacity: 0.5; pointer-events: none; }
   .areahead { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 14px; font-weight: bold; color: var(--accent-dark); background: #f2ecdd; }
   .areahead .globaltoggle { margin-left: auto; font-weight: normal; font-size: 12px; }
@@ -404,6 +404,11 @@
     <div class="advcard collapsed" id="advCard">
       <div class="advhead" id="advHead"><span class="pv-caret">&#9662;</span><span>Advanced search</span></div>
       <div class="advbody">
+        <div class="areacard" id="areaCard" style="display:none">
+          <div class="areahead"><span>Search only in&hellip;</span><span class="globaltoggle" id="areaClear" style="display:none">all areas</span></div>
+          <div class="areabody" id="areaBody"></div>
+          <div class="advhint">Open a category to go deeper &mdash; the last level is the book itself, so you can search inside just one work.</div>
+        </div>
         <div class="advrow"><span>Word forms</span>
           <select id="advForms">
             <option value="broad" selected>Include related forms</option>
@@ -432,10 +437,6 @@
     </div>
 
     <div class="navpanel" id="searchPanel" style="display:none">
-      <div class="areacard" id="areaCard" style="display:none">
-        <div class="areahead"><span>Search only in&hellip;</span><span class="globaltoggle" id="areaClear" style="display:none">all areas</span></div>
-        <div class="areabody" id="areaBody"></div>
-      </div>
       <div class="searchmeta" id="searchMeta"></div>
       <div id="searchWhy"></div>
       <div id="searchBody"></div>
@@ -546,7 +547,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 44;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 45;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -3797,6 +3798,10 @@ async function runSearch(opts) {
     }
     renderSearchResults();
     if (!keepAgg) renderAreaTree();
+    // The narrowing controls are only useful once there is something to
+    // narrow, so the card stays shut until a search has run and then opens
+    // itself. The header still folds it away by hand.
+    $("advCard").classList.remove("collapsed");
     if (!SEARCH_RAW.length) {
       searchMsg("No results for \u201c" + q + "\u201d" + (SEARCH_FILTERS.length ? " in that area." : "."));
     } else {
