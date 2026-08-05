@@ -206,6 +206,10 @@
   .navnote { font-size: 12px; color: var(--muted); margin: 8px 2px 2px; }
   .navwhole { margin: 2px 0 6px; }
   .navwhole button { margin: 0; }
+  .pickrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 2px 2px; }
+  .pickcount { font-size: 12px; color: var(--muted); }
+  .pickrow button { margin: 0; width: auto; padding: 7px 12px; font-size: 13px; }
+  .navgrid button.picked { background: var(--accent); color: #fff; border-color: var(--accent); }
   .navloading { font-size: 13px; color: var(--muted); padding: 8px 2px; }
   .naverr { font-size: 13px; color: #a23b2c; padding: 8px 2px; }
 
@@ -459,6 +463,12 @@
 
     <div class="navpanel" id="browsePanel" style="display:none">
       <div class="crumbs" id="crumbs"></div>
+      <div class="pickrow" id="pickRow" style="display:none">
+        <span class="globaltoggle" id="pickToggle">pick several</span>
+        <span class="pickcount" id="pickCount"></span>
+        <span class="globaltoggle" id="pickClear" style="display:none">clear</span>
+        <button type="button" id="pickOpen" class="secondary" style="display:none">open these</button>
+      </div>
       <div id="navBody"></div>
     </div>
 
@@ -547,7 +557,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 45;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 46;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -1683,6 +1693,20 @@ function gatherContent() {
   // piece's back-link lands on its own verse rather than the top of Source.
   const segSrcAnchor = {};
 
+  // Page headings inside a multi-page source. The per-section entries stay
+  // exactly as they were; these are added alongside them, so the contents of a
+  // chapter reads 2a, its sections, 2b, its sections. A single-page source is
+  // untouched — there would be nothing to navigate between.
+  const pageOfSeg = (s) => sectionOf(s) || String(s || "");
+  const pageHeOf = (s) => String(heSegRef(s) || "").replace(/:[^:]*$/, "");
+  const multiPage = (() => {
+    const seen = {};
+    let n = 0;
+    for (const s of SEG_ORDER) { const p = pageOfSeg(s); if (p && !(p in seen)) { seen[p] = 1; n++; } }
+    return n > 1;
+  })();
+  let lastPage = null;
+
   // Every selected commentator of one section, as direct jump-marks:
   // { marks: [{ name, target }] } where target is the anchor the commentator's
   // first piece will carry in this document. Rashi, Tosafot and Steinsaltz
@@ -1691,11 +1715,12 @@ function gatherContent() {
   // Returns null when the flag is off or nothing is selected in this section.
   const rtsFor = (seg) => {
     if (!RTS_POPUPS || !SEG_TREE[seg]) return null;
-    // Only commentary and halakhah links get a quick-link, labelled in Hebrew.
-    const RTS_CATS = ["commentary", "halakhah", "halacha", "halakha"];
+    // Every selected text on this section earns a marker, whatever its
+    // category and whatever kind of text the source is. Rashi, Tosafot and
+    // Steinsaltz still lead; the rest follow in document order.
     const segLinks = [];
     for (const c of segCats(seg)) for (const l of segCatLinks(seg, c))
-      if (SEL.has(l._i) && RTS_CATS.indexOf(catName(l).toLowerCase()) >= 0) segLinks.push(l);
+      if (SEL.has(l._i)) segLinks.push(l);
     const groups = groupByComm(segLinks)
       .sort((a, b) => commRank(a[0]) - commRank(b[0]));
     if (!groups.length) return null;
@@ -1716,6 +1741,16 @@ function gatherContent() {
     const n = Math.max(SRC.he.length, SRC.text.length);
     for (let i = 0; i < n; i++) {
       const seg = segForIdx[i];
+      if (multiPage && seg) {
+        const pg = pageOfSeg(seg);
+        if (pg && pg !== lastPage) {
+          lastPage = pg;
+          const pAnchor = nextId();
+          const pText = hdrText(pg, pageHeOf(seg));
+          toc.push({ level: 2, text: pText, anchor: pAnchor });
+          blocks.push({ type: "h2", text: pText, anchor: pAnchor });
+        }
+      }
       let vAnchor = null;
       if (seg) { vAnchor = nextId(); segSrcAnchor[seg] = vAnchor; }
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) { blocks.push({ type: "he", text: he, anchor: vAnchor }); vAnchor = null; } }
@@ -1748,6 +1783,14 @@ function gatherContent() {
 
       const rts = wantSrc ? rtsFor(seg) : null;
 
+      const pg = pageOfSeg(seg);
+      if (multiPage && pg && pg !== lastPage) {
+        lastPage = pg;
+        const pAnchor = nextId();
+        const pText = hdrText(pg, pageHeOf(seg));
+        toc.push({ level: 1, text: pText, anchor: pAnchor });
+        blocks.push({ type: "h1", text: pText, anchor: pAnchor, first: blocks.length === 0 });
+      }
       const anchor = nextId();
       const inc = incipitFor(seg);
       const h1text = hdrText(seg, heSegRef(seg)) + (inc ? " \u2014 " + inc : "");
@@ -3207,6 +3250,9 @@ let SEARCH_RAW = [];        // normalised hits, in the order Sefaria ranked them
 let SEARCH_TOTAL = 0;       // total matching segments reported by the API
 let SEARCH_REL = "eq";      // "gte" when that total is a floor (ES caps at 10000)
 let SEARCHING = false;
+// The Advanced card narrows a result set, so it has nothing to act on until
+// one exists. It stays off the page entirely until the first search finishes.
+let ADV_READY = false;
 
 // Aggregations, taken from the UNFILTERED run only. Rebuilding the tree from a
 // filtered response would delete every area the reader hadn't picked and leave
@@ -3801,6 +3847,8 @@ async function runSearch(opts) {
     // The narrowing controls are only useful once there is something to
     // narrow, so the card stays shut until a search has run and then opens
     // itself. The header still folds it away by hand.
+    ADV_READY = true;
+    $("advCard").style.display = "block";
     $("advCard").classList.remove("collapsed");
     if (!SEARCH_RAW.length) {
       searchMsg("No results for \u201c" + q + "\u201d" + (SEARCH_FILTERS.length ? " in that area." : "."));
@@ -3865,11 +3913,134 @@ const CORPORA = [
 let TOC = null;
 let backStack = [];
 
+// ---------------------------------------------------------------------------
+// Picking mode — several pages or sections at once
+// ---------------------------------------------------------------------------
+// Off by default, and while it is off a tap on a grid tile does exactly what
+// it did before: opens that one page. On, taps accumulate instead, and the
+// row hands the list to commitPages — the same route the whole-chapter button
+// already uses, which is why nothing downstream needs to know.
+//
+// Picks are held per book: walking to a different book clears them, since a
+// document mixing pages from two tractates is never what was meant.
+let MPICK_ON = false;
+let MPICK_REFS = [];
+let MPICK_BOOK = "";
+
+function mpickShow() { const r = $("pickRow"); if (r) r.style.display = "flex"; mpickPaint(); }
+function mpickHide() { const r = $("pickRow"); if (r) r.style.display = "none"; }
+
+function mpickReset(book) {
+  if (book === MPICK_BOOK) return;
+  MPICK_BOOK = book; MPICK_REFS = []; MPICK_ON = false;
+}
+
+// Pages come out in reading order rather than tap order: the trailing token of
+// a reference is its number, optionally with an amud letter.
+function mpickKey(ref) {
+  const m = String(ref).match(/(\d+)([ab])?$/);
+  return m ? [parseInt(m[1], 10), m[2] === "b" ? 1 : 0] : [Infinity, 0];
+}
+function mpickSorted() {
+  return MPICK_REFS.slice().sort((a, b) => {
+    const ka = mpickKey(a), kb = mpickKey(b);
+    return (ka[0] - kb[0]) || (ka[1] - kb[1]) || a.localeCompare(b);
+  });
+}
+
+// A page's position on one number line: 2a is 4, 2b is 5, so "next page" is
+// always +1. Plain numbered sections count in ones instead.
+function mpickSeq(ref) {
+  const m = String(ref).match(/(\d+)([ab])?$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return m[2] ? n * 2 + (m[2] === "b" ? 1 : 0) : n;
+}
+function mpickRunsOn(refs) {
+  const lettered = refs.map(r => /(\d+)[ab]$/.test(String(r)));
+  if (lettered.some(x => x !== lettered[0])) return false;
+  for (let i = 1; i < refs.length; i++) {
+    const a = mpickSeq(refs[i - 1]), b = mpickSeq(refs[i]);
+    if (a == null || b == null || b !== a + 1) return false;
+  }
+  return true;
+}
+
+// "Berakhot 2a" + "Berakhot 2b" -> "Berakhot 2a-2b", so the box and the book
+// title read like a reference. A run that skips a page can't be written as a
+// range without claiming pages that were never picked, so that falls back to
+// naming them: "Berakhot 2a, 5b".
+function mpickLabel(refs) {
+  const parts = refs.map(r => String(r).match(/^(.*)\s(\S+)$/));
+  const book = parts[0] && parts[0][1];
+  if (!book || !parts.every(p => p && p[1] === book)) return refs.join(", ");
+  const toks = parts.map(p => p[2]);
+  if (toks.length > 1 && mpickRunsOn(refs))
+    return book + " " + toks[0] + "-" + toks[toks.length - 1];
+  return book + " " + toks.join(", ");
+}
+
+function mpickPaint() {
+  const t = $("pickToggle");
+  if (!t) return;
+  const n = MPICK_REFS.length;
+  t.textContent = MPICK_ON ? "one at a time" : "pick several";
+  const c = $("pickCount");
+  if (c) c.textContent = MPICK_ON ? (n ? n + (n === 1 ? " page picked" : " pages picked") : "tap the pages you want") : "";
+  const o = $("pickOpen");
+  if (o) {
+    o.style.display = (MPICK_ON && n) ? "inline-block" : "none";
+    o.textContent = n === 1 ? "open it" : "open these " + n;
+  }
+  const cl = $("pickClear");
+  if (cl) cl.style.display = (MPICK_ON && n) ? "inline" : "none";
+  document.querySelectorAll("#navBody .navgrid button").forEach(b => {
+    const r = b.dataset.mref || "";
+    b.classList.toggle("picked", !!(MPICK_ON && r && MPICK_REFS.indexOf(r) >= 0));
+  });
+}
+
+// Every grid tile is built here. onOpen is what a tap does with the mode off —
+// omitted, it opens the reference; supplied, it drills further in.
+function mpickBtn(label, ref, onOpen) {
+  const b = document.createElement("button");
+  b.textContent = label;
+  b.dataset.mref = ref;
+  b.onclick = () => {
+    if (!MPICK_ON) { if (onOpen) onOpen(); else commitRef(ref); return; }
+    const i = MPICK_REFS.indexOf(ref);
+    if (i >= 0) MPICK_REFS.splice(i, 1); else MPICK_REFS.push(ref);
+    mpickPaint();
+  };
+  if (MPICK_ON && MPICK_REFS.indexOf(ref) >= 0) b.classList.add("picked");
+  mpickShow();
+  return b;
+}
+
+// One pick opens as a single reference; several go through commitPages, which
+// keeps the existing warning above two pages.
+function mpickOpen() {
+  const refs = mpickSorted();
+  if (!refs.length) return;
+  if (refs.length === 1) { commitRef(refs[0]); return; }
+  commitPages(mpickLabel(refs), refs, "Your selection");
+}
+
+if ($("pickToggle")) {
+  $("pickToggle").onclick = () => {
+    MPICK_ON = !MPICK_ON;
+    if (!MPICK_ON) MPICK_REFS = [];
+    mpickPaint();
+  };
+  $("pickOpen").onclick = mpickOpen;
+  $("pickClear").onclick = () => { MPICK_REFS = []; mpickPaint(); };
+}
+
 function setMode(m) {
   document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
   $("browsePanel").style.display = m === "browse" ? "block" : "none";
   $("searchPanel").style.display = m === "search" ? "block" : "none";
-  $("advCard").style.display = m === "search" ? "block" : "none";
+  $("advCard").style.display = (m === "search" && ADV_READY) ? "block" : "none";
   // In Browse the box isn't the entry point, so the example name would just
   // sit there looking like content — show no placeholder at all.
   $("ref").placeholder = m === "browse" ? "" : "א' זעירא";
@@ -3940,6 +4111,7 @@ function rowList(items, onPick) {
 }
 
 function renderCrumbs() {
+  mpickHide();
   const c = $("crumbs"); c.innerHTML = "";
   backStack.forEach((f, i) => {
     if (i) { const s = document.createElement("span"); s.className = "crumbsep"; s.textContent = "›"; c.appendChild(s); }
@@ -4052,16 +4224,14 @@ async function renderTractate(title, rec) {
     }
     const grid = document.createElement("div"); grid.className = "navgrid";
     for (const r of ch.refs) {
-      const b = document.createElement("button");
-      b.textContent = dafFromRef(r) || r;
-      b.onclick = () => commitRef(r);
-      grid.appendChild(b);
+      grid.appendChild(mpickBtn(dafFromRef(r) || r, r));
     }
     navBody().appendChild(grid);
   });
 }
 
 async function openBook(title) {
+  mpickReset(title);
   navLoading('Loading "' + title + '"…');
   let rec;
   try {
@@ -4280,12 +4450,10 @@ function appendAltLeaf(title, node, structName) {
     navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back.</div>'));
     const grid = document.createElement("div"); grid.className = "navgrid";
     refs.forEach((r, i) => {
-      const b = document.createElement("button");
-      b.textContent = node.startingAddress
+      const label = node.startingAddress
         ? dafLabelFrom(node.startingAddress, i)
         : (dafFromRef(r) || String(i + 1));
-      b.onclick = () => commitRef(r);
-      grid.appendChild(b);
+      grid.appendChild(mpickBtn(label, r));
     });
     navBody().appendChild(grid);
     return;
@@ -4355,9 +4523,7 @@ function renderJagged(prefix, node) {
       const grid = document.createElement("div"); grid.className = "navgrid";
       for (let i = 0; i < amudim; i++) {
         const label = dafLabel(i, start);
-        const b = document.createElement("button"); b.textContent = label;
-        b.onclick = () => commitRef(prefix + " " + label);
-        grid.appendChild(b);
+        grid.appendChild(mpickBtn(label, prefix + " " + label));
       }
       navBody().appendChild(grid);
     };
@@ -4373,9 +4539,7 @@ function renderJagged(prefix, node) {
     navBody().appendChild(mk('<div class="navnote">Pick a ' + String(sname).toLowerCase() + '.</div>'));
     const grid = document.createElement("div"); grid.className = "navgrid";
     for (let i = 1; i <= count; i++) {
-      const b = document.createElement("button"); b.textContent = i;
-      b.onclick = () => pickNumber(prefix, node, [i]);
-      grid.appendChild(b);
+      grid.appendChild(mpickBtn(i, refJoin(prefix, [i]), () => pickNumber(prefix, node, [i])));
     }
     navBody().appendChild(grid);
   };
@@ -4406,9 +4570,8 @@ function pickNumber(prefix, node, sections) {
     if (!c) { holder.appendChild(mk('<div class="navnote">Couldn\u2019t list these \u2014 use the button above, or type it.</div>')); return; }
     const grid = document.createElement("div"); grid.className = "navgrid";
     for (let i = 1; i <= c; i++) {
-      const b = document.createElement("button"); b.textContent = i;
-      b.onclick = () => pickNumber(prefix, node, [...sections, i]);
-      grid.appendChild(b);
+      grid.appendChild(mpickBtn(i, refJoin(prefix, [...sections, i]),
+        () => pickNumber(prefix, node, [...sections, i])));
     }
     holder.appendChild(grid);
   });
