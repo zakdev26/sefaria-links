@@ -206,6 +206,15 @@
   .navnote { font-size: 12px; color: var(--muted); margin: 8px 2px 2px; }
   .navwhole { margin: 2px 0 6px; }
   .navwhole button { margin: 0; }
+  .prerow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 8px 2px 2px; font-size: 13px; }
+  .prerow .prelabel { color: var(--muted); }
+  .prebody { display: none; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 2px 2px; max-height: 240px; overflow-y: auto; }
+  .prebody.open { display: block; }
+  .prebody label { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 14px; cursor: pointer; }
+  .prebody .pre-he { color: var(--muted); font-size: 13px; }
+  .advgo { margin-top: 10px; }
+  .advgo button { margin: 0; width: auto; padding: 8px 14px; font-size: 14px; }
+  .advpending { font-size: 12px; color: var(--muted); margin-top: 6px; }
   .pickrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 2px 2px; }
   .pickcount { font-size: 12px; color: var(--muted); }
   .pickrow button { margin: 0; width: auto; padding: 7px 12px; font-size: 13px; }
@@ -405,11 +414,17 @@
       <button type="button" data-mode="browse">Browse</button>
     </div>
 
+    <div class="prerow" id="preRow" style="display:none">
+      <span class="prelabel">Search only in&hellip;</span>
+      <span class="globaltoggle" id="preOpen">all of Sefaria</span>
+    </div>
+    <div class="prebody" id="preBody"></div>
+
     <div class="advcard collapsed" id="advCard" style="display:none">
       <div class="advhead" id="advHead"><span class="pv-caret">&#9662;</span><span>Advanced search</span></div>
       <div class="advbody">
         <div class="areacard" id="areaCard" style="display:none">
-          <div class="areahead"><span>Search only in&hellip;</span><span class="globaltoggle" id="areaClear" style="display:none">all areas</span></div>
+          <div class="areahead"><span>Narrow these results to&hellip;</span><span class="globaltoggle" id="areaClear" style="display:none">back to all</span></div>
           <div class="areabody" id="areaBody"></div>
           <div class="advhint">Open a category to go deeper &mdash; the last level is the book itself, so you can search inside just one work.</div>
         </div>
@@ -428,10 +443,12 @@
         </div>
         <div class="advhint">Only affects a search of more than one word.</div>
         <div class="advrow"><span>Sections to load</span>
-          <input type="number" id="advSections" value="300" min="10" max="2000" inputmode="numeric">
+          <input type="number" id="advSections" value="10000" min="10" max="10000" inputmode="numeric">
         </div>
-        <div class="advhint">Loading stops once this many sections have been found.</div>
+        <div class="advhint">Loading stops once this many sections have been found. A broad word can take minutes to reach that, so the app asks whether to keep going every so often &mdash; narrowing the area first is usually quicker.</div>
         <div class="advwarn" id="advWarn" style="display:none">These settings differ from Sefaria's own, so the results won't match sefaria.org. <span class="globaltoggle" id="advReset">use Sefaria's settings</span></div>
+        <div class="advgo"><button type="button" id="advGo" class="secondary">Search again with these settings</button></div>
+        <div class="advpending" id="advPending" style="display:none">These settings haven't been used yet &mdash; searching again starts a fresh search of the whole library.</div>
       </div>
     </div>
 
@@ -464,7 +481,7 @@
     <div class="navpanel" id="browsePanel" style="display:none">
       <div class="crumbs" id="crumbs"></div>
       <div class="pickrow" id="pickRow" style="display:none">
-        <span class="globaltoggle" id="pickToggle">pick several</span>
+        <button type="button" id="pickToggle" class="secondary">pick several pages</button>
         <span class="pickcount" id="pickCount"></span>
         <span class="globaltoggle" id="pickClear" style="display:none">clear</span>
         <button type="button" id="pickOpen" class="secondary" style="display:none">open these</button>
@@ -557,7 +574,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 46;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 47;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -3339,7 +3356,21 @@ function searchSlopSetting() {
 }
 function sectionsWanted() {
   const v = parseInt(($("advSections") || {}).value, 10);
-  return (isFinite(v) && v > 0) ? Math.min(v, 2000) : 300;
+  return (isFinite(v) && v > 0) ? Math.min(v, 10000) : 10000;
+}
+
+// How long a search may run before it stops to ask, and what the settings were
+// when the results on screen were fetched.
+const SEARCH_ASK_EVERY = 60000;
+let ADV_APPLIED = null;
+
+function advSettingsNow() {
+  return searchFieldSetting() + "|" + searchSlopSetting() + "|" + sectionsWanted() + "|" + PRE_AREAS.join(",");
+}
+function refreshAdvPending() {
+  const el = $("advPending");
+  if (!el) return;
+  el.style.display = (ADV_APPLIED && ADV_APPLIED !== advSettingsNow()) ? "block" : "none";
 }
 function isSefariaDefaults() {
   return searchFieldSetting() === "naive_lemmatizer" && searchSlopSetting() === 10;
@@ -3802,7 +3833,11 @@ async function runSearch(opts) {
   SEARCH_FORMS = [];
   if (!keepAgg) {
     SEARCH_AGG_PATH = []; SEARCH_AGG_REF = []; SEARCH_AGG_TRUNC = false;
-    SEARCH_PASS_TOTAL = 0; SEARCH_SECT_TOTAL = 0; SEARCH_FILTERS = [];
+    SEARCH_PASS_TOTAL = 0; SEARCH_SECT_TOTAL = 0;
+    // The pre-search choice is where narrowing starts, not nothing. With areas
+    // picked, the aggregation comes back describing what is inside them, so the
+    // tree offers their subdivisions rather than the whole library.
+    SEARCH_FILTERS = PRE_AREAS.slice();
     renderAreaTree();
   }
   SEARCH_Q = q;
@@ -3817,6 +3852,7 @@ async function runSearch(opts) {
   try {
     const want = sectionsWanted();
     let sects = 0;
+    let askAt = Date.now() + SEARCH_ASK_EVERY;
     while (true) {
       const from = SEARCH_RAW.length;
       // The aggregation costs a couple of seconds, so it is asked for once —
@@ -3835,6 +3871,14 @@ async function runSearch(opts) {
       raw.forEach(h => SEARCH_RAW.push(normHit(h)));
       sects = sectionCountOf(mergedHits());
       searchMsg("Loading results\u2026 " + sects + " section" + (sects === 1 ? "" : "s") + " so far");
+      // A broad word can run for minutes. Rather than a silent wait or an
+      // arbitrary cut-off, it reports what it has and asks to carry on.
+      if (Date.now() >= askAt) {
+        const more = confirm("Found " + sects + " section" + (sects === 1 ? "" : "s") +
+          " so far, and there are more. Keep loading?");
+        if (!more) break;
+        askAt = Date.now() + SEARCH_ASK_EVERY;
+      }
       // Stop on a short page. The old test — "we have as many as the total
       // says there are" — ended the loop after page one whenever the total
       // came back as 0 because the response didn't carry it where we looked.
@@ -3843,6 +3887,8 @@ async function runSearch(opts) {
       if (SEARCH_RAW.length >= SEARCH_MAX_HITS) break;
     }
     renderSearchResults();
+    ADV_APPLIED = advSettingsNow();
+    refreshAdvPending();
     if (!keepAgg) renderAreaTree();
     // The narrowing controls are only useful once there is something to
     // narrow, so the card stays shut until a search has run and then opens
@@ -3912,6 +3958,57 @@ const CORPORA = [
 
 let TOC = null;
 let backStack = [];
+
+// ---------------------------------------------------------------------------
+// Search only in… — chosen before searching, applied from the first request
+// ---------------------------------------------------------------------------
+// A narrowed search is a smaller question, so it comes back faster and can be
+// paged deeper into the material actually wanted. These are top-level areas of
+// the library; the area tree still narrows further once results are in, and
+// "all areas" there returns to whatever was chosen here rather than to
+// everything.
+let PRE_AREAS = [];
+
+function preLabel() {
+  if (!PRE_AREAS.length) return "all of Sefaria";
+  if (PRE_AREAS.length <= 2) return PRE_AREAS.join(" and ");
+  return PRE_AREAS.length + " areas";
+}
+function refreshPreRow() {
+  const o = $("preOpen");
+  if (o) o.textContent = preLabel();
+  refreshAdvPending();
+}
+function renderPreBody() {
+  const body = $("preBody");
+  if (!body) return;
+  body.innerHTML = "<div class=\"advhint\">Loading the library index\u2026</div>";
+  ensureToc().then(toc => {
+    body.innerHTML = "";
+    (toc || []).filter(n => n && n.category).forEach(n => {
+      const name = String(n.category);
+      const lab = document.createElement("label");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = PRE_AREAS.indexOf(name) >= 0;
+      cb.onchange = () => {
+        const i = PRE_AREAS.indexOf(name);
+        if (cb.checked) { if (i < 0) PRE_AREAS.push(name); }
+        else if (i >= 0) PRE_AREAS.splice(i, 1);
+        refreshPreRow();
+      };
+      const en = document.createElement("span");
+      en.textContent = nodeEn(n) || name;
+      const he = document.createElement("span");
+      he.className = "pre-he";
+      he.textContent = nodeHe(n) || "";
+      lab.appendChild(cb); lab.appendChild(en); lab.appendChild(he);
+      body.appendChild(lab);
+    });
+  }).catch(e => {
+    body.innerHTML = "<div class=\"advhint\">Couldn't load the library index: " + escapeHtml(e.message) + "</div>";
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Picking mode — several pages or sections at once
@@ -3984,7 +4081,7 @@ function mpickPaint() {
   const t = $("pickToggle");
   if (!t) return;
   const n = MPICK_REFS.length;
-  t.textContent = MPICK_ON ? "one at a time" : "pick several";
+  t.textContent = MPICK_ON ? "one at a time" : "pick several pages";
   const c = $("pickCount");
   if (c) c.textContent = MPICK_ON ? (n ? n + (n === 1 ? " page picked" : " pages picked") : "tap the pages you want") : "";
   const o = $("pickOpen");
@@ -4041,6 +4138,8 @@ function setMode(m) {
   $("browsePanel").style.display = m === "browse" ? "block" : "none";
   $("searchPanel").style.display = m === "search" ? "block" : "none";
   $("advCard").style.display = (m === "search" && ADV_READY) ? "block" : "none";
+  $("preRow").style.display = (m === "search") ? "flex" : "none";
+  if (m !== "search") $("preBody").classList.remove("open");
   // In Browse the box isn't the entry point, so the example name would just
   // sit there looking like content — show no placeholder at all.
   $("ref").placeholder = m === "browse" ? "" : "א' זעירא";
@@ -4683,8 +4782,19 @@ document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGr
 document.querySelectorAll("#langBar button").forEach(b => b.onclick = () => setHdr(b.dataset.hdr));
 document.querySelectorAll(".selfmtseg button").forEach(b => b.onclick = () => buildSelectedTexts(b.dataset.selfmt));
 $("advHead").onclick = () => $("advCard").classList.toggle("collapsed");
-$("advForms").onchange = refreshAdvWarn;
-$("advTogether").onchange = refreshAdvWarn;
+$("advForms").onchange = () => { refreshAdvWarn(); refreshAdvPending(); };
+$("advTogether").onchange = () => { refreshAdvWarn(); refreshAdvPending(); };
+$("advSections").oninput = refreshAdvPending;
+// A changed setting means a different match set, so this is a fresh search
+// rather than a narrowing of the one on screen.
+$("advGo").onclick = () => { $("advCard").classList.add("collapsed"); runSearch(); };
+$("preOpen").onclick = () => {
+  const body = $("preBody");
+  const opening = !body.classList.contains("open");
+  body.classList.toggle("open", opening);
+  if (opening) renderPreBody();
+};
+refreshPreRow();
 $("advReset").onclick = () => {
   $("advForms").value = "broad";
   $("advTogether").value = "apart";
@@ -4716,8 +4826,10 @@ $("areaBody").addEventListener("click", e => {
     node.classList.toggle("collapsed");
   }
 });
+// Not "everything" — everything was never asked for if an area was picked
+// before searching.
 $("areaClear").onclick = () => {
-  SEARCH_FILTERS = [];
+  SEARCH_FILTERS = PRE_AREAS.slice();
   renderAreaTree();
   runSearch({ keepAgg: true });
 };
