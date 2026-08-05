@@ -26,7 +26,7 @@
     line-height: 1.5;
     -webkit-text-size-adjust: 100%;
   }
-  .wrap { max-width: 640px; margin: 0 auto; padding: 24px 18px 64px; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 46px 18px 64px; }
   h1 { font-size: 22px; margin: 8px 0 4px; }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 20px; }
   .card {
@@ -195,17 +195,121 @@
   .navrow { display: flex; align-items: center; gap: 8px; padding: 11px 8px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 15px; }
   .navrow:last-child { border-bottom: none; }
   .navrow:hover { background: #f2ecdd; }
-  .navrow .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; color: var(--muted); font-size: 15px; direction: rtl; }
+  .navrow .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; color: inherit; font-size: inherit; font-weight: inherit; direction: rtl; }
   .navrow .chev { color: var(--muted); font-size: 13px; margin-left: 6px; }
   .navrow .he + .chev { margin-left: 6px; }
-  .navgrid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
-  .navgrid button { width: auto; min-width: 44px; margin: 0; padding: 9px 10px; font-size: 14px; background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  .navgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 6px; margin-top: 4px; }
+  .navgrid button { width: 100%; min-width: 0; margin: 0; padding: 9px 0; font-size: 14px; background: #fff; color: var(--ink); border: 1px solid var(--line); }
   .navgrid button:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .navchap { display: flex; align-items: baseline; gap: 8px; margin: 16px 2px 6px; padding-bottom: 3px; border-bottom: 1px solid var(--line); font-size: 15px; font-weight: bold; }
+  .navchap .he { margin-left: auto; font-family: 'Frank Ruhl Libre', serif; font-weight: normal; color: var(--muted); direction: rtl; }
   .navnote { font-size: 12px; color: var(--muted); margin: 8px 2px 2px; }
   .navwhole { margin: 2px 0 6px; }
   .navwhole button { margin: 0; }
   .navloading { font-size: 13px; color: var(--muted); padding: 8px 2px; }
   .naverr { font-size: 13px; color: #a23b2c; padding: 8px 2px; }
+
+  /* ---- search results, grouped by Sefaria's own categories ---- */
+  .searchmeta { font-size: 12px; color: var(--muted); margin: 0 2px 8px; min-height: 16px; }
+  .searchmeta.err { color: #a23b2c; }
+  .srch-grp { border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; overflow: hidden; background: #fff; }
+  .srch-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; font-size: 15px; }
+  .srch-head.top { background: #ece3d0; font-weight: bold; }
+  .srch-head.sub { background: #f2ecdd; font-size: 14px; color: var(--accent-dark); }
+  .srch-count { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: normal; }
+  .srch-grp.collapsed > .srch-head .pv-caret { transform: rotate(-90deg); }
+  .srch-grp.collapsed > .srch-body { display: none; }
+  .srch-body { padding: 4px 8px 6px; }
+  .srch-hit { display: flex; align-items: flex-start; gap: 8px; padding: 8px; border-bottom: 1px solid var(--line); }
+  .srch-hit:last-child { border-bottom: none; }
+  .srch-hit:hover { background: #fbf8f0; }
+  .srch-hitbox { margin: 3px 0 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .srch-hitbody { flex: 1; min-width: 0; }
+  .srch-ref { font-size: 13px; font-weight: bold; color: var(--accent-dark); text-decoration: none; }
+  .srch-ref:hover { text-decoration: underline; }
+  .srch-heref { font-family: 'Frank Ruhl Libre', serif; font-size: inherit; font-weight: inherit; color: inherit; }
+  .srch-head .srch-grpbox { margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer; }
+  .srch-load { font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+  /* ---- back to the results after opening one of them ----
+     Shown only while results exist and the panel holding them is closed. */
+  .srch-back {
+    display: none; align-items: center; gap: 8px; margin: 8px 0 0;
+    padding: 9px 11px; cursor: pointer; user-select: none;
+    background: #f2ecdd; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14px; color: var(--accent-dark);
+  }
+  .srch-back.show { display: flex; }
+  .srch-back:hover { background: #ece3d0; }
+  .srch-back .srch-backq { color: var(--muted); font-size: 13px; margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---- heading language, as א / A / א A fixed at the top right ----
+     The same HDRLANG setting the Headings row used to hold. Wherever a
+     reference has both an English and a Hebrew name, both are written into
+     the page inside .ui-en / .ui-he spans and one class on <body> hides one
+     of them — so the switch is instant and nothing has to re-render. A
+     reference that has only one of the two is never hidden. */
+  .he-glyph, .ui-he { font-family: 'Frank Ruhl Libre', serif; }
+  .ui-he { font-size: inherit; font-weight: inherit; color: inherit; }
+  .langbar { position: fixed; top: 8px; right: 10px; z-index: 50; display: flex; gap: 4px; }
+  .langbar button {
+    width: auto; margin: 0; padding: 5px 9px; font-size: 15px; line-height: 1.2;
+    background: var(--card); color: var(--muted); border: 1px solid var(--line); border-radius: 7px;
+  }
+  .langbar button:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .langbar button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  body.hdrlang-he .ui-en { display: none; }
+  body.hdrlang-en .ui-he { display: none; }
+  body:not(.hdrlang-both) .ui-both { display: none; }
+
+  /* ---- build a file straight from ticked search results ---- */
+  .selbar { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .selcount { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .selfmtseg { display: flex; gap: 6px; }
+  .selfmtseg button { flex: 1; width: auto; margin: 0; font-size: 14px; padding: 9px 8px; background: #f2ecdd; color: var(--accent-dark); border: 1px solid var(--line); }
+  .selfmtseg button:hover { background: #ece3d0; }
+
+  /* ---- open on Sefaria, beside the preview's copy button ---- */
+  .pv-open {
+    width: auto; margin: 0; padding: 3px 9px; line-height: 1.2; font-size: 14px;
+    background: #fbf8f0; color: var(--muted); border: 1px solid var(--line); border-radius: 6px;
+    flex: none; text-decoration: none; display: inline-flex; align-items: center;
+  }
+  .pv-open:hover { background: #f2ecdd; color: var(--accent-dark); }
+  .srch-snip { font-size: 13.5px; line-height: 1.55; margin-top: 3px; }
+  .srch-snip b { background: #f6e7c0; }
+  .srch-acts { margin-top: 4px; }
+  .srch-act { font-size: 12px; color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .advcard { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0 0; background: #fff; }
+  .advhead { display: flex; align-items: center; gap: 8px; padding: 8px 10px; cursor: pointer; user-select: none; font-size: 14px; color: var(--accent-dark); background: #f2ecdd; }
+  .advcard.collapsed .advhead .pv-caret { transform: rotate(-90deg); }
+  .advcard.collapsed .advbody { display: none; }
+  .advbody { padding: 8px 10px 10px; }
+  .advrow { display: flex; align-items: center; gap: 8px; justify-content: space-between; margin: 6px 0 2px; font-size: 14px; }
+  .advrow select, .advrow input { width: auto; flex: 1; max-width: 62%; margin: 0; font-size: 14px; padding: 6px 8px; }
+  .advhint { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 0 0 8px; }
+  .advwarn { font-size: 12.5px; color: var(--accent-dark); background: #f6e7c0; border-radius: 6px; padding: 6px 8px; margin-top: 8px; line-height: 1.5; }
+  .areacard { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; background: #fff; }
+  .areacard.busy { opacity: 0.5; pointer-events: none; }
+  .areahead { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 14px; font-weight: bold; color: var(--accent-dark); background: #f2ecdd; }
+  .areahead .globaltoggle { margin-left: auto; font-weight: normal; font-size: 12px; }
+  .areabody { padding: 4px 8px 8px; max-height: 300px; overflow-y: auto; }
+  .area-row { display: flex; align-items: center; gap: 6px; padding: 4px 2px; font-size: 14px; }
+  .area-row.covered { opacity: 0.45; }
+  .area-kids { margin-left: 18px; }
+  .area-node.collapsed > .area-kids { display: none; }
+  .area-node.collapsed > .area-row .area-caret { transform: rotate(-90deg); }
+  .area-caret { cursor: pointer; }
+  .area-nocaret { display: inline-block; width: 10px; }
+  .area-box { margin: 0; width: 15px; height: 15px; flex: none; cursor: pointer; }
+  .area-name { cursor: pointer; }
+  .srch-why { font-size: 12px; color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .srch-whybody { font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-top: 4px; }
+  .srch-whybody ul { margin: 0; padding-left: 18px; }
+  .srch-forms { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .srch-forms b { background: #f6e7c0; font-weight: normal; }
+  .selscope { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 0 0 6px; }
+  .selscope select { width: auto; flex: 1; margin: 0; font-size: 13px; padding: 5px 8px; }
 
   /* small "clear" link, sized like the select-all / none toggle */
   .clearrow { text-align: right; margin-top: 8px; }
@@ -281,20 +385,76 @@
 </style>
 </head>
 <body>
+<div class="langbar" id="langBar">
+  <button type="button" data-hdr="he" class="he-glyph" title="Hebrew only" aria-label="Hebrew only">א</button>
+  <button type="button" data-hdr="en" title="English only" aria-label="English only">A</button>
+  <button type="button" data-hdr="both" class="on" title="Hebrew and English" aria-label="Hebrew and English"><span class="he-glyph">א</span> A</button>
+</div>
 <div class="wrap">
   <h1>Sefaria Links → Kindle / Word / PDF</h1>
-  <p class="sub">Enter a reference and press Enter (or browse to one), choose which commentaries you want, get a Kindle (EPUB), Word, or PDF file.</p>
 
   <div class="card">
-    <label for="ref">Find a reference in Sefaria's library</label>
-    <div class="refwrap">
-      <input type="text" id="ref" placeholder="Type and press Enter… e.g. Shabbat 100a" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
-      <div class="ac" id="ac"></div>
-    </div>
+    <input type="text" id="ref" placeholder="א' זעירא" aria-label="Search Sefaria" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
 
     <div class="modeseg">
-      <button type="button" data-mode="type" class="on">Type</button>
+      <button type="button" data-mode="search" class="on">Search</button>
       <button type="button" data-mode="browse">Browse</button>
+    </div>
+
+    <div class="advcard collapsed" id="advCard">
+      <div class="advhead" id="advHead"><span class="pv-caret">&#9662;</span><span>Advanced search</span></div>
+      <div class="advbody">
+        <div class="areacard" id="areaCard" style="display:none">
+          <div class="areahead"><span>Search only in&hellip;</span><span class="globaltoggle" id="areaClear" style="display:none">all areas</span></div>
+          <div class="areabody" id="areaBody"></div>
+          <div class="advhint">Open a category to go deeper &mdash; the last level is the book itself, so you can search inside just one work.</div>
+        </div>
+        <div class="advrow"><span>Word forms</span>
+          <select id="advForms">
+            <option value="broad" selected>Include related forms</option>
+            <option value="exact">Only as typed</option>
+          </select>
+        </div>
+        <div class="advhint">Related forms also finds the word carrying a prefix or spelled differently &mdash; so &#1506;&#1511;&#1489; also matches &#1493;&#1506;&#1511;&#1489; and &#1489;&#1506;&#1511;&#1489;.</div>
+        <div class="advrow"><span>Words together</span>
+          <select id="advTogether">
+            <option value="apart" selected>Allow other words in between</option>
+            <option value="adjacent">Keep the words next to each other</option>
+          </select>
+        </div>
+        <div class="advhint">Only affects a search of more than one word.</div>
+        <div class="advrow"><span>Sections to load</span>
+          <input type="number" id="advSections" value="300" min="10" max="2000" inputmode="numeric">
+        </div>
+        <div class="advhint">Loading stops once this many sections have been found.</div>
+        <div class="advwarn" id="advWarn" style="display:none">These settings differ from Sefaria's own, so the results won't match sefaria.org. <span class="globaltoggle" id="advReset">use Sefaria's settings</span></div>
+      </div>
+    </div>
+
+    <div class="srch-back" id="srchBack" role="button" tabindex="0">
+      <span>&#8592; Back to search results</span>
+      <span class="srch-backq" id="srchBackQ"></span>
+    </div>
+
+    <div class="navpanel" id="searchPanel" style="display:none">
+      <div class="searchmeta" id="searchMeta"></div>
+      <div id="searchWhy"></div>
+      <div id="searchBody"></div>
+      <div class="selbar" id="selBar" style="display:none">
+        <div class="selcount" id="selCount"></div>
+        <div class="selscope"><span>Text to use</span>
+          <select id="selScope">
+            <option value="section" selected>The whole section</option>
+            <option value="segment">Just the matching line</option>
+          </select>
+        </div>
+        <div class="selfmtseg">
+          <button type="button" data-selfmt="kindle">Kindle (EPUB)</button>
+          <button type="button" data-selfmt="word">Word</button>
+          <button type="button" data-selfmt="pdf">PDF</button>
+        </div>
+        <div class="clearrow"><span class="globaltoggle" id="selClear">clear selection</span></div>
+      </div>
     </div>
 
     <div class="navpanel" id="browsePanel" style="display:none">
@@ -351,6 +511,7 @@
         <span class="globaltoggle" id="aiSaveBackup">save backup in this browser</span>
         <span class="globaltoggle" id="aiRestoreBackup" style="display:none">restore backup</span>
         <span class="globaltoggle" id="aiDeleteBackup" style="display:none">delete backup</span>
+        <span class="globaltoggle" id="aiPublishStore">copy shared-store file</span>
       </div>
     </div>
 
@@ -386,10 +547,11 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 29;   // bump when deploying, shows in footer + built books
-// Rashi/Tosafot/Steinsaltz quick-links in the EPUB: a small marker row after
-// each source segment jumping to the pieces in place, and a back-link under
-// each piece. Plain internal links — survives Kindle's KFX conversion.
+const APP_VERSION = 45;   // bump when deploying, shows in footer + built books
+// Commentator quick-links in the EPUB: a small marker row after each source
+// segment jumping to that section's pieces in place — Rashi, Tosafot and
+// Steinsaltz first, then every other selected commentator — and a back-link
+// under each piece. Plain internal links — survives Kindle's KFX conversion.
 const RTS_POPUPS = true;
 const NAME_API = "https://www.sefaria.org/api/name/";
 const LINKS_API = "https://www.sefaria.org/api/links/";
@@ -400,6 +562,7 @@ let CAT_ORDER = [];  // categories, most links first
 let SEG_TREE = {};   // segment ref -> { category -> [links] }
 let SEG_ORDER = [];  // segment refs, in textual order
 let GROUPMODE = "cat"; // "cat" | "seg"
+let HDRLANG = "both";  // "en" | "he" | "both" — language for headings / refs
 let SRC = null;      // { ref, heRef, he:[segments], text:[segments], segMap? } base source text
                      // segMap (ranged refs only): segment ref -> index into he/text
 
@@ -637,7 +800,86 @@ function stripHtml(html) {
 function commName(l) {
   return (l.collectiveTitle && l.collectiveTitle.en) || l.index_title || l.category || "Other";
 }
+function commNameHe(l) {
+  return (l.collectiveTitle && l.collectiveTitle.he) || "";
+}
 function catName(l) { return l.category || "Other"; }
+
+// ---------------------------------------------------------------------------
+// Heading language (English / Hebrew / Both), applied to category,
+// commentator, reference and section headings in the preview and the built
+// files. Anything with no Hebrew data falls back to English.
+// ---------------------------------------------------------------------------
+const CAT_HE = {
+  "commentary": "פרשנות", "tanakh": "תנ״ך", "mishnah": "משנה", "talmud": "תלמוד",
+  "halakhah": "הלכה", "midrash": "מדרש", "tosefta": "תוספתא", "responsa": "שו״ת",
+  "kabbalah": "קבלה", "chasidut": "חסידות", "musar": "מוסר", "liturgy": "תפילה",
+  "jewish thought": "מחשבת ישראל", "targum": "תרגום", "second temple": "ספרות בית שני"
+};
+function catHe(cat) { return CAT_HE[String(cat).toLowerCase()] || ""; }
+function hdrText(en, he) {
+  if (HDRLANG === "he") return he || en;
+  if (HDRLANG === "both" && he) return en + "  \u2014  " + he;
+  return en;
+}
+// Hebrew name of one commentator group (all its links share collectiveTitle)
+function commHeOf(links) {
+  for (const l of links) { const h = commNameHe(l); if (h) return h; }
+  return "";
+}
+// A per-text reference line in the chosen heading language.
+function refLine(l) {
+  const en = l.sourceRef || l.ref || "";
+  const he = l.sourceHeRef || "";
+  if (HDRLANG === "he") return he || en;
+  if (HDRLANG === "en") return en;
+  return en + (he ? "  \u2014  " + he : "");
+}
+// The same choice, as live page HTML: both names are written out and the body
+// class hides one, so the corner switch takes effect without re-rendering.
+// A reference with only one of the two names always shows it.
+function refLabelHtml(enRef, heRef) {
+  if (!enRef) return heRef ? `<span class="he-glyph">${escapeHtml(heRef)}</span>` : "";
+  if (!heRef) return escapeHtml(enRef);
+  return `<span class="ui-en">${escapeHtml(enRef)}</span>` +
+         `<span class="ui-both">  \u2014  </span>` +
+         `<span class="ui-he">${escapeHtml(heRef)}</span>`;
+}
+// A reference on sefaria.org: spaces become underscores and the section
+// separator becomes a dot, the form the site itself uses
+// ("Zohar, Bereshit 15a" becomes Zohar,_Bereshit.15a).
+function sefariaUrl(ref) {
+  const r = String(ref || "").trim().replace(/\s+/g, "_").replace(/:/g, ".");
+  return "https://www.sefaria.org/" + encodeURI(r);
+}
+// n → Hebrew numeral (gematria) with geresh / gershayim: 5 → ה׳, 15 → ט״ו
+function hebNum(n) {
+  if (!(n > 0)) return String(n);
+  const H = [[400,"ת"],[300,"ש"],[200,"ר"],[100,"ק"],[90,"צ"],[80,"פ"],[70,"ע"],[60,"ס"],
+             [50,"נ"],[40,"מ"],[30,"ל"],[20,"כ"],[10,"י"],[9,"ט"],[8,"ח"],[7,"ז"],[6,"ו"],
+             [5,"ה"],[4,"ד"],[3,"ג"],[2,"ב"],[1,"א"]];
+  let s = "", m = n;
+  while (m > 0) {
+    if (m === 15) { s += "טו"; break; }
+    if (m === 16) { s += "טז"; break; }
+    for (const [v, ch] of H) { if (m >= v) { s += ch; m -= v; break; } }
+  }
+  return s.length === 1 ? s + "\u05F3" : s.slice(0, -1) + "\u05F4" + s.slice(-1);
+}
+// Hebrew ref for one section, composed from the fetch's own heRef where that
+// is unambiguous: the fetched ref itself, or "Base:n" segments of a fetch
+// whose heRef names a whole section (no ":" in it). Ranged fetches (segMap)
+// and anything else return "", and the English ref is used instead.
+function heSegRef(seg) {
+  if (!(SRC && SRC.heRef)) return "";
+  if (seg === SRC.ref) return SRC.heRef;
+  if (!SRC.segMap && SRC.ref && String(seg).indexOf(SRC.ref + ":") === 0
+      && SRC.heRef.indexOf(":") < 0) {
+    const n = segNum(seg);
+    if (n > 0) return SRC.heRef + ":" + hebNum(n);
+  }
+  return "";
+}
 function keyFor(cat, comm) { return cat + "||" + comm; }
 
 // Which segment of the source a link hangs off. Prefer the segment the link
@@ -742,75 +984,17 @@ function catRank(c) {
 }
 
 // ===========================================================================
-// Reference autocomplete (Sefaria's own name API)
+// The search box
 // ===========================================================================
-const acBox = $("ac");
-let acItems = [], acActive = -1, acTimer = null;
-
-function hideAC() { acBox.style.display = "none"; acItems = []; acActive = -1; }
-
-function renderAC(list) {
-  if (!list.length) { hideAC(); return; }
-  acItems = list;
-  acActive = -1;
-  acBox.innerHTML = list.map((s, i) =>
-    `<div class="item" data-i="${i}">${s}</div>`
-  ).join("");
-  acBox.style.display = "block";
-  [...acBox.querySelectorAll(".item")].forEach(el => {
-    el.addEventListener("mousedown", e => {   // mousedown fires before blur
-      e.preventDefault();
-      pickAC(parseInt(el.dataset.i, 10));
-    });
-  });
-}
-// Picking a suggestion that ends in a number / daf is a usable reference —
-// fetch it right away (this is what replaces the old Fetch button). A bare
-// book name means the user is still narrowing down, so keep them typing.
-function pickAC(i) {
-  if (i < 0 || i >= acItems.length) return;
-  const v = acItems[i];
-  hideAC();
-  if (/\d+[ab]?(?::\d+)?$/.test(v.trim())) {
-    $("ref").value = v;
-    fetchLinks();
-  } else {
-    $("ref").value = v + " ";
-    $("ref").focus();
-  }
-}
-async function queryNames(q) {
-  try {
-    const res = await fetch(NAME_API + encodeURIComponent(q) + "?limit=8");
-    if (!res.ok) return;
-    const data = await res.json();
-    const list = Array.isArray(data.completions) ? data.completions.slice(0, 8) : [];
-    renderAC(list);
-  } catch (e) { /* silent: typing still works */ }
-}
-$("ref").addEventListener("input", () => {
-  const q = $("ref").value.trim();
-  clearTimeout(acTimer);
-  if (q.length < 2) { hideAC(); return; }
-  acTimer = setTimeout(() => queryNames(q), 220);
-});
 $("ref").addEventListener("keydown", e => {
-  if (acBox.style.display === "block" && acItems.length) {
-    if (e.key === "ArrowDown") { e.preventDefault(); acActive = (acActive + 1) % acItems.length; }
-    else if (e.key === "ArrowUp") { e.preventDefault(); acActive = (acActive - 1 + acItems.length) % acItems.length; }
-    else if (e.key === "Enter") {
-      if (acActive >= 0) { e.preventDefault(); pickAC(acActive); return; }
-      hideAC(); fetchLinks(); return;
-    }
-    else if (e.key === "Escape") { hideAC(); return; }
-    else return;
-    [...acBox.querySelectorAll(".item")].forEach((el, i) =>
-      el.classList.toggle("active", i === acActive));
-    return;
-  }
-  if (e.key === "Enter") fetchLinks();
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  setMode("search");
+  const box = ($("ref").value || "").trim();
+  const q = normQuery(box);
+  if (SEARCH_RAW.length && (!q || q === SEARCH_Q || (box && box === OPENED_FROM_SEARCH))) reopenSearchResults();
+  else runSearch();
 });
-$("ref").addEventListener("blur", () => setTimeout(hideAC, 150));
 
 // ===========================================================================
 // Fetch links + build the source trees (by category, and by section)
@@ -1013,6 +1197,100 @@ async function fetchRangeData(ref) {
   return { links, src };
 }
 
+// ---------------------------------------------------------------------------
+// Whole-chapter fetches (a perek of a tractate, or any daf range)
+// ---------------------------------------------------------------------------
+// A chapter is a list of pages rather than one addressable section, so it is
+// walked page by page and the segments concatenated. The result is the same
+// { links, src-with-segMap } shape fetchRangeData returns, which is why
+// nothing downstream needs to know a chapter fetch happened.
+//
+// PENDING_PAGES holds Sefaria's own page list for the label showing in the
+// reference box. It is kept rather than consumed, so re-running the same
+// reference walks the same exact pages — including the partial ones at the
+// chapter's ends, which a label like "Berakhot 2a-13a" cannot express.
+let PENDING_PAGES = null;   // { label, refs: [...] }
+
+// "Berakhot 2a-13a" -> every amud from 2a to 13a. The fallback for a daf
+// range typed by hand, with no page list behind it.
+function dafRangeRefs(ref) {
+  const m = String(ref).trim().match(/^(.+?)\s(\d+)([ab])\s*[-\u2013]\s*(\d+)([ab])$/);
+  if (!m) return null;
+  const book = m[1];
+  const from = parseInt(m[2], 10) * 2 + (m[3] === "b" ? 1 : 0);
+  const to = parseInt(m[4], 10) * 2 + (m[5] === "b" ? 1 : 0);
+  if (to < from || (to - from) > 400) return null;
+  const out = [];
+  for (let s = from; s <= to; s++)
+    out.push(book + " " + Math.floor(s / 2) + (s % 2 === 0 ? "a" : "b"));
+  return out;
+}
+
+// The page list for the reference now in the box, or null if it isn't a
+// multi-page reference at all.
+function pagesForRef(ref) {
+  if (PENDING_PAGES && PENDING_PAGES.label === ref) return PENDING_PAGES.refs;
+  PENDING_PAGES = null;
+  return dafRangeRefs(ref);
+}
+
+// One page -> its segment refs, each with its own Hebrew and English text.
+// A partial page ("Berakhot 13a:1-9") keeps its real segment numbers, so a
+// link on 13a:4 files under 13a:4 and not under the page's first line.
+async function expandPageRef(pref) {
+  const t = String(pref).trim();
+  let j = null;
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(t) + "?context=0&commentary=0&pad=0");
+    if (r.ok) { const x = await r.json(); if (!x.error) j = x; }
+  } catch (e) {}
+  const heArr = (j && Array.isArray(j.he)) ? j.he : [];
+  const enArr = (j && Array.isArray(j.text)) ? j.text : [];
+  let n = Math.max(heArr.length, enArr.length);
+  const heRef = (j && j.heRef) ? String(j.heRef).split(":")[0] : "";
+  const m = t.match(/^(.+?):(\d+)\s*[-\u2013]\s*(\d+)$/);
+  if (m && +m[3] >= +m[2]) {
+    const base = m[1], start = +m[2];
+    if (!n) n = +m[3] - start + 1;
+    const out = [];
+    for (let i = 0; i < n; i++)
+      out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
+    return { heRef, segs: out };
+  }
+  const nShape = await shapeCountFor(t);
+  if (nShape && nShape > n) n = nShape;
+  const out = [];
+  for (let i = 0; i < n; i++)
+    out.push({ ref: t + ":" + (i + 1), he: asText(heArr[i]), en: asText(enArr[i]) });
+  return { heRef, segs: out };
+}
+
+// A list of pages -> links + a source object aligned segment by segment.
+async function fetchPagesData(pages, label) {
+  setStatus("Reading " + label + "\u2026");
+  const per = await mapPool(pages, p => expandPageRef(p), 4,
+    (done, total) => setStatus("Reading " + label + "\u2026 " + done + " / " + total + " pages"));
+  const segs = [];
+  per.forEach(p => { if (p && p.segs) segs.push.apply(segs, p.segs); });
+  if (!segs.length) return null;
+  const links = await linksForSegs(segs.map(s => s.ref));
+  const segMap = {};
+  segs.forEach((s, i) => { segMap[s.ref] = i; });
+  const firstHe = (per[0] && per[0].heRef) || "";
+  const lastHe = (per[per.length - 1] && per[per.length - 1].heRef) || "";
+  const heRef = (firstHe && lastHe)
+    ? (firstHe === lastHe ? firstHe : firstHe + "\u2013" + lastHe)
+    : (firstHe || lastHe);
+  return {
+    links,
+    src: {
+      ref: label, heRef: heRef,
+      he: segs.map(s => s.he), text: segs.map(s => s.en),
+      segMap: segMap
+    }
+  };
+}
+
 let FETCHING = false;
 async function fetchLinks() {
   if (FETCHING) return;
@@ -1030,7 +1308,12 @@ async function fetchLinks() {
   try {
     let data;
     let preSrc = null;   // source text prepared by the range walk, if any
-    if (isRangedRef(ref)) {
+    const pages = pagesForRef(ref);
+    if (pages && pages.length) {
+      const pd = await fetchPagesData(pages, ref);
+      if (!pd) throw new Error("no text came back for those pages");
+      data = pd.links; preSrc = pd.src;
+    } else if (isRangedRef(ref)) {
       const rd = await fetchRangeData(ref);
       if (rd) { data = rd.links; preSrc = rd.src; }
       else {
@@ -1126,10 +1409,13 @@ async function fetchLinks() {
     SRC_ON = srcAvailable();
     NOTES = {};
     TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {}; BATCHES = null;
+    const nSaved = await fetchRemoteTrans((SRC && SRC.ref) ? SRC.ref : ref);
     refreshAiUI();
 
     renderTree();
-    setStatus(`Found ${LINKS.length} texts. Choose which to include below.`);
+    setStatus(`Found ${LINKS.length} texts.` +
+      (nSaved ? ` Reusing ${nSaved} shared translation${nSaved === 1 ? "" : "s"}.` : "") +
+      " Choose which to include below.");
   } catch (e) {
     setStatus("Could not fetch: " + e.message + ". Check the reference.", true);
   } finally {
@@ -1397,27 +1683,30 @@ function gatherContent() {
   // piece's back-link lands on its own verse rather than the top of Source.
   const segSrcAnchor = {};
 
-  // Selected Rashi / Tosafot / Steinsaltz links of one section, as direct
-  // jump-marks: { marks: [{ name, target }] } where target is the anchor the
-  // commentator's first piece will carry in this document. Returns null when
-  // the flag is off or nothing selected in this section qualifies.
+  // Every selected commentator of one section, as direct jump-marks:
+  // { marks: [{ name, target }] } where target is the anchor the commentator's
+  // first piece will carry in this document. Rashi, Tosafot and Steinsaltz
+  // lead (commRank 0/1/2); the rest follow in the order they appear further
+  // down the document, since Array.sort is stable and they all rank 3.
+  // Returns null when the flag is off or nothing is selected in this section.
   const rtsFor = (seg) => {
     if (!RTS_POPUPS || !SEG_TREE[seg]) return null;
+    // Only commentary and halakhah links get a quick-link, labelled in Hebrew.
+    const RTS_CATS = ["commentary", "halakhah", "halacha", "halakha"];
     const segLinks = [];
-    for (const c of segCats(seg)) for (const l of segCatLinks(seg, c)) if (SEL.has(l._i)) segLinks.push(l);
+    for (const c of segCats(seg)) for (const l of segCatLinks(seg, c))
+      if (SEL.has(l._i) && RTS_CATS.indexOf(catName(l).toLowerCase()) >= 0) segLinks.push(l);
     const groups = groupByComm(segLinks)
-      .filter(([name]) => commRank(name) <= 2)
       .sort((a, b) => commRank(a[0]) - commRank(b[0]));
     if (!groups.length) return null;
-    const LETTERS = ["\u24C7", "\u24C9", "\u24C8"];   // Ⓡ Ⓣ Ⓢ, indexed by commRank
-    return { marks: groups.map(([name, links]) => ({ name, letter: LETTERS[commRank(name)], target: anchorForLink(links[0]) })) };
+    return { marks: groups.map(([name, links]) => ({ name: commHeOf(links) || name, target: anchorForLink(links[0]) })) };
   };
 
   const emitWholeSource = () => {
     const srcLabel = SRC.heRef || SRC.ref || ref;
     const anchor = nextId();
     toc.push({ level: 1, text: "Source — " + srcLabel, anchor });
-    blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true, pb: true });
+    blocks.push({ type: "h1", text: "Source — " + srcLabel, anchor, first: true });
     // which source slice belongs to which section, for per-verse R/T/S markers
     const segForIdx = {};
     for (const s of SEG_ORDER) {
@@ -1461,9 +1750,9 @@ function gatherContent() {
 
       const anchor = nextId();
       const inc = incipitFor(seg);
-      const h1text = seg + (inc ? " \u2014 " + inc : "");
+      const h1text = hdrText(seg, heSegRef(seg)) + (inc ? " \u2014 " + inc : "");
       toc.push({ level: 1, text: h1text, anchor });
-      blocks.push({ type: "h1", text: h1text, anchor, first: blocks.length === 0, pb: true });
+      blocks.push({ type: "h1", text: h1text, anchor, first: blocks.length === 0 });
 
       // the section's own text first, if the original text is on
       if (wantSrc) {
@@ -1476,30 +1765,31 @@ function gatherContent() {
 
       for (const [cat, arr] of sel) {
         const a2 = nextId();
-        toc.push({ level: 2, text: cat, anchor: a2 });
-        blocks.push({ type: "h2", text: cat, anchor: a2 });
+        const catText = hdrText(cat, catHe(cat));
+        toc.push({ level: 2, text: catText, anchor: a2 });
+        blocks.push({ type: "h2", text: catText, anchor: a2 });
         // one navigable sub-heading per work/commentator (Commentary → Rashi,
         // Talmud → Berakhot 9b). A lone link is labelled by its own reference
         // so a single parallel reads e.g. "Berakhot 9b:2" rather than "Berakhot".
         for (const [comm, links] of groupByComm(arr)) {
           const single = links.length === 1;
-          const h3text = single ? (links[0].sourceRef || links[0].ref || comm) : comm;
+          const commText = hdrText(comm, commHeOf(links));
+          const h3text = single ? (refLine(links[0]) || commText) : commText;
           // a lone piece's h3 IS the piece heading — give it the piece's own
           // anchor so the marker row above lands exactly here
           const a3 = single ? anchorForLink(links[0]) : nextId();
-          const back = { anchor: anchor, text: seg };   // this section's heading
           toc.push({ level: 3, text: h3text, anchor: a3 });
-          blocks.push({ type: "h3", text: h3text, anchor: a3, pb: true, back });
+          blocks.push({ type: "h3", text: h3text, anchor: a3 });
           for (const l of links) {
             if (!single) {   // the h3 already names a lone link, so skip its ref line
-              const enRef = l.sourceRef || l.ref || "";
-              const heRef = l.sourceHeRef || "";
-              blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : ""), anchor: anchorForLink(l), back });
+              blocks.push({ type: "ref", text: refLine(l), anchor: anchorForLink(l) });
             }
             if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
             if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
             emitAiBlock(blocks, canonicalRef(l));
             emitNote("L" + l._i);   // this text's own note, right beneath it
+            if (wantSrc)
+              blocks.push({ type: "backlink", text: seg, anchor: anchor });
             written++;
           }
         }
@@ -1523,24 +1813,25 @@ function gatherContent() {
     if (!groups.length) continue;
 
     const catAnchor = nextId();
-    toc.push({ level: 1, text: cat, anchor: catAnchor });
-    blocks.push({ type: "h1", text: cat, anchor: catAnchor, pb: true });
+    const catText = hdrText(cat, catHe(cat));
+    toc.push({ level: 1, text: catText, anchor: catAnchor });
+    blocks.push({ type: "h1", text: catText, anchor: catAnchor });
 
     for (const [comm, links] of groups) {
       const commAnchor = nextId();
-      toc.push({ level: 2, text: comm, anchor: commAnchor });
-      blocks.push({ type: "h2", text: comm, anchor: commAnchor, pb: true });
+      const commText = hdrText(comm, commHeOf(links));
+      toc.push({ level: 2, text: commText, anchor: commAnchor });
+      blocks.push({ type: "h2", text: commText, anchor: commAnchor });
 
       for (const l of links) {
-        const enRef = l.sourceRef || l.ref || "";
-        const heRef = l.sourceHeRef || "";
-        const bseg = segRefOf(l);
-        const back = (haveSrc && segSrcAnchor[bseg]) ? { anchor: segSrcAnchor[bseg], text: bseg } : null;
-        blocks.push({ type: "ref", text: enRef + (heRef ? "  —  " + heRef : ""), anchor: anchorForLink(l), back });
+        blocks.push({ type: "ref", text: refLine(l), anchor: anchorForLink(l) });
         if (incHe) { const he = stripHtml(asText(l.he)); if (he) blocks.push({ type: "he", text: he }); }
         if (incEn) { const en = stripHtml(asText(l.text)); if (en) blocks.push({ type: "en", text: en }); }
         emitAiBlock(blocks, canonicalRef(l));
         emitNote("L" + l._i);   // this text's own note, right beneath it
+        const bseg = segRefOf(l);
+        if (haveSrc && segSrcAnchor[bseg])
+          blocks.push({ type: "backlink", text: bseg, anchor: segSrcAnchor[bseg] });
         written++;
       }
     }
@@ -1559,6 +1850,41 @@ function gatherContent() {
 const AI_BATCH_CHAR_LIMIT = 5000;
 const AI_BACKUP_KEY = "sefariaLinksTransBackup";
 const BATCH_SIZE_KEY = "sefariaLinksBatchSize";
+const TRANS_SITE_BASE = "translations/";   // shared-store folder, same origin as the app
+
+// ---------------------------------------------------------------------------
+// Shared translation store. Translations live as static JSON files in the
+// app's own repo — one file per fetched reference, entries keyed by canonical
+// ref — served by GitHub Pages right beside the app (same origin, no CORS,
+// zero hosting cost). On every fetch the file for that reference is queried;
+// anything found goes into TRANS and is never batched to the AI again.
+// Publishing is manual for now: "copy shared-store file" builds the merged
+// JSON and its path, to be pasted into the repo via the web editor.
+// ---------------------------------------------------------------------------
+let REMOTE_TRANS = {};   // what the store already holds for the current fetch
+let REMOTE_REF = "";     // the reference the store file was fetched for
+
+function transStorePath(ref) { return TRANS_SITE_BASE + fnameFor(ref) + ".json"; }
+
+async function fetchRemoteTrans(storeRef) {
+  REMOTE_TRANS = {};
+  REMOTE_REF = storeRef;
+  try {
+    const r = await fetch(transStorePath(storeRef), { cache: "no-cache" });
+    if (!r.ok) return 0;   // 404 — nothing published for this reference yet
+    const j = await r.json();
+    if (!j || typeof j !== "object") return 0;
+    const cur = new Set(LINKS.map(l => canonicalRef(l)));
+    let n = 0;
+    for (const key of Object.keys(j)) {
+      const t = j[key];
+      if (!t || typeof t.text !== "string" || !t.text.trim()) continue;
+      REMOTE_TRANS[key] = { text: t.text, lang: t.lang || "" };
+      if (cur.has(key) && !TRANS[key]) { TRANS[key] = { text: t.text, lang: t.lang || "" }; n++; }
+    }
+    return n;
+  } catch (e) { return 0; }   // offline / file:// preview — carry on without the store
+}
 
 // Eligible = ticked (SEL), has Hebrew, not yet translated — in the same
 // order gatherContent would emit them for the current GROUPMODE, so a copy
@@ -1728,7 +2054,17 @@ function transEqualsBackup(backup) {
 }
 function hasUnsavedTranslations() {
   if (!Object.keys(TRANS).length) return false;
-  return !transEqualsBackup(loadAiBackup());
+  // safe = already in the shared store, or in the manual browser backup
+  const backup = loadAiBackup();
+  const items = (backup && backup.items) || {};
+  for (const k of Object.keys(TRANS)) {
+    const t = TRANS[k];
+    const r = REMOTE_TRANS[k];
+    if (r && r.text === t.text && r.lang === t.lang) continue;
+    const b = items[k];
+    if (!b || b.text !== t.text || b.lang !== t.lang) return true;
+  }
+  return false;
 }
 // Guards clearBtn / fetchLinks: warns before discarding un-backed-up
 // translations. Returns true if it's safe to proceed.
@@ -2013,6 +2349,33 @@ $("aiDeleteBackup").onclick = () => {
   updateBackupLinkVisibility();
 };
 
+$("aiPublishStore").onclick = async () => {
+  if (!REMOTE_REF) { aiReport("Fetch a reference first — each store file belongs to one reference.", true); return; }
+  // union of what the store already holds and this session's translations,
+  // so replacing the file in the repo never loses existing entries
+  const merged = {};
+  for (const k of Object.keys(REMOTE_TRANS)) merged[k] = REMOTE_TRANS[k];
+  let changed = 0;
+  for (const k of Object.keys(TRANS)) {
+    const t = TRANS[k];
+    if (!t || !t.text || !t.text.trim()) continue;
+    if (!merged[k] || merged[k].text !== t.text || merged[k].lang !== t.lang) changed++;
+    merged[k] = { text: t.text, lang: t.lang || "" };
+  }
+  const n = Object.keys(merged).length;
+  if (!n) { aiReport("No translations to publish yet.", true); return; }
+  const ok = await copyToClipboard(JSON.stringify(merged, null, 1));
+  if (ok) {
+    aiReport("Copied the store file: " + n + " translation" + (n === 1 ? "" : "s") +
+      (changed ? " (" + changed + " new or changed)" : "") +
+      ". In the repo, create or replace the file\n  " + transStorePath(REMOTE_REF) +
+      "\nand paste this as its whole content. Once Pages redeploys (~1 minute)," +
+      " anyone fetching " + REMOTE_REF + " reuses these translations automatically.");
+  } else {
+    aiReport("Couldn't copy — check clipboard permissions.", true);
+  }
+};
+
 // --- shared output helpers -------------------------------------------------
 function download(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -2229,8 +2592,6 @@ function epubBody(content) {
   const node = {};
   (function walk(ns) { ns.forEach(n => { node[n.anchor] = n; if (n.kids) walk(n.kids); }); })(tree);
   const menu = kids => kids.map(k => `<a href="#${k.anchor}">${xmlEsc(k.text)}</a>`).join(" · ");
-  // small back-to-source link appended to a piece's heading / ref line
-  const bkHtml = b => b.back ? ` <a class="bk" href="#${b.back.anchor}">\u25c4 ${xmlEsc(b.back.text)}</a>` : "";
 
   let s = `<h1 class="doctitle">${xmlEsc(content.title)}</h1>\n`;
   if (tree.length) {
@@ -2271,25 +2632,28 @@ function epubBody(content) {
     if (b.type === "h1") {
       curH1 = b.anchor;
       if (content.haveSrc && srcAnchor === null && b.text.indexOf("Source \u2014 ") === 0) srcAnchor = b.anchor;
-      s += `<h1 id="${b.anchor}"${b.pb ? ' class="pb"' : ""}>${xmlEsc(b.text)}</h1>\n`;
+      s += `<h1 id="${b.anchor}">${xmlEsc(b.text)}</h1>\n`;
       const kids = (node[b.anchor] && node[b.anchor].kids) || [];
       s += `<p class="secnav"><a href="#bookcontents">⌂ contents</a>${kids.length ? " · " + menu(kids) : ""}</p>\n`;
     }
     else if (b.type === "h2") {
-      s += `<h2 id="${b.anchor}"${b.pb ? ' class="pb"' : ""}>${xmlEsc(b.text)}</h2>\n`;
+      s += `<h2 id="${b.anchor}">${xmlEsc(b.text)}</h2>\n`;
       const kids = (node[b.anchor] && node[b.anchor].kids) || [];
       const up = curH1 ? `<a href="#${curH1}">↑ section</a>` : `<a href="#bookcontents">⌂ contents</a>`;
       const srcLink = (srcAnchor && b.anchor !== srcAnchor) ? ` \u00b7 <a href="#${srcAnchor}">\u25c4 source</a>` : "";
       if (kids.length || curH1 || srcLink) s += `<p class="secnav">${up}${kids.length ? " · " + menu(kids) : ""}${srcLink}</p>\n`;
     }
-    else if (b.type === "h3") s += `<h3 id="${b.anchor}"${b.pb ? ' class="pb"' : ""}>${xmlEsc(b.text)}${bkHtml(b)}</h3>\n`;
-    else if (b.type === "ref") s += `<p class="ref"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}${bkHtml(b)}</p>\n`;
+    else if (b.type === "h3") s += `<h3 id="${b.anchor}">${xmlEsc(b.text)}</h3>\n`;
+    else if (b.type === "ref") s += `<p class="ref"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "note") s += `<p class="usernote">${xmlEsc(b.text)}</p>\n<p class="usernote-date">${xmlEsc(b.date || "")}</p>\n`;
     else if (b.type === "ai") s += `<p class="ai">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "he") s += `<p class="he"${b.anchor ? ` id="${b.anchor}"` : ""} dir="rtl" lang="he" xml:lang="he">${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "en") s += `<p class="en"${b.anchor ? ` id="${b.anchor}"` : ""}>${xmlEsc(b.text)}</p>\n`;
     else if (b.type === "rtsrow") {
-      s += `<p class="rtsrow">` + b.marks.map(m => `<a class="rts" href="#${m.target}" title="${xmlEsc(m.name)}">${xmlEsc(m.letter)}</a>`).join(" ") + `</p>\n`;
+      s += `<p class="rtsrow" dir="rtl">` + b.marks.map(m => `<a class="rts" href="#${m.target}">${xmlEsc(m.name)}</a>`).join(" \u00b7 ") + `</p>\n`;
+    }
+    else if (b.type === "backlink") {
+      s += `<p class="backlink"><a href="#${b.anchor}">\u25c4 ${xmlEsc(b.text)}</a></p>\n`;
     }
   }
   return s;
@@ -2385,7 +2749,8 @@ h1.doctitle { text-align: center; font-size: 1.6em; }
 p.ref { font-size: .8em; color: #6f675a; font-weight: bold; margin: .6em 0 .1em; }
 p.usernote { font-style: italic; color: #6b5329; margin: .4em 0 .2em; }
 p.usernote-date { font-style: italic; color: #6b5329; font-size: .8em; margin: 0 0 .6em; }
-p.ai { font-style: italic; line-height: 1.6; margin: 0 0 .6em; }
+p.ai-label { font-style: italic; font-size: .85em; color: #8a6d3b; margin: .5em 0 .1em; }
+p.ai { line-height: 1.6; margin: 0 0 .6em; }
 p.he { direction: rtl; text-align: right; font-size: 1.15em; line-height: 1.9; }
 p.en { line-height: 1.6; }
 div.contents ol { list-style: none; padding-left: 0; }
@@ -2401,10 +2766,10 @@ ol.ctoc-works a { color: #6b5329; }
 p.secnav { font-size: .8em; color: #6f675a; margin: 0 0 .6em; }
 p.secnav a { color: #6b5329; text-decoration: none; }
 nav ol { list-style: none; }
-p.rtsrow { font-size: .95em; margin: .1em 0 .7em; }
-a.rts { color: #6b5329; text-decoration: none; margin-right: .35em; }
-a.bk { font-size: .72em; font-weight: normal; color: #6b5329; text-decoration: none; white-space: nowrap; }
-h1.pb, h2.pb, h3.pb { page-break-before: always; }
+p.rtsrow { font-size: .7em; color: #6f675a; margin: .1em 0 .7em; }
+a.rts { color: #6b5329; text-decoration: none; }
+p.backlink { font-size: .7em; margin: .2em 0 .8em; }
+p.backlink a { color: #6b5329; text-decoration: none; }
 `;
 
   const textXhtml =
@@ -2481,7 +2846,8 @@ function buildPdf(content) {
   p.ref { font-size: 11px; color: #6f675a; font-weight: bold; margin: 10px 0 2px; }
   p.usernote { font-style: italic; color: #6b5329; font-size: 13px; margin: 4px 0 2px; }
   p.usernote-date { font-style: italic; color: #6b5329; font-size: 11px; margin: 0 0 8px; }
-  p.ai { font-style: italic; font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
+  p.ai-label { font-style: italic; font-size: 12px; color: #8a6d3b; margin: 6px 0 1px; }
+  p.ai { font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
   p.he { direction: rtl; text-align: right; font-family: 'Frank Ruhl Libre','David',serif; font-size: 18px; line-height: 1.9; margin: 2px 0 6px; }
   p.en { font-size: 14px; line-height: 1.6; margin: 2px 0 8px; }
   .contents-h { font-size: 18px; margin: 18px 0 8px; }
@@ -2519,7 +2885,7 @@ ${bodyHtml}
 let OUTFMT = "kindle";
 function setFmt(f) {
   OUTFMT = f;
-  document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
+  document.querySelectorAll(".fmtseg:not(.grpseg):not(.hdrseg) button").forEach(b => b.classList.toggle("on", b.dataset.fmt === f));
 }
 
 // Group-by selector: re-renders the tree in the chosen grouping. The selection
@@ -2536,11 +2902,28 @@ function setGrp(g) {
   }
 }
 
+// Heading-language selector: English / Hebrew / Both. Applies to category,
+// commentator, reference and (where Hebrew is derivable) section headings in
+// the preview and the built files; the source-picker tree stays English.
+// An open preview is re-rendered so the change shows immediately.
+const HDRLANG_KEY = "sefariaLinksHdrLang";
+function setHdr(h) {
+  HDRLANG = (h === "he" || h === "en") ? h : "both";
+  document.body.classList.remove("hdrlang-he", "hdrlang-en", "hdrlang-both");
+  document.body.classList.add("hdrlang-" + HDRLANG);
+  document.querySelectorAll("#langBar button").forEach(b => b.classList.toggle("on", b.dataset.hdr === HDRLANG));
+  try { localStorage.setItem(HDRLANG_KEY, HDRLANG); } catch (e) {}
+  // the preview and the Browse list build their labels in JavaScript, so they
+  // are re-rendered; search results and their reference links carry both
+  // names already and switch on the body class alone
+  if ($("previewCard").style.display !== "none") renderPreview();
+}
+
 async function buildOutput() {
   const content = gatherContent();
   if (content.error) { setStatus(content.error, true); return; }
 
-  const fmtBtns = [...document.querySelectorAll(".fmtseg:not(.grpseg) button")];
+  const fmtBtns = [...document.querySelectorAll(".fmtseg:not(.grpseg):not(.hdrseg) button")];
   fmtBtns.forEach(b => b.disabled = true);
   hideShareBar();
   try {
@@ -2581,7 +2964,7 @@ const COPIED_ICON =
   ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<polyline points="20 6 9 17 4 12"/></svg>';
 
-function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef) {
+function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef, labelHtml, openRef) {
   const idx = PV_SHARE_TEXTS.length;
   PV_SHARE_TEXTS.push({ label, he, en });
   let body = "";
@@ -2592,7 +2975,8 @@ function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef) {
   const collapsed = startCollapsed && !(noteKey && noteOf(noteKey)) && !(transRef && TRANS[transRef]);
   return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${collapsed ? " collapsed" : ""}">
     <div class="pv-ref">
-      <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${escapeHtml(label)}</span>
+      <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${labelHtml || escapeHtml(label)}</span>
+      ${openRef ? `<a class="pv-open" href="${sefariaUrl(openRef)}" target="_blank" rel="noopener" title="Open on Sefaria" aria-label="Open on Sefaria">↗</a>` : ""}
       ${noteKey ? pvNoteBtnHtml(noteKey) : ""}
       <button type="button" class="pv-copy" data-idx="${idx}" title="Copy this text" aria-label="Copy this text">${COPY_ICON}</button>
     </div>
@@ -2623,7 +3007,7 @@ function wholeSrcPvItem(ref) {
     const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
     const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
   }
-  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__");
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__", null, null, SRC.ref || ref);
 }
 
 // Copy a single preview item's text to the clipboard — respects the
@@ -2678,7 +3062,7 @@ function renderPreview() {
       sections++;
       let secBody = "", secN = 0;
       if (wantSrc) {
-        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg);
+        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg, null, null, seg);
         secN++;
       }
       for (const [cat, arr] of sel) {
@@ -2686,18 +3070,15 @@ function renderPreview() {
         for (const [comm, links] of groupByComm(arr)) {
           let items = "";
           for (const l of links) {
-            const enRef = l.sourceRef || l.ref || "";
-            const heRef = l.sourceHeRef || "";
-            const label = enRef + (heRef ? "  \u2014  " + heRef : "");
-            items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i, canonicalRef(l));
+            items += pvItem(refLine(l), stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, true, "L" + l._i, canonicalRef(l), null, canonicalRef(l));
             count++;
           }
-          catBody += pvGrp(comm, links.length, items, "sub", true);
+          catBody += pvGrp(hdrText(comm, commHeOf(links)), links.length, items, "sub", true);
         }
-        secBody += pvGrp(cat, arr.length, catBody, "", true);
+        secBody += pvGrp(hdrText(cat, catHe(cat)), arr.length, catBody, "", true);
         secN += arr.length;
       }
-      const incTitle = seg + (incipitFor(seg) ? " \u2014 " + incipitFor(seg) : "");
+      const incTitle = hdrText(seg, heSegRef(seg)) + (incipitFor(seg) ? " \u2014 " + incipitFor(seg) : "");
       html += pvGrp(incTitle, secN, secBody, "top", false);
     }
   } else {
@@ -2719,16 +3100,13 @@ function renderPreview() {
       for (const [comm, links] of groups) {
         let items = "";
         for (const l of links) {
-          const enRef = l.sourceRef || l.ref || "";
-          const heRef = l.sourceHeRef || "";
-          const label = enRef + (heRef ? "  \u2014  " + heRef : "");
-          items += pvItem(label, stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i, canonicalRef(l));
+          items += pvItem(refLine(l), stripHtml(asText(l.he)), stripHtml(asText(l.text)), false, false, "L" + l._i, canonicalRef(l), null, canonicalRef(l));
           count++;
         }
-        catBody += pvGrp(comm, links.length, items, "sub", false);
+        catBody += pvGrp(hdrText(comm, commHeOf(links)), links.length, items, "sub", false);
         catN += links.length;
       }
-      html += pvGrp(cat, catN, catBody, "top", false);
+      html += pvGrp(hdrText(cat, catHe(cat)), catN, catBody, "top", false);
     }
   }
 
@@ -2812,12 +3190,666 @@ $("pvCollapseAll").onclick = () =>
   [...document.querySelectorAll("#preview .pv-item, #preview .pv-grp")].forEach(it => it.classList.add("collapsed"));
 
 // ===========================================================================
+// Reference builder — Search (Sefaria's own search API)
+// POSTs to /api/search-wrapper, the endpoint behind the search box on the
+// Sefaria site, and groups the results the way Sefaria groups them: every hit
+// carries a "path", which IS that book's place in Sefaria's table of contents
+// ("Talmud/Bavli/Seder Moed/Shabbat"). The first element of the path is the
+// top-level category and the rest identifies the book, so results are drawn
+// as category → book → hits. Tapping a hit hands its ref to commitRef, just
+// as Browse does, and the rest of the app carries on unchanged.
+// ===========================================================================
+const SEARCH_API = "https://www.sefaria.org/api/search-wrapper/es8";
+const SEARCH_PAGE = 100;                      // hits fetched per request
+const SEARCH_PROJ = ["ref", "heRef", "categories", "path", "version", "lang", "exact"];
+let SEARCH_Q = "";          // the query the current results belong to
+let SEARCH_RAW = [];        // normalised hits, in the order Sefaria ranked them
+let SEARCH_TOTAL = 0;       // total matching segments reported by the API
+let SEARCH_REL = "eq";      // "gte" when that total is a floor (ES caps at 10000)
+let SEARCHING = false;
+
+// Aggregations, taken from the UNFILTERED run only. Rebuilding the tree from a
+// filtered response would delete every area the reader hadn't picked and leave
+// them with no way back, so a filtered search deliberately asks for no
+// aggregations and leaves these alone.
+let SEARCH_AGG_PATH = [];   // [{key: "Midrash/Aggadah/...", doc_count}]
+let SEARCH_AGG_REF = [];    // [{key: "Berakhot 2a:5", doc_count}] — one per passage
+let SEARCH_AGG_TRUNC = false;  // Elasticsearch stops bucketing at 10000 distinct keys
+let SEARCH_PASS_TOTAL = 0;  // distinct passages across the whole match set
+let SEARCH_SECT_TOTAL = 0;  // those passages rolled up to sections
+let SEARCH_FILTERS = [];    // chosen category paths; a prefix match, so a parent covers its children
+let SEARCH_FORMS = [];      // the word forms Sefaria actually matched, for display
+
+function searchMsg(msg, isErr) {
+  const el = $("searchMeta");
+  el.textContent = msg || "";
+  el.className = "searchmeta" + (isErr ? " err" : "");
+}
+
+// A phone does not send what was typed. iOS smart punctuation turns a typed
+// apostrophe into a curly one, and Hebrew geresh (U+05F3) and gershayim
+// (U+05F4) are separate characters again — so "א' זעירא" typed on a phone is
+// a different string from the same thing typed on a desktop keyboard, and
+// Sefaria's index matches much less of it. Fold every variant back to the
+// plain ASCII forms the app's own placeholder uses, and collapse runs of
+// whitespace while we are here.
+function normQuery(s) {
+  return String(s || "")
+    .replace(/[\u2018\u2019\u201A\u201B\u02BC\u02B9\u05F3\u00B4\u0060]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u02BA\u05F4]/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// The total is advisory only — paging no longer depends on it (see runSearch),
+// it just feeds the message. Read it from whichever shape the response uses
+// and leave the previous value alone if none of them are present.
+function readSearchTotal(j) {
+  const tot = j && j.hits && j.hits.total;
+  if (tot && typeof tot === "object") {
+    SEARCH_TOTAL = tot.value || 0;
+    SEARCH_REL = tot.relation || "eq";
+  } else if (typeof tot === "number") {
+    SEARCH_TOTAL = tot; SEARCH_REL = "eq";
+  } else if (j && typeof j.total === "number") {
+    SEARCH_TOTAL = j.total; SEARCH_REL = "eq";
+  }
+}
+
+// The aggregation buckets. `path` gives one bucket per full category path, so
+// the drill-down tree is built by splitting on "/" — no further requests as the
+// reader expands it. `ref` gives one bucket per passage with its edition count,
+// which is where the honest passage and section totals come from: they are
+// known before a single hit is fetched.
+function readSearchAggs(j) {
+  const a = j && j.aggregations;
+  if (!a) return;
+  const p = a["path"];
+  const r = a["ref.keyword"] || a["ref"];
+  if (p && Array.isArray(p.buckets)) SEARCH_AGG_PATH = p.buckets.slice();
+  if (r && Array.isArray(r.buckets)) {
+    SEARCH_AGG_REF = r.buckets.slice();
+    SEARCH_AGG_TRUNC = !!r.sum_other_doc_count;
+    SEARCH_PASS_TOTAL = SEARCH_AGG_REF.length;
+    const seen = {};
+    let n = 0;
+    for (const b of SEARCH_AGG_REF) {
+      const s = sectionRefOf(b.key);
+      if (s && !(s in seen)) { seen[s] = 1; n++; }
+    }
+    SEARCH_SECT_TOTAL = n;
+  }
+}
+
+// Advanced search settings. The defaults are Sefaria's own, so an untouched app
+// returns what the website returns.
+function searchFieldSetting() {
+  const el = $("advForms");
+  return (el && el.value === "exact") ? "exact" : "naive_lemmatizer";
+}
+function searchSlopSetting() {
+  const el = $("advTogether");
+  return (el && el.value === "adjacent") ? 0 : 10;
+}
+function sectionsWanted() {
+  const v = parseInt(($("advSections") || {}).value, 10);
+  return (isFinite(v) && v > 0) ? Math.min(v, 2000) : 300;
+}
+function isSefariaDefaults() {
+  return searchFieldSetting() === "naive_lemmatizer" && searchSlopSetting() === 10;
+}
+function refreshAdvWarn() {
+  const w = $("advWarn");
+  if (w) w.style.display = isSefariaDefaults() ? "none" : "block";
+}
+
+// The distinct word forms Sefaria matched, pulled out of its own <b> tags. A
+// reader who sees עקב, ועקב and בעקב listed understands what "related forms"
+// means far faster than any wording could explain it.
+function collectForms(hl) {
+  if (!hl) return;
+  for (const k of Object.keys(hl)) {
+    const arr = hl[k];
+    if (!Array.isArray(arr)) continue;
+    for (const frag of arr) {
+      const re = /<b>([^<]{1,40})<\/b>/g;
+      let m;
+      while ((m = re.exec(String(frag)))) {
+        const w = m[1].trim();
+        if (w && SEARCH_FORMS.indexOf(w) < 0 && SEARCH_FORMS.length < 24) SEARCH_FORMS.push(w);
+      }
+    }
+  }
+}
+
+// "Midrash/Aggadah/Midrash Sekhel Tov" and its siblings become a nested tree,
+// each node keeping the full path that is sent as the filter.
+function buildAreaTree(buckets) {
+  const root = { name: "", path: "", kids: [], idx: {} };
+  for (const b of buckets) {
+    const bits = String((b && b.key) || "").split("/").filter(Boolean);
+    let node = root, prefix = "";
+    for (const bit of bits) {
+      prefix = prefix ? prefix + "/" + bit : bit;
+      if (!(prefix in node.idx)) {
+        node.idx[prefix] = node.kids.length;
+        node.kids.push({ name: bit, path: prefix, kids: [], idx: {} });
+      }
+      node = node.kids[node.idx[prefix]];
+    }
+  }
+  return root;
+}
+
+// A node already covered by a ticked ancestor is cleared and disabled: the
+// filter is a prefix match, so ticking both would say nothing extra.
+function areaCoveredBy(path) {
+  for (const f of SEARCH_FILTERS) if (path !== f && (path + "/").indexOf(f + "/") === 0) return true;
+  return false;
+}
+
+function areaNodeHtml(node) {
+  const covered = areaCoveredBy(node.path);
+  const on = SEARCH_FILTERS.indexOf(node.path) >= 0;
+  const kids = node.kids.slice().sort((a, b) => a.name.localeCompare(b.name));
+  const kidHtml = kids.length ? '<div class="area-kids">' + kids.map(areaNodeHtml).join("") + "</div>" : "";
+  return '<div class="area-node' + (kids.length ? " collapsed" : "") + '">' +
+    '<div class="area-row' + (covered ? " covered" : "") + '">' +
+    '<input type="checkbox" class="area-box" data-path="' + encodeURIComponent(node.path) + '"' +
+      (on ? " checked" : "") + (covered ? " disabled" : "") + ">" +
+    (kids.length ? '<span class="pv-caret area-caret">&#9662;</span>' : '<span class="area-nocaret"></span>') +
+    '<span class="area-name">' + escapeHtml(node.name) + "</span>" +
+    "</div>" + kidHtml + "</div>";
+}
+
+// No counts on the nodes: the only per-path number the API gives is an edition
+// count, which reads higher than the sections the reader will actually get.
+function renderAreaTree() {
+  const card = $("areaCard"), body = $("areaBody");
+  if (!card || !body) return;
+  if (!SEARCH_AGG_PATH.length) { card.style.display = "none"; body.innerHTML = ""; return; }
+  const root = buildAreaTree(SEARCH_AGG_PATH);
+  const tops = root.kids.slice().sort((a, b) => a.name.localeCompare(b.name));
+  card.style.display = "block";
+  body.innerHTML = tops.map(areaNodeHtml).join("");
+  const clear = $("areaClear");
+  if (clear) clear.style.display = SEARCH_FILTERS.length ? "inline" : "none";
+}
+
+function setAreaBusy(on) {
+  const card = $("areaCard");
+  if (card) card.classList.toggle("busy", !!on);
+}
+
+// Two counts and the road between them. Every step is a real reduction, so the
+// reader can see why the number they are looking at is smaller than the one
+// Sefaria quotes.
+function renderSearchMeta() {
+  const hits = mergedHits();
+  const shown = hits.length;
+  const sects = sectionCountOf(hits);
+  searchMsg(sects + " section" + (sects === 1 ? "" : "s") + " \u00b7 " +
+    shown + " passage" + (shown === 1 ? "" : "s") +
+    " \u00b7 tap a heading to open it, tick what you want");
+  const steps = [];
+  if (SEARCH_SECT_TOTAL) {
+    steps.push("Across the library this search matches " + (SEARCH_AGG_TRUNC ? "at least " : "") +
+      SEARCH_SECT_TOTAL + " sections, holding " + SEARCH_PASS_TOTAL + " passages.");
+  } else if (SEARCH_TOTAL) {
+    steps.push("Sefaria reported " + (SEARCH_REL === "gte" ? "at least " : "") +
+      SEARCH_TOTAL + " matches, counted once per edition.");
+  }
+  if (SEARCH_FILTERS.length) steps.push("Narrowed to " + SEARCH_FILTERS.join(" and ") + ".");
+  steps.push("Loaded the first " + SEARCH_RAW.length + " matches, in Sefaria's own order of relevance.");
+  if (SEARCH_RAW.length !== shown) {
+    steps.push("A passage that matches in several editions is listed once here, so those " +
+      SEARCH_RAW.length + " matches are " + shown + " passages.");
+  }
+  if (shown !== sects) {
+    steps.push("Those passages sit in " + sects + " sections \u2014 several results often share one section.");
+  }
+  if (!isSefariaDefaults()) {
+    steps.push("Word matching has been changed under Advanced search, so these results differ from sefaria.org.");
+  }
+  let html = '<span class="srch-why" id="srchWhyToggle">how this was counted</span>' +
+    '<div class="srch-whybody" id="srchWhyBody" style="display:none"><ul>' +
+    steps.map(s => "<li>" + escapeHtml(s) + "</li>").join("") + "</ul></div>";
+  if (SEARCH_FORMS.length) {
+    html += '<div class="srch-forms">matching: ' +
+      SEARCH_FORMS.slice(0, 12).map(f => "<b>" + escapeHtml(f) + "</b>").join(", ") + "</div>";
+  }
+  const why = $("searchWhy");
+  if (why) why.innerHTML = html;
+}
+
+// One POST. Content-Type text/plain is deliberate: it keeps the request in the
+// CORS "simple request" class, so the browser sends it straight through with
+// no preflight — Sefaria reads the raw request body, so the content type makes
+// no difference to how the query is parsed. If that ever stops working, the
+// documented application/json header is tried next (which needs Sefaria to
+// answer the preflight OPTIONS).
+async function searchFetch(from, fullSource, withAggs) {
+  const body = {
+    query: SEARCH_Q,
+    type: "text",
+    field: searchFieldSetting(),
+    source_proj: fullSource ? true : SEARCH_PROJ,
+    size: SEARCH_PAGE,
+    start: from,
+    slop: searchSlopSetting(),
+    sort_method: "score",
+    sort_fields: ["pagesheetrank"],
+    sort_score_missing: 0.04
+  };
+  // Parallel arrays, and the names matter: a key this endpoint doesn't
+  // recognise is dropped in silence and the search comes back unfiltered.
+  if (SEARCH_FILTERS.length) {
+    body.filters = SEARCH_FILTERS.slice();
+    body.filter_fields = SEARCH_FILTERS.map(() => "path");
+  }
+  if (withAggs) body.aggs = ["path", "ref.keyword"];
+  const payload = JSON.stringify(body);
+  const tries = ["text/plain;charset=UTF-8", "application/json"];
+  let lastErr = null;
+  for (const ct of tries) {
+    try {
+      const r = await fetch(SEARCH_API, { method: "POST", headers: { "Content-Type": ct }, body: payload });
+      if (!r.ok) { lastErr = new Error("HTTP " + r.status); continue; }
+      const j = await r.json();
+      if (j && j.error) { lastErr = new Error(String(j.error)); continue; }
+      return j;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("no response");
+}
+
+function searchHitsOf(j) {
+  return (j && j.hits && Array.isArray(j.hits.hits)) ? j.hits.hits : [];
+}
+
+// Sefaria wraps the matched words in <b>…</b> inside its highlight fragments.
+// Escape the whole fragment, then put just those two tags back, so the
+// emphasis survives and nothing else in the text can act as HTML.
+function snipHtml(s) {
+  return escapeHtml(String(s || "")).replace(/&lt;b&gt;/g, "<b>").replace(/&lt;\/b&gt;/g, "</b>");
+}
+
+function normHit(h) {
+  const s = (h && h._source) || {};
+  let snip = "";
+  const hl = h && h.highlight;
+  collectForms(hl);
+  if (hl) {
+    for (const k of Object.keys(hl)) {
+      if (Array.isArray(hl[k]) && hl[k].length) { snip = hl[k].join(" … "); break; }
+    }
+  }
+  if (!snip) {
+    const plain = asText(s.exact || s.naive_lemmatizer || "");
+    snip = plain.length > 220 ? plain.slice(0, 220) + "…" : plain;
+  }
+  return {
+    ref: s.ref || "",
+    heRef: s.heRef || "",
+    path: s.path || (Array.isArray(s.categories) ? s.categories.join("/") : ""),
+    snip: snip
+  };
+}
+
+// One row per reference. A segment that matched in more than one version
+// (Hebrew and English, say) comes back as several hits; they are folded
+// together so the reference is listed once, carrying both snippets.
+function mergedHits() {
+  const seen = {}, out = [];
+  for (const h of SEARCH_RAW) {
+    if (!h.ref) continue;
+    const prev = seen[h.ref];
+    if (prev) {
+      if (h.snip && prev.snips.length < 2 && prev.snips.indexOf(h.snip) < 0) prev.snips.push(h.snip);
+      continue;
+    }
+    const rec = { ref: h.ref, heRef: h.heRef, path: h.path, snips: h.snip ? [h.snip] : [] };
+    seen[h.ref] = rec;
+    out.push(rec);
+  }
+  return out;
+}
+
+// The whole section a segment hit sits in: "Berakhot 2a:5" → "Berakhot 2a",
+// "Genesis 3:14" → "Genesis 3". A ref that already names a whole section (or
+// anything without a trailing segment number) returns "".
+function sectionOf(ref) {
+  const m = String(ref).match(/^(.*\S):\d+(?:\s*[-\u2013]\s*\d+)?$/);
+  return m ? m[1] : "";
+}
+
+// The section a hit belongs to, for counting and for building. A great many
+// works — most of Chasidut and Kabbalah, dictionary entries — are addressed a
+// single level deep, so sectionOf finds nothing; for those the ref IS the whole
+// unit and there is nothing between it and the entire book.
+function sectionRefOf(ref) {
+  return sectionOf(ref) || String(ref || "");
+}
+
+// Distinct sections across a list of merged hits.
+function sectionCountOf(hits) {
+  const seen = {};
+  let n = 0;
+  for (const h of hits) {
+    const s = sectionRefOf(h.ref);
+    if (s && !(s in seen)) { seen[s] = 1; n++; }
+  }
+  return n;
+}
+
+// "Talmud/Bavli/Seder Moed/Shabbat" → ["Talmud", "Bavli › Seder Moed › Shabbat"]
+function pathParts(p) {
+  const bits = String(p || "").split("/").filter(Boolean);
+  if (!bits.length) return ["Other", ""];
+  return [bits[0], bits.slice(1).join(" › ")];
+}
+
+// References ticked in the search results. The set is the single source of
+// truth; every checkbox on the page is painted from it by syncSearchSel.
+let SEARCH_SEL = new Set();
+const SEARCH_MAX_HITS = 2000;   // a safety valve on a very broad query
+
+// The reference commitRef last wrote into the box. While the box still holds
+// it, the box is displaying a chosen source rather than a query — so the
+// Search button re-shows the results instead of searching for the reference.
+let OPENED_FROM_SEARCH = "";
+
+// Show the back bar whenever results exist but the panel holding them is shut.
+function refreshBackBar() {
+  const bar = $("srchBack"); if (!bar) return;
+  const hidden = $("searchPanel").style.display === "none";
+  const on = hidden && SEARCH_RAW.length > 0;
+  bar.classList.toggle("show", on);
+  $("srchBackQ").textContent = on && SEARCH_Q ? "\u201c" + SEARCH_Q + "\u201d" : "";
+}
+
+// Back to the results, with nothing refetched: they never left the page. The
+// query goes back into the box so that pressing Search again repeats the
+// search rather than searching for whatever reference was being read.
+function reopenSearchResults() {
+  if (!SEARCH_RAW.length) return;
+  if (SEARCH_Q) { $("ref").value = SEARCH_Q; OPENED_FROM_SEARCH = ""; }
+  setMode("search");
+  refreshBackBar();
+  $("searchPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+// Every result Sefaria returned is already on the page, grouped under its own
+// category and book headings and CLOSED — the reader opens what interests
+// them. Each group carries a checkbox that ticks or unticks everything under
+// it, each result carries its own, and each reference is a link to the passage
+// on sefaria.org.
+function renderSearchResults() {
+  const hits = mergedHits();
+  const body = $("searchBody");
+  if (!hits.length) { body.innerHTML = ""; syncSearchSel(); return; }
+
+  const tops = [], topIdx = {};
+  for (const h of hits) {
+    const parts = pathParts(h.path);
+    const top = parts[0];
+    if (!(top in topIdx)) { topIdx[top] = tops.length; tops.push({ name: top, groups: [], idx: {}, n: 0 }); }
+    const t = tops[topIdx[top]];
+    const key = h.path || top;
+    if (!(key in t.idx)) { t.idx[key] = t.groups.length; t.groups.push({ label: parts[1] || top, hits: [] }); }
+    t.groups[t.idx[key]].hits.push(h);
+    t.n++;
+  }
+  tops.sort((a, b) => b.n - a.n);
+
+  let html = "";
+  for (const t of tops) {
+    t.groups.sort((a, b) => b.hits.length - a.hits.length);
+    let inner = "";
+    for (const g of t.groups) {
+      const rows = g.hits.map(h => {
+        return `<div class="srch-hit">
+          <input type="checkbox" class="srch-hitbox" data-ref="${encodeURIComponent(h.ref)}">
+          <div class="srch-hitbody">
+            <a class="srch-ref" href="${sefariaUrl(h.ref)}" target="_blank" rel="noopener">${refLabelHtml(h.ref, h.heRef)}</a>
+            ${h.snips.map(s => '<div class="srch-snip" dir="auto">' + snipHtml(s) + "</div>").join("")}
+            <div class="srch-acts">
+              <span class="srch-load" data-ref="${encodeURIComponent(h.ref)}">open in the app with its commentary</span>
+            </div>
+          </div>
+        </div>`;
+      }).join("");
+      inner += `<div class="srch-grp collapsed">
+        <div class="srch-head sub"><input type="checkbox" class="srch-grpbox"><span class="pv-caret">▾</span><span>${escapeHtml(g.label)}</span><span class="srch-count">${g.hits.length}</span></div>
+        <div class="srch-body">${rows}</div>
+      </div>`;
+    }
+    html += `<div class="srch-grp collapsed">
+      <div class="srch-head top"><input type="checkbox" class="srch-grpbox"><span class="pv-caret">▾</span><span>${escapeHtml(t.name)}</span><span class="srch-count">${t.n}</span></div>
+      <div class="srch-body">${inner}</div>
+    </div>`;
+  }
+  body.innerHTML = html;
+  syncSearchSel();
+}
+
+// Repaint every search checkbox from SEARCH_SEL, and the build bar with them.
+// A group is ticked when any of its results are, half-ticked when only some —
+// the same three states the source tree uses.
+function syncSearchSel() {
+  document.querySelectorAll("#searchBody .srch-hitbox").forEach(b => {
+    b.checked = SEARCH_SEL.has(decodeURIComponent(b.dataset.ref));
+  });
+  document.querySelectorAll("#searchBody .srch-grp").forEach(g => {
+    const cb = g.querySelector(".srch-grpbox"); if (!cb) return;
+    const boxes = [...g.querySelectorAll(".srch-hitbox")];
+    const on = boxes.filter(b => b.checked).length;
+    cb.checked = on > 0; cb.indeterminate = on > 0 && on < boxes.length;
+  });
+  const bar = $("selBar");
+  if (!bar) return;
+  const n = SEARCH_SEL.size;
+  bar.style.display = n ? "block" : "none";
+  if (n) {
+    const docs = documentRefs();
+    const unit = scopeSetting() === "segment" ? "passage" : "section";
+    $("selCount").textContent = n + " ticked \u2014 " + docs.length + " " + unit +
+      (docs.length === 1 ? "" : "s") + " to build:";
+  } else {
+    $("selCount").textContent = "";
+  }
+}
+
+// The ticked references, in the order Sefaria ranked them.
+function orderedSelectedRefs() {
+  return mergedHits().filter(h => SEARCH_SEL.has(h.ref)).map(h => h.ref);
+}
+
+function scopeSetting() {
+  const el = $("selScope");
+  return (el && el.value === "segment") ? "segment" : "section";
+}
+
+// What goes in the file. In section mode several ticked results often collapse
+// to one section, which is why the build bar counts these rather than ticks.
+function documentRefs() {
+  const seg = scopeSetting() === "segment";
+  const out = [], seen = {};
+  for (const r of orderedSelectedRefs()) {
+    const use = seg ? r : sectionRefOf(r);
+    if (use && !(use in seen)) { seen[use] = 1; out.push(use); }
+  }
+  return out;
+}
+
+// A file straight from the ticked results: each reference's own text and
+// nothing else — no commentary is fetched. The blocks/toc shape is exactly
+// what gatherContent produces, so the Word / EPUB / PDF builders take it
+// unchanged.
+async function buildSelectedTexts(fmt) {
+  const refs = documentRefs();
+  if (!refs.length) return;
+  const incHe = $("incHe").checked, incEn = $("incEn").checked;
+  if (!incHe && !incEn) { setStatus("Pick Hebrew, English, or both.", true); return; }
+
+  const btns = [...document.querySelectorAll(".selfmtseg button")];
+  btns.forEach(b => b.disabled = true);
+  hideShareBar();
+  try {
+    setStatus("Fetching " + refs.length + " texts\u2026");
+    const got = await mapPool(refs, async (r) => {
+      try {
+        const res = await fetch(TEXTS_API + encodeURIComponent(r) + "?context=0&commentary=0&pad=0");
+        if (!res.ok) return null;
+        const j = await res.json();
+        if (j.error) return null;
+        return { ref: j.ref || r, heRef: j.heRef || "", he: toArr(j.he), text: toArr(j.text) };
+      } catch (e) { return null; }
+    }, 6, (done, total) => setStatus("Fetching texts\u2026 " + done + " / " + total));
+
+    const blocks = [], toc = [];
+    let bmId = 0, written = 0;
+    for (const t of got) {
+      if (!t || !(t.he.length || t.text.length)) continue;
+      const anchor = "sec" + (bmId++);
+      const heading = hdrText(t.ref, t.heRef);
+      toc.push({ level: 1, text: heading, anchor });
+      blocks.push({ type: "h1", text: heading, anchor, first: blocks.length === 0 });
+      const n = Math.max(t.he.length, t.text.length);
+      for (let i = 0; i < n; i++) {
+        if (incHe) { const he = stripHtml(t.he[i] || ""); if (he) blocks.push({ type: "he", text: he }); }
+        if (incEn) { const en = stripHtml(t.text[i] || ""); if (en) blocks.push({ type: "en", text: en }); }
+      }
+      written++;
+    }
+    if (!written) { setStatus("None of the ticked passages returned any text.", true); return; }
+
+    const content = {
+      ref: SEARCH_Q || refs[0],
+      title: "Sefaria search: " + (SEARCH_Q || refs[0]),
+      blocks, toc, haveSrc: false, written, incHe, incEn
+    };
+    if (fmt === "word") await buildDocx(content);
+    else if (fmt === "pdf") buildPdf(content);
+    else await buildEpub(content);
+  } catch (e) {
+    setStatus("Failed to build: " + e.message, true);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+// One query, every page. Sefaria serves a page at a time; they are all pulled
+// in before anything is drawn, so there is no "load more" to press. Paging
+// stops once the reader's requested number of sections is in hand.
+//
+// keepAgg marks a re-run caused by the area filter: the aggregations from the
+// unfiltered search are kept, so the tree still offers every area rather than
+// only the one already chosen.
+async function runSearch(opts) {
+  const keepAgg = !!(opts && opts.keepAgg);
+  const q = normQuery($("ref").value);
+  if (!q) return;
+  if (SEARCHING) return;
+  if (q !== ($("ref").value || "").trim()) $("ref").value = q;   // show what was actually sent
+  SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq"; SEARCH_SEL = new Set();
+  SEARCH_FORMS = [];
+  if (!keepAgg) {
+    SEARCH_AGG_PATH = []; SEARCH_AGG_REF = []; SEARCH_AGG_TRUNC = false;
+    SEARCH_PASS_TOTAL = 0; SEARCH_SECT_TOTAL = 0; SEARCH_FILTERS = [];
+    renderAreaTree();
+  }
+  SEARCH_Q = q;
+  OPENED_FROM_SEARCH = "";
+  SEARCHING = true;
+  setAreaBusy(true);
+  $("searchBody").innerHTML = "";
+  $("searchWhy").innerHTML = "";
+  syncSearchSel();
+  refreshBackBar();
+  searchMsg("Searching Sefaria\u2026");
+  try {
+    const want = sectionsWanted();
+    let sects = 0;
+    while (true) {
+      const from = SEARCH_RAW.length;
+      // The aggregation costs a couple of seconds, so it is asked for once —
+      // on the first page of an unfiltered search — and never again.
+      const withAggs = (from === 0 && !keepAgg);
+      let j = await searchFetch(from, false, withAggs);
+      let raw = searchHitsOf(j);
+      // a projection the API didn't honour would leave us with no refs at all
+      if (raw.length && !raw.some(h => h && h._source && h._source.ref)) {
+        j = await searchFetch(from, true, withAggs);
+        raw = searchHitsOf(j);
+      }
+      readSearchTotal(j);
+      if (withAggs) readSearchAggs(j);
+      if (!raw.length) break;
+      raw.forEach(h => SEARCH_RAW.push(normHit(h)));
+      sects = sectionCountOf(mergedHits());
+      searchMsg("Loading results\u2026 " + sects + " section" + (sects === 1 ? "" : "s") + " so far");
+      // Stop on a short page. The old test — "we have as many as the total
+      // says there are" — ended the loop after page one whenever the total
+      // came back as 0 because the response didn't carry it where we looked.
+      if (raw.length < SEARCH_PAGE) break;
+      if (sects >= want) break;
+      if (SEARCH_RAW.length >= SEARCH_MAX_HITS) break;
+    }
+    renderSearchResults();
+    if (!keepAgg) renderAreaTree();
+    // The narrowing controls are only useful once there is something to
+    // narrow, so the card stays shut until a search has run and then opens
+    // itself. The header still folds it away by hand.
+    $("advCard").classList.remove("collapsed");
+    if (!SEARCH_RAW.length) {
+      searchMsg("No results for \u201c" + q + "\u201d" + (SEARCH_FILTERS.length ? " in that area." : "."));
+    } else {
+      renderSearchMeta();
+    }
+  } catch (e) {
+    searchMsg("Search failed: " + e.message + ".", true);
+  } finally {
+    SEARCHING = false;
+    setAreaBusy(false);
+  }
+}
+
+$("searchBody").addEventListener("click", e => {
+  const hitbox = e.target.closest(".srch-hitbox");
+  if (hitbox) {
+    const ref = decodeURIComponent(hitbox.dataset.ref);
+    if (hitbox.checked) SEARCH_SEL.add(ref); else SEARCH_SEL.delete(ref);
+    syncSearchSel();
+    return;
+  }
+  const grpbox = e.target.closest(".srch-grpbox");
+  if (grpbox) {
+    const on = grpbox.checked;
+    const grp = grpbox.closest(".srch-grp");
+    [...grp.querySelectorAll(".srch-hitbox")].forEach(b => {
+      const ref = decodeURIComponent(b.dataset.ref);
+      if (on) SEARCH_SEL.add(ref); else SEARCH_SEL.delete(ref);
+    });
+    syncSearchSel();
+    return;
+  }
+
+  const load = e.target.closest(".srch-load");
+  if (load) { commitRef(decodeURIComponent(load.dataset.ref)); return; }
+  if (e.target.closest(".srch-ref")) return;   // the reference opens on Sefaria
+  const head = e.target.closest(".srch-head");
+  if (head) { head.parentElement.classList.toggle("collapsed"); return; }
+});
+
+// ===========================================================================
 // Reference builder — Browse (category drill-down)
 // Selecting a reference fills the box and fetches its links automatically.
 // ===========================================================================
 const TOC_API = "https://www.sefaria.org/api/index";
 const BOOK_INDEX_API = "https://www.sefaria.org/api/index/";
 const RAW_INDEX_API = "https://www.sefaria.org/api/v2/raw/index/";
+const V2_INDEX_API = "https://www.sefaria.org/api/v2/index/";
 const SHAPE_API = "https://www.sefaria.org/api/shape/";
 
 const CORPORA = [
@@ -2836,13 +3868,43 @@ let backStack = [];
 function setMode(m) {
   document.querySelectorAll(".modeseg button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
   $("browsePanel").style.display = m === "browse" ? "block" : "none";
+  $("searchPanel").style.display = m === "search" ? "block" : "none";
+  $("advCard").style.display = m === "search" ? "block" : "none";
+  // In Browse the box isn't the entry point, so the example name would just
+  // sit there looking like content — show no placeholder at all.
+  $("ref").placeholder = m === "browse" ? "" : "א' זעירא";
   if (m === "browse" && backStack.length === 0) startBrowse();
+  refreshBackBar();
+}
+
+// Choosing a reference — a search hit, a Browse page, or the fallback when a
+// book's structure won't load — closes both panels but leaves the Search /
+// Browse buttons as they are, so tapping the same button reopens the panel
+// with its results still in place.
+function closePanels() {
+  $("browsePanel").style.display = "none";
+  $("searchPanel").style.display = "none";
+  refreshBackBar();
 }
 
 function commitRef(ref) {
   $("ref").value = ref;
-  setMode("type");
+  OPENED_FROM_SEARCH = ref;   // the box is showing a source now, not a query
+  closePanels();
+  refreshBackBar();
   fetchLinks();
+}
+
+// Open a whole chapter. The box shows the chapter's range; the exact page
+// list from Sefaria's chapter node is what actually gets walked.
+function commitPages(label, refs, what) {
+  const n = refs.length;
+  if (n > 2 && !confirm(
+      (what || label) + " runs to " + n + " pages (" + label + ").\n\n" +
+      "Every line of every page is read, with all of its linked commentary. " +
+      "That can take a few minutes and makes a long book.\n\nGo ahead?")) return;
+  PENDING_PAGES = { label: label, refs: refs.slice() };
+  commitRef(label);
 }
 
 function mk(html) { const d = document.createElement("div"); d.innerHTML = html; return d.firstChild; }
@@ -2868,8 +3930,8 @@ function rowList(items, onPick) {
   const wrap = document.createElement("div"); wrap.className = "navlist";
   items.forEach(it => {
     const r = document.createElement("div"); r.className = "navrow";
-    const name = document.createElement("span"); name.textContent = it.label; r.appendChild(name);
-    if (it.he) { const h = document.createElement("span"); h.className = "he"; h.textContent = it.he; r.appendChild(h); }
+    const name = document.createElement("span"); if (it.he) name.className = "ui-en"; name.textContent = it.label; r.appendChild(name);
+    if (it.he) { const h = document.createElement("span"); h.className = "he ui-he"; h.textContent = it.he; r.appendChild(h); }
     const chev = document.createElement("span"); chev.className = "chev"; chev.textContent = "›"; r.appendChild(chev);
     r.onclick = () => onPick(it);
     wrap.appendChild(r);
@@ -2936,6 +3998,69 @@ function renderToc(node) {
   }));
 }
 
+// A book whose own schema is addressed by daf — every Talmud tractate, Bavli
+// and Yerushalmi. Complex books (the Zohar and its neighbours) carry nodes
+// instead of addressTypes at the top level, so they are not caught here and
+// keep their structure chooser.
+function isDafSchema(schema) {
+  return !!(schema && !schema.nodes && Array.isArray(schema.addressTypes)
+    && schema.addressTypes[0] === "Talmud");
+}
+
+// A Talmud tractate, drawn as its chapters: each perek is a heading (English
+// and Hebrew names) with the daf grid of its own pages beneath it, all on one
+// screen. Chapter data comes from the tractate's alternate "Chapters"
+// structure — altStructsOf already fetches the v2 index, whose chapter nodes
+// carry per-amud refs. A page shared by two chapters appears under both, and
+// tapping it there fetches just that chapter's lines of the page. If no
+// usable chapter data comes back, the old flat grid of every amud is drawn.
+async function renderTractate(title, rec) {
+  navLoading('Loading "' + title + '"…');
+  let chapters = null;
+  try {
+    const structs = await altStructsOf(title, rec);
+    if (structs && structs.length) {
+      const s = structs.find(x => /chapter/i.test(String(x.name))) || structs[0];
+      chapters = s.nodes;
+    }
+  } catch (e) {}
+  const usable = Array.isArray(chapters) && chapters.length &&
+    chapters.every(n => n && Array.isArray(n.refs) && n.refs.length);
+  if (!usable) { renderJagged(title, rec.schema); return; }
+
+  navBody().innerHTML = "";
+  navBody().appendChild(mk('<div class="navnote">Take a whole chapter, or pick one page \u2014 a is the front, b the back. A page shared by two chapters appears under both; tapping it there fetches that chapter\u2019s lines of the page.</div>'));
+  chapters.forEach((ch, i) => {
+    const head = document.createElement("div"); head.className = "navchap";
+    const nm = document.createElement("span");
+    const en = nodeEn(ch);
+    nm.textContent = (en && en !== "section") ? en : ("Chapter " + (i + 1));
+    head.appendChild(nm);
+    const he = nodeHe(ch);
+    if (he) { const h = document.createElement("span"); h.className = "he"; h.textContent = he; head.appendChild(h); }
+    navBody().appendChild(head);
+    const first = dafFromRef(ch.refs[0]);
+    const last = dafFromRef(ch.refs[ch.refs.length - 1]);
+    if (first) {
+      const label = title + " " + first + (last && last !== first ? "-" + last : "");
+      const w = document.createElement("div"); w.className = "navwhole";
+      const wb = document.createElement("button"); wb.className = "secondary";
+      wb.textContent = "Whole chapter \u2014 " + label;
+      wb.onclick = () => commitPages(label, ch.refs, nm.textContent);
+      w.appendChild(wb);
+      navBody().appendChild(w);
+    }
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    for (const r of ch.refs) {
+      const b = document.createElement("button");
+      b.textContent = dafFromRef(r) || r;
+      b.onclick = () => commitRef(r);
+      grid.appendChild(b);
+    }
+    navBody().appendChild(grid);
+  });
+}
+
 async function openBook(title) {
   navLoading('Loading "' + title + '"…');
   let rec;
@@ -2944,14 +4069,19 @@ async function openBook(title) {
     if (!res.ok) throw new Error("HTTP " + res.status);
     rec = await res.json();
   } catch (e) {
-    navError('Couldn\u2019t load the structure of "' + title + '". Filling the box so you can type the rest.');
-    setTimeout(() => { $("ref").value = title; setMode("type"); $("ref").focus(); }, 900);
+    navError('Couldn\u2019t load the structure of "' + title + '".');
     return;
   }
-  // Torah books also carry Sefaria's Parasha structure (each parsha with its
-  // seven aliyot) — offer it alongside the plain chapter grid.
-  const parshiot = await parshaStructOf(title, rec);
-  if (parshiot) { renderBookWithParshiot(title, rec, parshiot); return; }
+  // A tractate opens as its chapters: each perek is a heading with the daf
+  // grid of its own pages beneath it. If the chapter structure can't be
+  // loaded, renderTractate falls back to the flat grid of every amud.
+  if (isDafSchema(rec.schema)) { await renderTractate(title, rec); return; }
+
+  // Sefaria surfaces alternate structures for many other books — the Chumash's
+  // parashot, the Zohar's Vilna dapim and essays, Tikkunei Zohar's tikkunim,
+  // Pardes Rimmonim's gates. Offer the same choice the site does.
+  const structs = await altStructsOf(title, rec);
+  if (structs) { renderStructChooser(title, rec, structs); return; }
 
   const schema = rec.schema;
   if (!schema) { commitRef(title); return; }
@@ -2959,82 +4089,236 @@ async function openBook(title) {
   else renderJagged(title, schema);
 }
 
-// ---- Parasha browsing (Torah books) ---------------------------------------
-// Sefaria's index records for the Chumash carry an alternate "Parasha"
-// structure: one node per parsha, with wholeRef (the full range) and refs
-// (the seven aliyah ranges). Some API variants expose it as alt_structs,
-// others as alts; the v2 raw index always has it, so that's the fallback.
-function parshaNodesFrom(rec) {
+// ---- Alternate structures (parashot, dapim, tikkunim, gates…) -------------
+// Sefaria's index records can carry alternate structures alongside a book's
+// own schema: the Chumash has "Parasha" (each parsha with its seven aliyot),
+// the Zohar has "Daf" (Vilna pagination) and "Essay", Tikkunei Zohar has
+// "Tikkunim", Pardes Rimmonim has "Gate". Some API variants expose these as
+// alt_structs, others as alts.
+//
+// The fallback fetch uses the v2 NON-raw index. It returns the same structure
+// as the raw endpoint PLUS two fields the raw one omits: "startingAddress"
+// (the real daf/amud a node opens on, e.g. "15a") and "offset". Those are
+// Sefaria's own precomputed values, and they are the only reliable source of
+// Zohar-family daf labels — the raw endpoint reports index_offsets_by_depth
+// as null throughout, and the labels cannot be derived by counting, because a
+// parasha's main text and its Tosefta / Sitrei Torah / Midrash HaNe'elam /
+// Ra'ya Mehemna passages share the same physical dapim.
+function altStructsFrom(rec) {
   const alts = rec && (rec.alt_structs || rec.alts);
-  const p = alts && (alts.Parasha || alts.Parsha || alts.parasha);
-  return (p && Array.isArray(p.nodes) && p.nodes.length) ? p.nodes : null;
+  if (!alts || typeof alts !== "object") return null;
+  const out = [];
+  for (const name of Object.keys(alts)) {
+    const s = alts[name];
+    const nodes = (s && Array.isArray(s.nodes)) ? s.nodes : null;
+    if (nodes && nodes.length) out.push({ name, nodes });
+  }
+  return out.length ? out : null;
 }
-async function parshaStructOf(title, rec) {
-  let nodes = parshaNodesFrom(rec);
-  if (nodes) return nodes;
-  const isTorah = Array.isArray(rec && rec.categories) && rec.categories.indexOf("Torah") >= 0;
-  if (!isTorah) return null;   // don't waste a request on non-Torah books
+// True when some daf-addressed node carries no startingAddress — i.e. this
+// record came from an endpoint that omits the precomputed labels, so it is
+// worth re-fetching from the v2 non-raw index before rendering a daf grid.
+function altStructsNeedDafUpgrade(structs) {
+  const walk = (nodes) => {
+    for (const n of (nodes || [])) {
+      if (!n) continue;
+      const at = Array.isArray(n.addressTypes) ? n.addressTypes : [];
+      if ((at.indexOf("Talmud") >= 0 || at.indexOf("Folio") >= 0) && !n.startingAddress) return true;
+      // A leaf that names a whole range but carries no refs is missing its
+      // per-section data. The raw index omits refs for Talmud chapter nodes
+      // (and their addressTypes with them), so this is the only signal that
+      // the non-raw index would return more: Berakhot chapter 1 goes from
+      // refs:0 to refs:23 across the two endpoints.
+      if (n.wholeRef && !(Array.isArray(n.refs) && n.refs.length)
+          && !(Array.isArray(n.nodes) && n.nodes.length)) return true;
+      if (Array.isArray(n.nodes) && walk(n.nodes)) return true;
+    }
+    return false;
+  };
+  return structs.some(s => walk(s.nodes));
+}
+async function altStructsOf(title, rec) {
+  const structs = altStructsFrom(rec);
+  if (structs && !altStructsNeedDafUpgrade(structs)) return structs;
   try {
-    const r = await fetch(RAW_INDEX_API + encodeURIComponent(title));
-    if (!r.ok) return null;
+    const r = await fetch(V2_INDEX_API + encodeURIComponent(title));
+    if (!r.ok) return structs;
     const j = await r.json();
-    return parshaNodesFrom(j);
-  } catch (e) { return null; }
+    return altStructsFrom(j) || structs;
+  } catch (e) { return structs; }
 }
 
 const ALIYOT = ["Rishon", "Sheni", "Shlishi", "Revi'i", "Chamishi", "Shishi", "Shevi'i"];
 const HE_ALIYOT = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שביעי"];
 
-function renderBookWithParshiot(title, rec, parshiot) {
-  const items = [
-    { label: "By chapter", he: "לפי פרק", kind: "chap" },
-    { label: "By parasha", he: "לפי פרשה", kind: "par" }
-  ];
+// Hebrew captions for the structure chooser. Unknown structures simply show
+// no Hebrew rather than a guessed transliteration.
+const STRUCT_HE = {
+  parasha: "לפי פרשה", parshiot: "לפי פרשה", daf: "לפי דף", essay: "לפי מאמר",
+  tikkunim: "לפי תיקון", gate: "לפי שער", topic: "לפי נושא", chapters: "לפי פרק"
+};
+const SECNAME_HE = {
+  chapter: "לפי פרק", perek: "לפי פרק", daf: "לפי דף", siman: "לפי סימן",
+  mishnah: "לפי משנה", halakhah: "לפי הלכה", volume: "לפי כרך",
+  paragraph: "לפי פסקה", verse: "לפי פסוק", section: "לפי חלק"
+};
+function structLabel(name) {
+  const n = String(name || "").trim();
+  return n ? "By " + n.toLowerCase() : "Alternate structure";
+}
+// The book's own schema, captioned from its top section name — "By chapter",
+// "By daf", "By siman" — so the row reads the way Sefaria's own tab does.
+function defaultStructRow(rec) {
+  const schema = rec && rec.schema;
+  const sn = (schema && Array.isArray(schema.sectionNames) && schema.sectionNames[0]) || "";
+  const key = String(sn).toLowerCase();
+  return { label: sn ? "By " + key : "Contents", he: SECNAME_HE[key] || "", kind: "schema" };
+}
+function altNodeEn(n) {
+  if (n && n.default) return "(main text)";
+  const t = nodeEn(n);
+  return (t && t !== "section") ? t : "(main text)";
+}
+function altNodeHe(n) { return (n && n.default) ? "" : nodeHe(n); }
+
+// One row for the book's own schema plus one per alternate structure, with
+// Sefaria's default_struct listed first. exclude_structs lets a book hide its
+// bare schema (the Zohar shows only "Daf" and "Essay"), matching the site.
+function renderStructChooser(title, rec, structs) {
+  const ex = Array.isArray(rec && rec.exclude_structs)
+    ? rec.exclude_structs.map(s => String(s).toLowerCase()) : [];
+  const rows = [];
+  if (ex.indexOf("schema") < 0) rows.push(defaultStructRow(rec));
+  for (const s of structs) {
+    rows.push({
+      label: structLabel(s.name),
+      he: STRUCT_HE[String(s.name).toLowerCase()] || "",
+      kind: "alt", struct: s
+    });
+  }
+  if (!rows.length) { renderDefaultSchema(title, rec); return; }
+  const ds = rec && rec.default_struct;
+  if (ds) {
+    const i = rows.findIndex(r => r.kind === "alt" && String(r.struct.name) === String(ds));
+    if (i > 0) rows.unshift(rows.splice(i, 1)[0]);
+  }
+  if (rows.length === 1) {   // nothing to choose between — go straight in
+    if (rows[0].kind === "schema") renderDefaultSchema(title, rec);
+    else renderAltNodes(title, rows[0].struct.nodes, rows[0].struct.name);
+    return;
+  }
   navBody().innerHTML = "";
-  navBody().appendChild(rowList(items, it => {
-    if (it.kind === "chap") {
-      pushView("chapters", () => {
-        const schema = rec.schema;
-        if (schema && schema.nodes) renderSchemaNodes(title, schema, title);
-        else if (schema) renderJagged(title, schema);
-        else commitRef(title);
-      });
-    } else {
-      pushView("parasha", () => renderParshiot(parshiot));
-    }
+  navBody().appendChild(rowList(rows, it => {
+    if (it.kind === "schema") pushView(it.label, () => renderDefaultSchema(title, rec));
+    else pushView(it.label, () => renderAltNodes(title, it.struct.nodes, it.struct.name));
   }));
 }
 
-function renderParshiot(parshiot) {
-  const items = parshiot.map(n => ({ label: nodeEn(n), he: nodeHe(n), node: n }));
-  navBody().innerHTML = "";
-  navBody().appendChild(rowList(items, it => pushView(it.label, () => renderAliyot(it.node))));
+function renderDefaultSchema(title, rec) {
+  const schema = rec && rec.schema;
+  if (schema && schema.nodes) renderSchemaNodes(title, schema, title);
+  else if (schema) renderJagged(title, schema);
+  else commitRef(title);
 }
 
-function renderAliyot(node) {
+// One level of an alternate structure. A level can hold a default node (the
+// section's own pages) alongside named siblings — the Zohar's Bereshit owns a
+// daf run AND a Tosefta, and Sefaria lists both — so the default node's grid
+// is drawn inline and the named siblings follow as rows.
+function renderAltNodes(title, nodes, structName) {
   navBody().innerHTML = "";
+  const list = Array.isArray(nodes) ? nodes : [];
+  const def = list.find(n => n && n.default && (Array.isArray(n.refs) || n.wholeRef));
+  const named = list.filter(n => n && n !== def);
+  if (def) appendAltLeaf(title, def, structName);
+  const items = named.map(n => ({ label: altNodeEn(n), he: altNodeHe(n), n }));
+  if (items.length) {
+    if (def) navBody().appendChild(mk('<div class="navnote">\u2026or a named section:</div>'));
+    navBody().appendChild(rowList(items, it => {
+      const n = it.n;
+      if (Array.isArray(n.nodes) && n.nodes.length) {
+        pushView(it.label, () => renderAltNodes(title, n.nodes, structName));
+      } else {
+        pushView(it.label, () => { navBody().innerHTML = ""; appendAltLeaf(title, n, structName); });
+      }
+    }));
+  }
+  if (!def && !items.length) navError("Nothing to browse here.");
+}
+
+// A leaf of an alternate structure: its whole-range button, then either a daf
+// grid (labelled from Sefaria's own startingAddress) or a list of its refs.
+function appendAltLeaf(title, node, structName) {
   const whole = node.wholeRef || "";
   if (whole) {
     const w = document.createElement("div"); w.className = "navwhole";
     const b = document.createElement("button"); b.className = "secondary";
-    b.textContent = "Whole parasha — " + whole;
+    const nm = altNodeEn(node);
+    b.textContent = "Whole " + (nm === "(main text)" ? String(structName || "section").toLowerCase() : nm) + " \u2014 " + whole;
     b.onclick = () => commitRef(whole);
     w.appendChild(b); navBody().appendChild(w);
-    navBody().appendChild(mk('<div class="navnote">A whole parasha fetches every verse\u2019s links — it can take a while.</div>'));
+    navBody().appendChild(mk('<div class="navnote">A whole section fetches every segment\u2019s links \u2014 it can take a while.</div>'));
   }
   const refs = Array.isArray(node.refs) ? node.refs : [];
   if (!refs.length) {
-    if (!whole) navError("This parasha has no reference data.");
-    else navBody().appendChild(mk('<div class="navnote">No aliyah breakdown is available for this parasha.</div>'));
+    if (!whole) navError("This section has no reference data.");
     return;
   }
-  navBody().appendChild(mk('<div class="navnote">\u2026or a single aliyah:</div>'));
+
+  // Daf-addressed leaf. Two label sources, in priority order:
+  //  1. startingAddress — Sefaria's own precomputed opening amud. The Zohar
+  //     needs this and nothing else will do: a parasha's main text and its
+  //     Tosefta / Sitrei Torah / Midrash HaNe'elam passages share physical
+  //     dapim, so neither counting nor reading refs reproduces the labels.
+  //  2. the ref's own daf token. Talmud chapter nodes come back with
+  //     addressTypes ["Talmud"] but startingAddress null, and their refs
+  //     already name the page ("Berakhot 2b"), so read the label off each.
+  const at0 = Array.isArray(node.addressTypes) ? node.addressTypes : [];
+  const isDaf = !!node.startingAddress
+    || at0.indexOf("Talmud") >= 0 || at0.indexOf("Folio") >= 0;
+  if (isDaf) {
+    navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back.</div>'));
+    const grid = document.createElement("div"); grid.className = "navgrid";
+    refs.forEach((r, i) => {
+      const b = document.createElement("button");
+      b.textContent = node.startingAddress
+        ? dafLabelFrom(node.startingAddress, i)
+        : (dafFromRef(r) || String(i + 1));
+      b.onclick = () => commitRef(r);
+      grid.appendChild(b);
+    });
+    navBody().appendChild(grid);
+    return;
+  }
+
+  // Torah aliyot keep their traditional names (v30 behaviour).
+  const isAliyot = refs.length === 7 && /^parash/i.test(String(structName || ""));
+  navBody().appendChild(mk('<div class="navnote">' +
+    (isAliyot ? "\u2026or a single aliyah:" : "\u2026or a single section:") + '</div>'));
   const items = refs.map((r, i) => ({
-    label: (ALIYOT[i] || ("Aliyah " + (i + 1))) + " \u00b7 " + r,
-    he: HE_ALIYOT[i] || "",
+    label: isAliyot ? ((ALIYOT[i] || ("Aliyah " + (i + 1))) + " \u00b7 " + r) : r,
+    he: isAliyot ? (HE_ALIYOT[i] || "") : "",
     ref: r
   }));
   navBody().appendChild(rowList(items, it => commitRef(it.ref)));
+}
+
+// "15a" + 3 → "16b". A node's pages run consecutively from its own opening
+// amud; startingAddress is that opening amud, straight from Sefaria.
+function dafLabelFrom(start, i) {
+  const m = String(start).match(/^(\d+)\s*([ab])$/);
+  if (!m) return dafLabel(i, 2);
+  const sides = parseInt(m[1], 10) * 2 + (m[2] === "b" ? 1 : 0) + i;
+  return Math.floor(sides / 2) + (sides % 2 === 0 ? "a" : "b");
+}
+
+// "Berakhot 2a:1-14" → "2a", "Berakhot 2b" → "2b". A chapter's refs are
+// already page-addressed, so the label is read rather than derived — which
+// also means a chapter that opens mid-tractate labels itself correctly with
+// no offset arithmetic anywhere.
+function dafFromRef(ref) {
+  const m = String(ref).match(/\s(\d+[ab])(?::|\s*-|$)/);
+  return m ? m[1] : null;
 }
 
 function renderSchemaNodes(title, node, prefix) {
@@ -3065,20 +4349,22 @@ function renderJagged(prefix, node) {
   navBody().innerHTML = "";
 
   if (addr === "Talmud") {
-    const build = (amudim) => {
+    const build = (amudim, start) => {
       navBody().innerHTML = "";
       navBody().appendChild(mk('<div class="navnote">Pick a page \u2014 a is the front, b the back.</div>'));
       const grid = document.createElement("div"); grid.className = "navgrid";
       for (let i = 0; i < amudim; i++) {
-        const b = document.createElement("button"); b.textContent = dafLabel(i);
-        b.onclick = () => commitRef(prefix + " " + dafLabel(i));
+        const label = dafLabel(i, start);
+        const b = document.createElement("button"); b.textContent = label;
+        b.onclick = () => commitRef(prefix + " " + label);
         grid.appendChild(b);
       }
       navBody().appendChild(grid);
     };
-    const n0 = node.lengths && node.lengths[0];
-    if (n0) build(n0);
-    else { navLoading(); shapeLen(prefix).then(len => build(len ? len * 2 : 180)).catch(() => build(180)); }
+    navLoading();
+    dafGridInfo(prefix, node)
+      .then(info => build(info.amudim, info.start))
+      .catch(() => build((node.lengths && node.lengths[0]) || 180, 2));
     return;
   }
 
@@ -3129,7 +4415,41 @@ function pickNumber(prefix, node, sections) {
 }
 
 function refJoin(prefix, sections) { return prefix + " " + sections.join(":"); }
-function dafLabel(i) { const d = 2 + Math.floor(i / 2); return d + (i % 2 === 0 ? "a" : "b"); }
+function dafLabel(i, start) { const s = (start == null ? 2 : start); const d = s + Math.floor(i / 2); return d + (i % 2 === 0 ? "a" : "b"); }
+// The true first daf and amud-count for a daf-addressed node, read from
+// Sefaria rather than assumed. Standard Talmud tractates open at 2a, but the
+// Zohar's daf-addressed parashot open elsewhere and each node has its own
+// range — so labelling from a fixed 2a start mislabels every Zohar page. Read
+// the node's first available section ref for the start daf, and its shape for
+// the page count; on any uncertainty fall back to the standard-Talmud
+// assumption so ordinary tractates are unaffected.
+async function dafGridInfo(prefix, node) {
+  let start = 2, dapim = null;
+  try {
+    const r = await fetch(SHAPE_API + encodeURIComponent(prefix));
+    if (r.ok) {
+      const j = await r.json();
+      let first = Array.isArray(j) ? j[0] : j;
+      if (first && first.isComplex && Array.isArray(first.chapters)) {
+        const leaf = first.chapters.find(c => c && c.title === prefix);
+        if (leaf) first = leaf;
+      }
+      if (first && Array.isArray(first.chapters)) dapim = first.chapters.length;
+      else if (first && typeof first.length === "number") dapim = first.length;
+    }
+  } catch (e) {}
+  try {
+    const r = await fetch(TEXTS_API + encodeURIComponent(prefix) + "?context=0&pad=0");
+    if (r.ok) {
+      const j = await r.json();
+      const cand = j.firstAvailableSectionRef || j.ref || "";
+      const m = String(cand).match(/\s(\d+)[ab](?::|\s|$)/);
+      if (m) start = parseInt(m[1], 10);
+    }
+  } catch (e) {}
+  const amudim = dapim ? dapim * 2 : ((node && node.lengths && node.lengths[0]) || 180);
+  return { start, amudim };
+}
 
 async function shapeLen(title) {
   try {
@@ -3171,9 +4491,78 @@ async function fetchCount(ref) {
 // ===========================================================================
 // Wiring
 // ===========================================================================
-document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-document.querySelectorAll(".fmtseg:not(.grpseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
+document.querySelectorAll(".modeseg button").forEach(b => b.onclick = () => {
+  setMode(b.dataset.mode);
+  // The Search button searches when there is something new to search for, and
+  // otherwise just puts the existing results back on screen. The three cases
+  // it must not confuse: a genuinely new query (search), the query that
+  // produced the results already loaded (re-show), and a reference this app
+  // wrote into the box when the reader opened one of those results (re-show —
+  // searching for it would throw the results away, which is the whole bug).
+  if (b.dataset.mode !== "search") return;
+  const box = ($("ref").value || "").trim();
+  const q = normQuery(box);
+  const isOpenedSource = box && box === OPENED_FROM_SEARCH;
+  if (SEARCH_RAW.length && (!q || q === SEARCH_Q || isOpenedSource)) {
+    reopenSearchResults();
+  } else if (q) {
+    runSearch();
+  } else {
+    searchMsg("Type a word or phrase above, then tap Search.");
+  }
+});
+$("srchBack").onclick = reopenSearchResults;
+$("srchBack").onkeydown = e => {
+  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); reopenSearchResults(); }
+};
+document.querySelectorAll(".fmtseg:not(.grpseg):not(.hdrseg) button").forEach(b => b.onclick = () => { setFmt(b.dataset.fmt); buildOutput(); });
 document.querySelectorAll(".grpseg button").forEach(b => b.onclick = () => setGrp(b.dataset.grp));
+document.querySelectorAll("#langBar button").forEach(b => b.onclick = () => setHdr(b.dataset.hdr));
+document.querySelectorAll(".selfmtseg button").forEach(b => b.onclick = () => buildSelectedTexts(b.dataset.selfmt));
+$("advHead").onclick = () => $("advCard").classList.toggle("collapsed");
+$("advForms").onchange = refreshAdvWarn;
+$("advTogether").onchange = refreshAdvWarn;
+$("advReset").onclick = () => {
+  $("advForms").value = "broad";
+  $("advTogether").value = "apart";
+  refreshAdvWarn();
+};
+$("selScope").onchange = syncSearchSel;
+$("searchWhy").addEventListener("click", e => {
+  if (!e.target.closest("#srchWhyToggle")) return;
+  const b = $("srchWhyBody");
+  if (b) b.style.display = b.style.display === "none" ? "block" : "none";
+});
+$("areaBody").addEventListener("click", e => {
+  const box = e.target.closest(".area-box");
+  if (box) {
+    const p = decodeURIComponent(box.dataset.path);
+    if (box.checked) {
+      // ticking a parent absorbs anything already ticked beneath it
+      SEARCH_FILTERS = SEARCH_FILTERS.filter(f => (f + "/").indexOf(p + "/") !== 0);
+      SEARCH_FILTERS.push(p);
+    } else {
+      SEARCH_FILTERS = SEARCH_FILTERS.filter(f => f !== p);
+    }
+    renderAreaTree();
+    runSearch({ keepAgg: true });
+    return;
+  }
+  const node = e.target.closest(".area-node");
+  if (node && (e.target.closest(".area-caret") || e.target.closest(".area-name"))) {
+    node.classList.toggle("collapsed");
+  }
+});
+$("areaClear").onclick = () => {
+  SEARCH_FILTERS = [];
+  renderAreaTree();
+  runSearch({ keepAgg: true });
+};
+$("selClear").onclick = () => { SEARCH_SEL = new Set(); syncSearchSel(); };
+
+let _savedHdrLang = "both";
+try { _savedHdrLang = localStorage.getItem(HDRLANG_KEY) || "both"; } catch (e) {}
+setHdr(_savedHdrLang);
 
 $("incHe").addEventListener("change", applyTreeLang);
 $("incEn").addEventListener("change", applyTreeLang);
@@ -3190,6 +4579,16 @@ $("clearBtn").onclick = () => {
   hideShareBar();
   $("tree").innerHTML = "";
   $("preview").innerHTML = "";
+  $("searchBody").innerHTML = "";
+  $("searchWhy").innerHTML = "";
+  SEARCH_Q = ""; SEARCH_RAW = []; SEARCH_TOTAL = 0; SEARCH_REL = "eq";
+  SEARCH_AGG_PATH = []; SEARCH_AGG_REF = []; SEARCH_AGG_TRUNC = false;
+  SEARCH_PASS_TOTAL = 0; SEARCH_SECT_TOTAL = 0;
+  SEARCH_FILTERS = []; SEARCH_FORMS = [];
+  renderAreaTree();
+  SEARCH_SEL = new Set(); syncSearchSel();
+  OPENED_FROM_SEARCH = ""; refreshBackBar();
+  searchMsg("");
   setStatus("");
   backStack = [];
   if ($("browsePanel").style.display !== "none") startBrowse();
