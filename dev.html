@@ -355,6 +355,10 @@
   .aipanel label { margin-bottom: 4px; }
   .ai-row { margin-bottom: 12px; }
   .ai-row:last-child { margin-bottom: 0; }
+  .ai-check { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+  .ai-check input { margin: 2px 0 0; flex: 0 0 auto; }
+  .ai-check label { margin: 0; }
+  .ai-check .sub { display: block; font-size: 12px; margin-top: 2px; opacity: .85; }
   .aipanel textarea {
     width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical;
     font-family: inherit; font-size: 14px; padding: 8px; margin-top: 8px;
@@ -522,6 +526,14 @@
         <label for="aiBatchSize">Batch size (Hebrew characters per batch)</label>
         <input type="text" id="aiBatchSize" value="5000" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>
+      <div class="ai-check">
+        <input type="checkbox" id="aiSrcOn" checked>
+        <label for="aiSrcOn">Translate the original text too<span class="sub">Batches the source's own sections alongside the linked texts \u2014 for Chasidut and Kabbalah, where the source itself has no English.</span></label>
+      </div>
+      <div class="ai-check">
+        <input type="checkbox" id="aiSkipEn" checked>
+        <label for="aiSkipEn">Skip anything Sefaria already has in English<span class="sub">Only applies when you are translating into English.</span></label>
+      </div>
       <div class="ai-row">
         <label>Batches — tap one to copy it for the AI, then use Paste reply</label>
         <div class="batchboard" id="batchBoard"></div>
@@ -574,7 +586,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 50;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 51;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -635,6 +647,83 @@ function canonicalRef(l) { return l.sourceRef || l.ref || ""; }
 
 function srcAvailable() { return !!(SRC && (SRC.he.length || SRC.text.length)); }
 
+// --- the original text as translatable units -------------------------------
+// Chasidut and Kabbalah sources usually carry no English of their own, so the
+// AI helper treats each slice of the original text as a text to translate,
+// exactly like a linked commentary. The key is the slice's own segment ref,
+// so a translation survives a rebuild, a backup restore and the shared store.
+//
+// srcSegRefs() is index-aligned with SRC.he / SRC.text: entry i is the ref for
+// slice i, or "" when the slice can't be named (nothing to key a translation
+// on). Ranged fetches carry an explicit segment map; otherwise the slices are
+// the fetched ref's own numbered segments. Sections named by the links
+// themselves win, so the key matches the ref shown in the tree and preview.
+// A text with no links at all (the common Chasidut case) has no SEG_ORDER —
+// the derived refs are all there is, and they are enough.
+let SRC_REFS_CACHE = null;   // { src, refs } — self-invalidates when SRC changes
+function srcSegRefs() {
+  if (!srcAvailable()) return [];
+  if (SRC_REFS_CACHE && SRC_REFS_CACHE.src === SRC) return SRC_REFS_CACHE.refs;
+  const n = Math.max(SRC.he.length, SRC.text.length);
+  const refs = new Array(n).fill("");
+  if (SRC.segMap) {
+    for (const k of Object.keys(SRC.segMap)) {
+      const i = SRC.segMap[k];
+      if (i >= 0 && i < n) refs[i] = k;
+    }
+  } else if (SRC.ref) {
+    for (let i = 0; i < n; i++) refs[i] = (n === 1) ? SRC.ref : SRC.ref + ":" + (i + 1);
+  }
+  for (const seg of SEG_ORDER) {
+    const i = srcIdxFor(seg);
+    if (i >= 0 && i < n) refs[i] = seg;
+  }
+  SRC_REFS_CACHE = { src: SRC, refs };
+  return refs;
+}
+// The translation key for one section's slice of the original text.
+function srcTransRefFor(seg) {
+  const i = srcIdxFor(seg);
+  if (i < 0) return "";
+  return srcSegRefs()[i] || "";
+}
+// The source joins the batches only when it is ticked in the tree AND the
+// panel's own switch is on, so a Talmud job can leave the gemara out.
+function aiSrcWanted() {
+  const b = $("aiSrcOn");
+  return SRC_ON && srcAvailable() && (!b || b.checked);
+}
+// Sefaria's own English is a reason to skip a text only when English is what
+// is being asked for — an Italian run still queues everything.
+function aiSkipEnglish(lang) {
+  const b = $("aiSkipEn");
+  if (b && !b.checked) return false;
+  return /^(english|en)$/i.test(String(lang || "").trim());
+}
+// Slices of the original text that are candidates for translation, in
+// document order. Shaped like a link (sourceRef / he / text) so the batch
+// builder, the board and the reply matcher need no special case for them.
+function srcTransUnits() {
+  if (!aiSrcWanted()) return [];
+  const refs = srcSegRefs();
+  const out = [];
+  for (let i = 0; i < refs.length; i++) {
+    if (!refs[i]) continue;
+    const he = stripHtml(SRC.he[i] || "");
+    if (!he) continue;
+    out.push({ _src: true, sourceRef: refs[i], ref: refs[i], he, text: stripHtml(SRC.text[i] || "") });
+  }
+  return out;
+}
+// Every ref a translation could belong to in this fetch — linked texts plus
+// the original text's own slices — so reading back a backup or the shared
+// store doesn't drop a source translation on the way in.
+function currentTransRefs() {
+  const s = new Set(LINKS.map(l => canonicalRef(l)));
+  for (const r of srcSegRefs()) if (r) s.add(r);
+  return s;
+}
+
 function noteOf(key) { return (NOTES[key] || "").trim(); }
 function pvNoteBtnHtml(key) {
   const k = encodeURIComponent(key);
@@ -648,12 +737,12 @@ function noteBoxHtml(key) {
 
 // The AI translation shown (and editable) beneath a text's Hebrew/English in
 // the preview. Only rendered when a translation exists for this ref.
-function aiTransBoxHtml(ref) {
+function aiTransBoxHtml(ref, showRef) {
   const t = TRANS[ref];
   if (!t) return "";
   const r = encodeURIComponent(ref);
   return `<div class="aitransbox">
-    <p class="ai-label">AI translation (${escapeHtml(t.lang || "")})</p>
+    <p class="ai-label">AI translation${showRef ? " \u2014 " + escapeHtml(showRef) : ""} (${escapeHtml(t.lang || "")})</p>
     <textarea class="aitrans" data-ref="${r}">${escapeHtml(t.text || "")}</textarea>
   </div>`;
 }
@@ -1817,6 +1906,7 @@ function gatherContent() {
       if (si >= 0) segForIdx[si] = s;
     }
     const n = Math.max(SRC.he.length, SRC.text.length);
+    const srcRefs = srcSegRefs();
     for (let i = 0; i < n; i++) {
       const seg = segForIdx[i];
       if (multiPage && seg) {
@@ -1833,6 +1923,7 @@ function gatherContent() {
       if (seg) { vAnchor = nextId(); segSrcAnchor[seg] = vAnchor; }
       if (incHe) { const he = stripHtml(SRC.he[i] || ""); if (he) { blocks.push({ type: "he", text: he, anchor: vAnchor }); vAnchor = null; } }
       if (incEn) { const en = stripHtml(SRC.text[i] || ""); if (en) { blocks.push({ type: "en", text: en, anchor: vAnchor }); vAnchor = null; } }
+      emitAiBlock(blocks, srcRefs[i]);
       if (seg) {
         const rts = rtsFor(seg);
         if (rts) blocks.push({ type: "rtsrow", marks: rts.marks });
@@ -1879,6 +1970,7 @@ function gatherContent() {
       if (wantSrc) {
         if (incHe && segHe) blocks.push({ type: "he", text: segHe });
         if (incEn && segEn) blocks.push({ type: "en", text: segEn });
+        emitAiBlock(blocks, srcTransRefFor(seg));
         if (rts) blocks.push({ type: "rtsrow", marks: rts.marks });
         emitNote("S:" + seg);
         emitNote("__src__");   // a whole-source note (from Category mode) prints once, here
@@ -1916,6 +2008,10 @@ function gatherContent() {
         }
       }
     }
+    // Sections come from the links, so a source nobody has commented on has
+    // none — print it whole rather than building an empty document.
+    if (haveSrc && !blocks.length) emitWholeSource();
+
     return { ref, title: "Linked texts: " + ref, blocks, toc, haveSrc, written, incHe, incEn };
   }
 
@@ -1995,7 +2091,7 @@ async function fetchRemoteTrans(storeRef) {
     if (!r.ok) return 0;   // 404 — nothing published for this reference yet
     const j = await r.json();
     if (!j || typeof j !== "object") return 0;
-    const cur = new Set(LINKS.map(l => canonicalRef(l)));
+    const cur = currentTransRefs();
     let n = 0;
     for (const key of Object.keys(j)) {
       const t = j[key];
@@ -2023,22 +2119,39 @@ function transDone(ref, lang) {
 // Why is there nothing to batch? "All selected texts are translated" is one
 // reason out of four, and it was being shown for all of them.
 function batchEmptyReason() {
-  if (!LINKS.length) return "Nothing has been fetched yet.";
+  if (!LINKS.length && !srcAvailable()) return "Nothing has been fetched yet.";
   const lang = transLang();
-  const refs = new Set(), hebrew = new Set(), done = new Set();
+  const skipEn = aiSkipEnglish(lang);
+  const srcUnits = srcTransUnits();
+  const refs = new Set(), hebrew = new Set(), done = new Set(), hasEn = new Set();
   let ticked = 0;
+  const note = (ref, he, en) => {
+    if (!ref) return;
+    refs.add(ref);
+    if (he) hebrew.add(ref);
+    if (en) hasEn.add(ref);
+    if (transDone(ref, lang)) done.add(ref);
+  };
   for (const l of LINKS) {
     if (!SEL.has(l._i)) continue;
     ticked++;
-    const ref = canonicalRef(l);
-    if (!ref) continue;
-    refs.add(ref);
-    if (stripHtml(asText(l.he))) hebrew.add(ref);
-    if (transDone(ref, lang)) done.add(ref);
+    note(canonicalRef(l), stripHtml(asText(l.he)), stripHtml(asText(l.text)));
   }
-  if (!ticked) return "No texts are ticked \u2014 tick the ones you want translated, then tap rebuild batches.";
+  for (const u of srcUnits) { ticked++; note(u.sourceRef, u.he, u.text); }
+  if (!ticked) {
+    if (SRC_ON && srcAvailable() && !aiSrcWanted())
+      return "The original text is ticked, but \u201ctranslate the original text too\u201d is switched off above.";
+    return "No texts are ticked \u2014 tick the ones you want translated, then tap rebuild batches.";
+  }
   if (!hebrew.size) return "None of the " + refs.size + " ticked text" +
     (refs.size === 1 ? " has" : "s have") + " Hebrew on them to translate.";
+  const left = [...hebrew].filter(r => !done.has(r));
+  const skipped = skipEn ? left.filter(r => hasEn.has(r)).length : 0;
+  if (skipped && skipped === left.length)
+    return skipped + " ticked Hebrew text" + (skipped === 1 ? " already has" : "s already have") +
+      " an English translation on Sefaria, so " + (skipped === 1 ? "it is" : "they are") +
+      " being skipped \u2014 untick \u201cskip anything Sefaria already has in English\u201d to translate " +
+      (skipped === 1 ? "it" : "them") + " anyway.";
   return hebrew.size + " ticked Hebrew text" + (hebrew.size === 1 ? "" : "s") +
     " already " + (hebrew.size === 1 ? "has" : "have") + " a translation into " + lang + ".";
 }
@@ -2051,18 +2164,34 @@ function eligibleLinksInOrder() {
   const out = [];
   const seenRefs = new Set();
   const lang = transLang();
+  const skipEn = aiSkipEnglish(lang);
+  const srcUnits = srcTransUnits();
+  const srcByRef = {};
+  for (const u of srcUnits) srcByRef[u.sourceRef] = u;
   const pushIfEligible = (l) => {
     if (!SEL.has(l._i)) return;
     const ref = canonicalRef(l);
     if (!ref || seenRefs.has(ref) || transDone(ref, lang)) return;
     const he = stripHtml(asText(l.he));
     if (!he) return;
+    if (skipEn && stripHtml(asText(l.text))) return;
     seenRefs.add(ref);
     out.push(l);
   };
+  const pushSrc = (u) => {
+    if (!u || seenRefs.has(u.sourceRef) || transDone(u.sourceRef, lang)) return;
+    if (skipEn && u.text) return;
+    seenRefs.add(u.sourceRef);
+    out.push(u);
+  };
   if (GROUPMODE === "seg") {
-    for (const seg of SEG_ORDER) for (const cat of segCats(seg)) for (const l of segCatLinks(seg, cat)) pushIfEligible(l);
+    for (const seg of SEG_ORDER) {
+      pushSrc(srcByRef[srcTransRefFor(seg)]);
+      for (const cat of segCats(seg)) for (const l of segCatLinks(seg, cat)) pushIfEligible(l);
+    }
+    for (const u of srcUnits) pushSrc(u);   // slices no section of its own points at
   } else {
+    for (const u of srcUnits) pushSrc(u);   // the source heads the document
     for (const cat of CAT_ORDER) {
       const comms = Object.keys(TREE[cat]).sort((a, b) => TREE[cat][b].length - TREE[cat][a].length);
       for (const comm of comms) for (const l of TREE[cat][comm]) pushIfEligible(l);
@@ -2473,6 +2602,22 @@ $("aiBatchSize").addEventListener("change", () => {
   if (BATCHES && BATCHES.length) aiReport("Tap rebuild batches to apply the new batch size.");
 });
 
+$("aiSrcOn").addEventListener("change", () => {
+  refreshAiUI();
+  if (!BATCHES) return;
+  aiReport($("aiSrcOn").checked
+    ? "The original text will be queued with the linked texts \u2014 tap rebuild batches to include it."
+    : "The original text will be left out \u2014 tap rebuild batches to drop it.");
+});
+
+$("aiSkipEn").addEventListener("change", () => {
+  refreshAiUI();
+  if (!BATCHES) return;
+  aiReport($("aiSkipEn").checked
+    ? "Texts that already have English on Sefaria will be skipped \u2014 tap rebuild batches."
+    : "Everything ticked will be queued, English or not \u2014 tap rebuild batches.");
+});
+
 // A language change puts anything translated into a different language back
 // in the queue, so the board has to be rebuilt to show it. One translation is
 // held per text, so a second language replaces the first for that text.
@@ -2499,7 +2644,7 @@ $("aiSaveBackup").onclick = () => {
 $("aiRestoreBackup").onclick = () => {
   const backup = loadAiBackup();
   if (!backup || !backup.items) { aiReport("No backup found.", true); return; }
-  const curRefs = new Set(LINKS.map(l => canonicalRef(l)));
+  const curRefs = currentTransRefs();
   let n = 0;
   for (const ref of Object.keys(backup.items)) {
     if (curRefs.has(ref)) { TRANS[ref] = backup.items[ref]; n++; }
@@ -3142,9 +3287,10 @@ function pvItem(label, he, en, isSrc, startCollapsed, noteKey, transRef, labelHt
   let body = "";
   if (he) body += `<p class="pv-he" dir="rtl">${escapeHtml(he)}</p>`;
   if (en) body += `<p class="pv-en">${escapeHtml(en)}</p>`;
-  if (transRef && TRANS[transRef]) body += aiTransBoxHtml(transRef);
+  const transList = (Array.isArray(transRef) ? transRef : (transRef ? [transRef] : [])).filter(r => TRANS[r]);
+  for (const r of transList) body += aiTransBoxHtml(r, transList.length > 1 ? r : "");
   if (noteKey) body += noteBoxHtml(noteKey);   // the note lives beneath its text
-  const collapsed = startCollapsed && !(noteKey && noteOf(noteKey)) && !(transRef && TRANS[transRef]);
+  const collapsed = startCollapsed && !(noteKey && noteOf(noteKey)) && !transList.length;
   return `<div class="pv-item${isSrc ? " pv-item-src" : ""}${collapsed ? " collapsed" : ""}">
     <div class="pv-ref">
       <span class="pv-reflabel pv-toggle"><span class="pv-caret">▾</span>${labelHtml || escapeHtml(label)}</span>
@@ -3179,7 +3325,7 @@ function wholeSrcPvItem(ref) {
     const h = stripHtml(SRC.he[i] || ""); if (h) he += (he ? " " : "") + h;
     const e = stripHtml(SRC.text[i] || ""); if (e) en += (en ? " " : "") + e;
   }
-  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__", null, null, SRC.ref || ref);
+  return pvItem("Source — " + (SRC.heRef || SRC.ref || ref), he, en, true, false, "__src__", srcSegRefs().filter(r => r), null, SRC.ref || ref);
 }
 
 // Copy a single preview item's text to the clipboard — respects the
@@ -3234,7 +3380,7 @@ function renderPreview() {
       sections++;
       let secBody = "", secN = 0;
       if (wantSrc) {
-        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg, null, null, seg);
+        secBody += pvItem("Source \u2014 " + seg, he, en, true, true, "S:" + seg, srcTransRefFor(seg), null, seg);
         secN++;
       }
       for (const [cat, arr] of sel) {
@@ -3253,6 +3399,8 @@ function renderPreview() {
       const incTitle = hdrText(seg, heSegRef(seg)) + (incipitFor(seg) ? " \u2014 " + incipitFor(seg) : "");
       html += pvGrp(incTitle, secN, secBody, "top", false);
     }
+    // no links means no sections — show the source whole, as Category mode does
+    if (haveSrc && !html) { html += wholeSrcPvItem(ref); sections = 1; }
   } else {
     // ---------------- category mode ----------------
     // category → commentator → individual texts, each level collapsible.
