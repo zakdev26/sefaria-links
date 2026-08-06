@@ -574,7 +574,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 48;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 49;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -1294,10 +1294,25 @@ function dafRangeRefs(ref) {
 
 // The page list for the reference now in the box, or null if it isn't a
 // multi-page reference at all.
+// "Laws of Blessing on Fragrance 1-5", "Genesis 1-3" -> every section in the
+// run. A range with no colon in it names whole sections rather than segments,
+// which is why neither dafRangeRefs (it wants amud letters) nor isRangedRef
+// (it wants a segment number) sees it. Each section is then walked to its own
+// segments by the page machinery, so the depth of the book doesn't matter.
+function sectionRangeRefs(ref) {
+  const m = String(ref).trim().match(/^(.+?)\s(\d+)\s*[-\u2013]\s*(\d+)$/);
+  if (!m) return null;
+  const from = parseInt(m[2], 10), to = parseInt(m[3], 10);
+  if (to < from || (to - from) > 200) return null;
+  const out = [];
+  for (let n = from; n <= to; n++) out.push(m[1] + " " + n);
+  return out;
+}
+
 function pagesForRef(ref) {
   if (PENDING_PAGES && PENDING_PAGES.label === ref) return PENDING_PAGES.refs;
   PENDING_PAGES = null;
-  return dafRangeRefs(ref);
+  return dafRangeRefs(ref) || sectionRangeRefs(ref);
 }
 
 // One page -> its segment refs, each with its own Hebrew and English text.
