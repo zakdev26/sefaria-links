@@ -574,7 +574,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 47;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 48;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -1026,11 +1026,7 @@ $("ref").addEventListener("keydown", e => {
 // ===========================================================================
 // Fetch links + build the source trees (by category, and by section)
 // ===========================================================================
-function isMultiSegmentSection(ref) {
-  if (ref.indexOf(":") >= 0) return false;   // already a specific segment
-  if (/\d+[ab]$/.test(ref)) return true;      // Talmud daf (e.g. 100a) — walk its segments
-  return /\s\d+$/.test(ref);                  // a whole numbered section (e.g. "Genesis 1")
-}
+
 // A ranged reference (an aliyah, a whole parsha, "Shabbat 100a:1-5"…):
 // verse:verse with a dash somewhere after it.
 function isRangedRef(ref) {
@@ -1110,33 +1106,76 @@ async function shapeCountFor(ref) {
   return (idx >= 0 && idx < counts.length) ? (counts[idx] || null) : null;
 }
 
-// A whole chapter/section: Sefaria's links API doesn't reliably return the
-// linked *text* for a multi-segment ref, so walk it segment-by-segment and
-// merge. Each per-segment call does return text, which is what we need.
-async function fetchLinksBySegments(ref) {
-  setStatus("Reading " + ref + "…");
-  let n = 0;
+// One addressed slice of a text, pushed out as segments. A book's address
+// depth cannot be read off a reference: "Laws of Blessing on Fragrance 1:1"
+// is a whole section in a three-level work like Likutei Halakhot and a single
+// line in a two-level one, and both are written the same way. The text itself
+// says which — a string is a leaf, an array is a run below it — so walk down
+// until the strings are reached, numbering each level on the way.
+function pushSegs(out, ref, he, en) {
+  const ha = Array.isArray(he) ? he : null;
+  const ea = Array.isArray(en) ? en : null;
+  if (!ha && !ea) { out.push({ ref: ref, he: asText(he), en: asText(en) }); return; }
+  const n = Math.max(ha ? ha.length : 0, ea ? ea.length : 0);
+  for (let i = 0; i < n; i++)
+    pushSegs(out, ref + ":" + (i + 1), ha ? ha[i] : null, ea ? ea[i] : null);
+}
+
+// A reference -> its individual segments, each with its own Hebrew and
+// English, at whatever depth the book has. leaf:true means the reference IS
+// one segment, so callers can keep their single-call path for it.
+async function segsOfRef(ref) {
+  const t = String(ref).trim();
+  let j = null;
   try {
-    const r = await fetch(TEXTS_API + encodeURIComponent(ref) + "?context=0&commentary=0&pad=0");
-    if (r.ok) {
-      const j = await r.json();
-      // union of both languages — one edition can be shorter than the other
-      const nHe = Array.isArray(j.he) ? j.he.length : 0;
-      const nEn = Array.isArray(j.text) ? j.text.length : 0;
-      n = Math.max(nHe, nEn);
-    }
+    const r = await fetch(TEXTS_API + encodeURIComponent(t) + "?context=0&commentary=0&pad=0");
+    if (r.ok) { const x = await r.json(); if (!x.error) j = x; }
   } catch (e) {}
-  // …and never fewer than the canonical segmentation links are anchored to
-  const nShape = await shapeCountFor(ref);
-  if (nShape && nShape > n) n = nShape;
-  if (!n) {   // couldn't expand — fall back to a single call
-    const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    return await res.json();
+  const heRef = (j && j.heRef) ? String(j.heRef) : "";
+  const he = j ? j.he : null, en = j ? j.text : null;
+  const arrHe = Array.isArray(he), arrEn = Array.isArray(en);
+  if (j && !arrHe && !arrEn && (asText(he) || asText(en)))
+    return { heRef: heRef, segs: [{ ref: t, he: asText(he), en: asText(en) }], leaf: true, nested: false };
+  const out = [];
+  if (arrHe || arrEn) pushSegs(out, t, arrHe ? he : null, arrEn ? en : null);
+  const nested = (arrHe && Array.isArray(he[0])) || (arrEn && Array.isArray(en[0]));
+  // Sefaria's default edition can be segmented more coarsely than the
+  // canonical text links are anchored against, so top a flat run up from the
+  // shape API — as the section walk has always done.
+  if (!nested) {
+    const nShape = await shapeCountFor(t);
+    if (nShape && nShape > out.length)
+      for (let i = out.length; i < nShape; i++) out.push({ ref: t + ":" + (i + 1), he: "", en: "" });
   }
-  const segs = [];
-  for (let i = 1; i <= n; i++) segs.push(ref + ":" + i);
-  return await linksForSegs(segs);
+  return { heRef: heRef, segs: out, leaf: false, nested: nested };
+}
+
+// A whole section (a daf, a chapter, a halakhah) -> links plus a source
+// object aligned segment by segment. Sefaria's links API doesn't reliably
+// return the linked *text* for a multi-segment reference, so the section is
+// walked to its own segments and each one is asked separately; those calls do
+// return text. null means the reference is a single segment after all, and
+// the caller's own single call is the right thing to do.
+async function fetchSectionData(ref) {
+  if (!/\s\d+[ab]?(:\d+)*$/.test(String(ref).trim())) return null;
+  setStatus("Reading " + ref + "…");
+  const exp = await segsOfRef(ref);
+  if (exp.leaf || !exp.segs.length) return null;
+  const links = await linksForSegs(exp.segs.map(s => s.ref));
+  const src = {
+    ref: ref, heRef: exp.heRef,
+    he: exp.segs.map(s => s.he), text: exp.segs.map(s => s.en)
+  };
+  // A plain "ref:1…n" run needs no map — the segment number indexes the text,
+  // and heSegRef can still build Hebrew section refs from the fetch's own
+  // heRef. A deeper run (1:1:1, 1:1:2 …) doesn't number that way, so it
+  // carries an explicit map instead.
+  if (!exp.segs.every((s, i) => s.ref === ref + ":" + (i + 1))) {
+    const segMap = {};
+    exp.segs.forEach((s, i) => { segMap[s.ref] = i; });
+    src.segMap = segMap;
+  }
+  return { links: links, src: src };
 }
 
 // Expand a ranged reference (an aliyah, a whole parsha) into its individual
@@ -1173,7 +1212,7 @@ async function expandRangedRef(ref) {
     if (!n) return null;
     const out = [];
     for (let i = 0; i < n; i++)
-      out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
+      pushSegs(out, base + ":" + (start + i), heArr[i], enArr[i]);
     return { ref: j.ref || t, heRef: j.heRef || "", segs: out };
   }
 
@@ -1200,7 +1239,7 @@ async function expandRangedRef(ref) {
     const to = (c === c2) ? Math.min(v2, n) : n;
     if (from > to) return null;
     for (let v = from; v <= to; v++)
-      out.push({ ref: book + " " + c + ":" + v, he: asText(heArr[v - 1]), en: asText(enArr[v - 1]) });
+      pushSegs(out, book + " " + c + ":" + v, heArr[v - 1], enArr[v - 1]);
   }
   if (!out.length) return null;
   return { ref: refName, heRef: heRef, segs: out };
@@ -1266,30 +1305,28 @@ function pagesForRef(ref) {
 // link on 13a:4 files under 13a:4 and not under the page's first line.
 async function expandPageRef(pref) {
   const t = String(pref).trim();
-  let j = null;
-  try {
-    const r = await fetch(TEXTS_API + encodeURIComponent(t) + "?context=0&commentary=0&pad=0");
-    if (r.ok) { const x = await r.json(); if (!x.error) j = x; }
-  } catch (e) {}
-  const heArr = (j && Array.isArray(j.he)) ? j.he : [];
-  const enArr = (j && Array.isArray(j.text)) ? j.text : [];
-  let n = Math.max(heArr.length, enArr.length);
-  const heRef = (j && j.heRef) ? String(j.heRef).split(":")[0] : "";
+  // A partial page ("Berakhot 13a:1-9") is a slice of one section, so its own
+  // numbering has to be preserved rather than rebuilt from 1.
   const m = t.match(/^(.+?):(\d+)\s*[-\u2013]\s*(\d+)$/);
   if (m && +m[3] >= +m[2]) {
+    let j = null;
+    try {
+      const r = await fetch(TEXTS_API + encodeURIComponent(t) + "?context=0&commentary=0&pad=0");
+      if (r.ok) { const x = await r.json(); if (!x.error) j = x; }
+    } catch (e) {}
+    const heArr = (j && Array.isArray(j.he)) ? j.he : [];
+    const enArr = (j && Array.isArray(j.text)) ? j.text : [];
+    const heRef = (j && j.heRef) ? String(j.heRef).split(":")[0] : "";
     const base = m[1], start = +m[2];
+    let n = Math.max(heArr.length, enArr.length);
     if (!n) n = +m[3] - start + 1;
     const out = [];
     for (let i = 0; i < n; i++)
-      out.push({ ref: base + ":" + (start + i), he: asText(heArr[i]), en: asText(enArr[i]) });
+      pushSegs(out, base + ":" + (start + i), heArr[i], enArr[i]);
     return { heRef, segs: out };
   }
-  const nShape = await shapeCountFor(t);
-  if (nShape && nShape > n) n = nShape;
-  const out = [];
-  for (let i = 0; i < n; i++)
-    out.push({ ref: t + ":" + (i + 1), he: asText(heArr[i]), en: asText(enArr[i]) });
-  return { heRef, segs: out };
+  const exp = await segsOfRef(t);
+  return { heRef: exp.heRef ? String(exp.heRef).split(":")[0] : "", segs: exp.segs };
 }
 
 // A list of pages -> links + a source object aligned segment by segment.
@@ -1350,19 +1387,28 @@ async function fetchLinks() {
         data = await res.json();
         if (data && data.error) throw new Error(data.error);
       }
-    } else if (isMultiSegmentSection(ref)) {
-      data = await fetchLinksBySegments(ref);
     } else {
-      const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      data = await res.json();
-      if (data && data.error) throw new Error(data.error);
-      // A single specific segment (one verse, one mishnah, one line of a daf):
-      // everything the API returns belongs to that segment, so file it all
-      // there. Without this, links anchored to ranges (a commentary on
-      // 9:1-10:29, or on 2:1-3) would surface under the range's first segment,
-      // making e.g. "I Kings 9:10" show sections for 9:1, 9:9 and even 1:1.
-      if (Array.isArray(data) && /:\d+$/.test(ref)) data.forEach(l => { l._seg = ref; });
+      // Not a range — but it may still be a section with segments below it,
+      // at whatever depth the book has ("…Laws of Blessing on Fragrance 1:1"
+      // is a whole section of a three-level work, not a line of it). Those
+      // are walked one segment at a time, because the links API only returns
+      // the linked text dependably for a single-segment reference. A real
+      // leaf falls through to the single call below.
+      const sd = await fetchSectionData(ref);
+      if (sd) { data = sd.links; preSrc = sd.src; }
+      else {
+        const res = await fetch(LINKS_API + encodeURIComponent(ref) + "?with_text=1");
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        data = await res.json();
+        if (data && data.error) throw new Error(data.error);
+        // A single specific segment (one verse, one mishnah, one line of a
+        // daf): everything the API returns belongs to that segment, so file
+        // it all there. Without this, links anchored to ranges (a commentary
+        // on 9:1-10:29, or on 2:1-3) would surface under the range's first
+        // segment, making e.g. "I Kings 9:10" show sections for 9:1, 9:9 and
+        // even 1:1.
+        if (Array.isArray(data) && /:\d+$/.test(ref)) data.forEach(l => { l._seg = ref; });
+      }
     }
     if (!Array.isArray(data) || data.length === 0) {
       setStatus("No links found for that reference.", true);
@@ -4032,6 +4078,14 @@ function mpickReset(book) {
   MPICK_BOOK = book; MPICK_REFS = []; MPICK_ON = false;
 }
 
+// Picks survive while the reader moves around inside one book, but they are
+// spent the moment a reference is opened. Coming back to the same book, or
+// starting anything new, must not find the last selection still ticked.
+function mpickClear() {
+  MPICK_BOOK = ""; MPICK_REFS = []; MPICK_ON = false;
+  mpickPaint();
+}
+
 // Pages come out in reading order rather than tap order: the trailing token of
 // a reference is its number, optionally with an amud letter.
 function mpickKey(ref) {
@@ -4160,6 +4214,7 @@ function closePanels() {
 function commitRef(ref) {
   $("ref").value = ref;
   OPENED_FROM_SEARCH = ref;   // the box is showing a source now, not a query
+  mpickClear();               // this reference is what the picks were for
   closePanels();
   refreshBackBar();
   fetchLinks();
@@ -4230,7 +4285,7 @@ async function ensureToc() {
   return TOC;
 }
 
-function startBrowse() { backStack = []; pushView("Texts", renderCorpora); }
+function startBrowse() { mpickClear(); backStack = []; pushView("Texts", renderCorpora); }
 
 function renderCorpora() {
   navLoading();
@@ -4845,6 +4900,7 @@ $("incEn").addEventListener("change", applyTreeLang);
 $("clearBtn").onclick = () => {
   if (!confirmDiscardTranslations()) return;
   $("ref").value = "";
+  PENDING_PAGES = null; mpickClear();
   LINKS = []; TREE = {}; CAT_ORDER = []; SEG_TREE = {}; SEG_ORDER = []; SRC = null;
   SEL = new Set(); SRC_ON = false; NOTES = {};
   TRANS = {}; SENTMAP = {}; SENTORDER = []; SENTLEN = {}; SENTHE = {}; BATCHES = null;
