@@ -574,7 +574,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 49;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 50;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -2007,16 +2007,54 @@ async function fetchRemoteTrans(storeRef) {
   } catch (e) { return 0; }   // offline / file:// preview — carry on without the store
 }
 
-// Eligible = ticked (SEL), has Hebrew, not yet translated — in the same
-// order gatherContent would emit them for the current GROUPMODE, so a copy
-// matches what the user sees in the preview/output.
+function transLang() { return ($("aiLang").value || "").trim() || "English"; }
+
+// A stored translation counts as done only when it is in the language now
+// being asked for, so switching from English to Italian puts every text back
+// in the queue. Entries from the shared store can carry no language at all;
+// those are taken at face value rather than re-translated.
+function transDone(ref, lang) {
+  const t = TRANS[ref];
+  if (!t || !String(t.text || "").trim()) return false;
+  const had = String(t.lang || "").trim().toLowerCase();
+  return !had || had === String(lang || "").trim().toLowerCase();
+}
+
+// Why is there nothing to batch? "All selected texts are translated" is one
+// reason out of four, and it was being shown for all of them.
+function batchEmptyReason() {
+  if (!LINKS.length) return "Nothing has been fetched yet.";
+  const lang = transLang();
+  const refs = new Set(), hebrew = new Set(), done = new Set();
+  let ticked = 0;
+  for (const l of LINKS) {
+    if (!SEL.has(l._i)) continue;
+    ticked++;
+    const ref = canonicalRef(l);
+    if (!ref) continue;
+    refs.add(ref);
+    if (stripHtml(asText(l.he))) hebrew.add(ref);
+    if (transDone(ref, lang)) done.add(ref);
+  }
+  if (!ticked) return "No texts are ticked \u2014 tick the ones you want translated, then tap rebuild batches.";
+  if (!hebrew.size) return "None of the " + refs.size + " ticked text" +
+    (refs.size === 1 ? " has" : "s have") + " Hebrew on them to translate.";
+  return hebrew.size + " ticked Hebrew text" + (hebrew.size === 1 ? "" : "s") +
+    " already " + (hebrew.size === 1 ? "has" : "have") + " a translation into " + lang + ".";
+}
+
+// Eligible = ticked (SEL), has Hebrew, not yet translated into the language
+// now being asked for — in the same order gatherContent would emit them for
+// the current GROUPMODE, so a copy matches what the user sees in the
+// preview/output.
 function eligibleLinksInOrder() {
   const out = [];
   const seenRefs = new Set();
+  const lang = transLang();
   const pushIfEligible = (l) => {
     if (!SEL.has(l._i)) return;
     const ref = canonicalRef(l);
-    if (!ref || TRANS[ref] || seenRefs.has(ref)) return;
+    if (!ref || seenRefs.has(ref) || transDone(ref, lang)) return;
     const he = stripHtml(asText(l.he));
     if (!he) return;
     seenRefs.add(ref);
@@ -2140,7 +2178,7 @@ function renderBatchBoard() {
     return;
   }
   if (!BATCHES.length) {
-    board.innerHTML = '<div class="batchempty">All selected texts are translated.</div>';
+    board.innerHTML = '<div class="batchempty">' + escapeHtml(batchEmptyReason()) + '</div>';
     $("batchLegend").style.display = "none";
   } else {
     board.innerHTML = BATCHES.map((b, i) =>
@@ -2150,7 +2188,7 @@ function renderBatchBoard() {
   }
   // texts ticked after the board was built are not in any batch yet
   const extra = eligibleLinksInOrder().filter(l => !(canonicalRef(l) in SENTLEN)).length;
-  $("aiRebuildRow").style.display = (extra || BATCHES.length) ? "" : "none";
+  $("aiRebuildRow").style.display = "";
   $("aiRebuildBatches").textContent = extra
     ? `rebuild batches (${extra} new text${extra === 1 ? "" : "s"} to include)`
     : "rebuild batches";
@@ -2262,7 +2300,7 @@ function parseAiBlocks(cleanText) {
 async function copyBatch(i) {
   const b = BATCHES && BATCHES[i];
   if (!b) return;
-  const missing = b.refs.filter(r => !TRANS[r]);
+  const missing = b.refs.filter(r => !transDone(r, transLang()));
   if (!missing.length) {
     aiReport(`Batch ${i + 1} is fully translated` +
       (b.short.length ? ` \u2014 unusually short, check: ${b.short.join(", ")}.` : "."));
@@ -2287,7 +2325,7 @@ function updateBatchStatuses(appliedRefs, shortRefs) {
   const shorts = new Set(shortRefs);
   for (const b of BATCHES) {
     for (const r of b.refs) if (shorts.has(r) && b.short.indexOf(r) < 0) b.short.push(r);
-    const missing = b.refs.filter(r => !TRANS[r]);
+    const missing = b.refs.filter(r => !transDone(r, transLang()));
     const touched = b.refs.some(r => applied.has(r));
     if (!missing.length) b.status = b.short.length ? "warn" : "done";
     else if (touched) b.status = "warn";   // a paste reached it but left gaps
@@ -2306,7 +2344,7 @@ function updateBatchStatuses(appliedRefs, shortRefs) {
 async function tapBatch(i) {
   const b = BATCHES && BATCHES[i];
   if (!b) return;
-  const missing = b.refs.filter(r => !TRANS[r]);
+  const missing = b.refs.filter(r => !transDone(r, transLang()));
   if (b.status === "todo" || !missing.length) { await copyBatch(i); return; }
 
   if (!(navigator.clipboard && navigator.clipboard.readText)) {
@@ -2433,6 +2471,19 @@ $("aiRebuildBatches").onclick = () => {
 
 $("aiBatchSize").addEventListener("change", () => {
   if (BATCHES && BATCHES.length) aiReport("Tap rebuild batches to apply the new batch size.");
+});
+
+// A language change puts anything translated into a different language back
+// in the queue, so the board has to be rebuilt to show it. One translation is
+// held per text, so a second language replaces the first for that text.
+$("aiLang").addEventListener("change", () => {
+  if (!BATCHES) return;
+  const lang = transLang();
+  const stale = Object.keys(TRANS).filter(r => !transDone(r, lang)).length;
+  refreshAiUI();
+  aiReport("Translating into " + lang + ". Tap rebuild batches to queue up anything not yet in " + lang +
+    (stale ? " \u2014 " + stale + " existing translation" + (stale === 1 ? " is" : "s are") +
+      " in another language and will be replaced if you translate " + (stale === 1 ? "it" : "them") + " again." : "."));
 });
 
 $("aiSaveBackup").onclick = () => {
