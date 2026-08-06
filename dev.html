@@ -586,7 +586,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
-const APP_VERSION = 51;   // bump when deploying, shows in footer + built books
+const APP_VERSION = 52;   // bump when deploying, shows in footer + built books
 // Commentator quick-links in the EPUB: a small marker row after each source
 // segment jumping to that section's pieces in place — Rashi, Tosafot and
 // Steinsaltz first, then every other selected commentator — and a back-link
@@ -4302,9 +4302,18 @@ function mpickClear() {
 
 // Pages come out in reading order rather than tap order: the trailing token of
 // a reference is its number, optionally with an amud letter.
+// Which page a picked reference names. A chapter that ends mid-daf gives its
+// last tile Sefaria's own partial reference (\u201cShabbat 105a:1-8\u201d), whose
+// trailing number is a segment, not a page — so the address is read from the
+// token before the first colon, and a partial page keys as its own daf.
+function mpickPageTok(ref) {
+  const t = String(ref).trim().split(":")[0];
+  const m = t.match(/(\d+)([ab])?$/);
+  return m ? { n: parseInt(m[1], 10), amud: m[2] || "" } : null;
+}
 function mpickKey(ref) {
-  const m = String(ref).match(/(\d+)([ab])?$/);
-  return m ? [parseInt(m[1], 10), m[2] === "b" ? 1 : 0] : [Infinity, 0];
+  const p = mpickPageTok(ref);
+  return p ? [p.n, p.amud === "b" ? 1 : 0] : [Infinity, 0];
 }
 function mpickSorted() {
   return MPICK_REFS.slice().sort((a, b) => {
@@ -4316,13 +4325,12 @@ function mpickSorted() {
 // A page's position on one number line: 2a is 4, 2b is 5, so "next page" is
 // always +1. Plain numbered sections count in ones instead.
 function mpickSeq(ref) {
-  const m = String(ref).match(/(\d+)([ab])?$/);
-  if (!m) return null;
-  const n = parseInt(m[1], 10);
-  return m[2] ? n * 2 + (m[2] === "b" ? 1 : 0) : n;
+  const p = mpickPageTok(ref);
+  if (!p) return null;
+  return p.amud ? p.n * 2 + (p.amud === "b" ? 1 : 0) : p.n;
 }
 function mpickRunsOn(refs) {
-  const lettered = refs.map(r => /(\d+)[ab]$/.test(String(r)));
+  const lettered = refs.map(r => { const p = mpickPageTok(r); return !!(p && p.amud); });
   if (lettered.some(x => x !== lettered[0])) return false;
   for (let i = 1; i < refs.length; i++) {
     const a = mpickSeq(refs[i - 1]), b = mpickSeq(refs[i]);
